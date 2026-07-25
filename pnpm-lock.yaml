@@ -29,6 +29,12 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@terra-pulse/db':
+        specifier: workspace:^
+        version: link:../../packages/db
+      '@terra-pulse/ingest':
+        specifier: workspace:^
+        version: link:../../packages/ingest
       '@terra-pulse/schema':
         specifier: workspace:^
         version: link:../../packages/schema
@@ -78,6 +84,38 @@ importers:
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(@types/node@26.1.1)(vite@7.3.6(@types/node@26.1.1)(jiti@2.7.0)(lightningcss@1.33.0))
+
+  packages/db:
+    dependencies:
+      '@terra-pulse/schema':
+        specifier: workspace:^
+        version: link:../schema
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.1)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0))
+
+  packages/ingest:
+    dependencies:
+      '@terra-pulse/schema':
+        specifier: workspace:^
+        version: link:../schema
+    devDependencies:
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
+      typescript:
+        specifier: 6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.10(@types/node@26.1.1)(vite@8.1.5(@types/node@26.1.1)(esbuild@0.28.1)(jiti@2.7.0))
 
   packages/schema:
     devDependencies:

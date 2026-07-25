@@ -1,5 +1,12 @@
-// Nothing to expose yet — no renderer code currently needs main-process-
-// mediated data. When later ingest work needs it (non-negotiable #6: API
-// keys stay in main, proxied through here, never a raw ipcRenderer
-// passthrough), that bridge goes here.
-export {};
+import { contextBridge, ipcRenderer } from 'electron';
+import type { EarthquakeEvent, EarthquakeQuery } from '@terra-pulse/schema';
+
+// Narrow, specific functions — never a raw ipcRenderer passthrough
+// (non-negotiable #6/§8: all IPC through an explicit minimal bridge).
+contextBridge.exposeInMainWorld('terraPulse', {
+  earthquakes: {
+    query: (query: EarthquakeQuery = {}): Promise<EarthquakeEvent[]> =>
+      ipcRenderer.invoke('earthquakes:query', query),
+    refresh: (): Promise<EarthquakeEvent[]> => ipcRenderer.invoke('earthquakes:refresh'),
+  },
+});

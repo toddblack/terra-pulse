@@ -23,7 +23,7 @@ Two modes, deliberately separate:
 - **UI:** React + Vite + TypeScript + CSS Modules
 - **State:** Zustand
 - **Globe:** CesiumJS
-- **Storage:** SQLite + SpatiaLite (local only, no server)
+- **Storage:** SQLite + R-Tree (local only, no server)
 - **Analysis engine:** Python 3.12 + FastAPI + numpy/scipy/statsmodels
 - **Ephemeris:** Skyfield + JPL DE440
 - **Optional (Phase 6):** C++ or Rust native module for the Monte Carlo kernel
@@ -40,7 +40,7 @@ Goal: a working globe showing the last 72 hours of earthquakes.
 - [ ] Electron + React + Vite + TS, hardened main/preload
 - [ ] Cesium viewer mounted, camera controls
 - [ ] Basemap switching (OSM / NASA GIBS satellite)
-- [ ] SQLite + SpatiaLite schema and migration runner
+- [ ] SQLite + R-Tree schema and migration runner
 - [ ] USGS ingest adapter → normalized schema
 - [ ] Earthquake event layer (size = magnitude, color = depth)
 - [ ] Click-to-inspect panel
