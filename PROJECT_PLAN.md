@@ -53,7 +53,7 @@ between global seismicity and solar/astronomical events.*
 | Concern | Choice | Rationale |
 |---|---|---|
 | Event catalog cache | **SQLite** | Two-tier: (1) one-time backfill of **M4.5+ global, 1970–present** ≈ 110k rows, tens of MB — this is the stats engine's working catalog; (2) on-demand cache for narrower/lower-magnitude queries, keyed by (window, magnitude, bbox) with TTL and size cap. |
-| Spatial queries | **SpatiaLite** extension | Fault-proximity and antipode-radius queries without a Postgres server. |
+| Spatial queries | SQLite's built-in **R-Tree** module | Fault-proximity and antipode-radius (bbox) queries without a Postgres server. Tried SpatiaLite first; the only available Windows binary is unmaintained and fails its own DLL init on a modern system (2016-era GEOS build) even after fixing the Windows DLL search-path issue. R-Tree ships inside SQLite core — no extension/binary to load at all — and covers what's actually needed. See Rejected Alternatives. |
 | User preferences | **SQLite table** or JSON config | Local only. |
 | Future cloud sync | *Supabase (deferred)* | Only if cross-device sync becomes a requirement. |
 
@@ -444,7 +444,7 @@ server-side proxying of all third-party API calls.
 ### Phase 1 — Foundation
 - Electron + React + Vite + TypeScript scaffold
 - Cesium viewer mounted, camera controls, basemap switching
-- SQLite + SpatiaLite schema and migrations
+- SQLite + R-Tree schema and migrations
 - USGS ingest adapter, 72-hour default window
 - Earthquake event layer with magnitude/depth encoding
 - Click-to-inspect panel
@@ -529,3 +529,4 @@ server-side proxying of all third-party API calls.
 | Web app instead of desktop | Cesium in-browser is viable, but desktop enables local caching, offline analysis, and heavier computation without hosting costs. |
 | Infinite historical scrubber | Data volume makes it unusable; window-select is both faster and clearer. |
 | Cesium World Terrain as a basemap | Ion's free tier is non-commercial only. It also needs `enableLighting` (day/night shading) to be visible at all, which conflicts with wanting the whole globe uniformly lit for data visualization — half the quakes would sit on the "night" side. |
+| SpatiaLite (real attempt, not skipped) | `node:sqlite`'s extension loading genuinely works (verified). The blocker is the binary: the only real Windows build available (`spatialite-bin` on npm) is a single unmaintained release bundling GEOS 3.5 (~2016). Its DLL fails its own init routine on a modern system even once the Windows DLL search-path problem is fixed — confirmed with a direct `LoadLibraryEx` call outside of Node entirely, so it's not a Node/SQLite-specific issue. R-Tree (built into SQLite core) covers the bbox/radius queries actually needed; revisit real SpatiaLite if a maintained binary source turns up later. |

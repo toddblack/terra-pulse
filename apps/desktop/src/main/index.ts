@@ -1,6 +1,8 @@
 import { app, BrowserWindow, session } from 'electron';
 import { join } from 'node:path';
 import dotenv from 'dotenv';
+import { openDatabase, queryEarthquakes } from '@terra-pulse/db';
+import { registerEarthquakeIpcHandlers, refreshEarthquakes } from './ipc/earthquakes';
 
 // dotenv.config() with no options resolves relative to process.cwd(), but
 // pnpm runs this package's scripts with apps/desktop as cwd, not the repo
@@ -35,6 +37,11 @@ if (isDev) {
 // only ever needed for Cesium World Terrain, which has been removed (Ion's
 // free tier is non-commercial only, and terrain needs day/night lighting to
 // be visible at all, which conflicts with wanting the whole globe lit).
+//
+// No earthquake.usgs.gov here either, and deliberately so: this CSP governs
+// what the *renderer* can reach, and the USGS ingest fetch runs entirely in
+// the main process (see ipc/earthquakes.ts), which isn't subject to it at
+// all. The renderer only ever sees normalized data over IPC.
 //
 // 'unsafe-inline' on script-src and the dev server's own origin on
 // connect-src are dev-only: Vite's dev client injects an inline bootstrap
@@ -89,7 +96,18 @@ function createWindow(): void {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const db = openDatabase(join(app.getPath('userData'), 'terra-pulse.sqlite'));
+  registerEarthquakeIpcHandlers(db);
+
+  // Populate on first run (empty db) rather than always fetching on start —
+  // a manual refresh is available via IPC for anything after that.
+  if (queryEarthquakes(db, {}).length === 0) {
+    await refreshEarthquakes(db).catch((error: unknown) => {
+      console.error('Initial earthquake fetch failed', error);
+    });
+  }
+
   createWindow();
 
   app.on('activate', () => {
