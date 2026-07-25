@@ -1,0 +1,35 @@
+{
+  "name": "@terra-pulse/desktop",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
+    "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@terra-pulse/schema": "workspace:^",
+    "cesium": "^1.143.0",
+    "dotenv": "^17.4.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^43.2.0",
+    "electron-vite": "^5.0.0",
+    "typescript": "6.0.3",
+    "vite": "^7.3.6",
+    "vite-plugin-cesium": "^1.2.23",
+    "vitest": "^4.1.10"
+  }
+}

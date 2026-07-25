@@ -38,7 +38,7 @@ between global seismicity and solar/astronomical events.*
 | Desktop shell | **Electron** | Mature, familiar, cross-platform. Tauri is an option if bundle size becomes a problem. |
 | Globe rendering | **CesiumJS** | Purpose-built for WGS84 geodesy, time-dynamic data, terrain, and swappable imagery. Not a decorative sphere. |
 | UI framework | **React + Vite + TypeScript** | Existing fluency. TypeScript is non-negotiable here — the data schemas are complex enough that runtime type errors will cost real time. |
-| Styling | **Tailwind** | Existing fluency. |
+| Styling | **CSS Modules** | Component-colocated stylesheets (`Component.module.css` next to `Component.tsx`) with plain modern CSS (native nesting, custom properties). Tried Tailwind first; utility classes spread through JSX proved hard to keep track of as components multiply. Electron ships a fixed, recent Chromium, so there's no cross-browser reason to reach for Sass. |
 | State | **Zustand** | Lightweight, less ceremony than Redux, good for the layer-toggle/time-window state this app needs. |
 
 ### Analysis Engine
@@ -144,7 +144,6 @@ Dst are planetary averages; ground magnetometers are points on a map.
 ### Imagery (globe basemaps)
 | Layer | Source | Cost |
 |---|---|---|
-| Terrain | Cesium World Terrain (Ion) | Free tier |
 | Satellite | **NASA GIBS** | Free, no key, near-real-time |
 | Satellite (alt) | Bing / Mapbox | Freemium, key required |
 | Basic/vector | OpenStreetMap raster | Free |
@@ -173,7 +172,6 @@ interface GlobeLayer {
 
 **Basemaps** (exclusive, pick one)
 - Basic / OSM vector
-- Terrain (3D elevation)
 - Satellite (NASA GIBS)
 - Night lights / blue marble
 
@@ -530,3 +528,4 @@ server-side proxying of all third-party API calls.
 | Postgres/Supabase for v1 | Adds a server, accounts, and a security surface for a dataset SQLite handles trivially. |
 | Web app instead of desktop | Cesium in-browser is viable, but desktop enables local caching, offline analysis, and heavier computation without hosting costs. |
 | Infinite historical scrubber | Data volume makes it unusable; window-select is both faster and clearer. |
+| Cesium World Terrain as a basemap | Ion's free tier is non-commercial only. It also needs `enableLighting` (day/night shading) to be visible at all, which conflicts with wanting the whole globe uniformly lit for data visualization — half the quakes would sit on the "night" side. |

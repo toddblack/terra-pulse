@@ -1,0 +1,17 @@
+{
+  "name": "@terra-pulse/schema",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "cesium": "^1.143.0",
+    "typescript": "6.0.3",
+    "vitest": "^4.1.10"
+  }
+}

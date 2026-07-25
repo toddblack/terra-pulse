@@ -1,0 +1,20 @@
+{
+  "name": "terra-pulse",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter @terra-pulse/desktop dev",
+    "build": "pnpm -r build",
+    "lint": "eslint .",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck"
+  },
+  "devDependencies": {
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.65.0",
+    "vitest": "^4.1.10"
+  }
+}

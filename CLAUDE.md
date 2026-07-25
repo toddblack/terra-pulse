@@ -20,7 +20,7 @@ Two modes, deliberately separate:
 ## Stack
 
 - **Shell:** Electron
-- **UI:** React + Vite + TypeScript + Tailwind
+- **UI:** React + Vite + TypeScript + CSS Modules
 - **State:** Zustand
 - **Globe:** CesiumJS
 - **Storage:** SQLite + SpatiaLite (local only, no server)
@@ -39,7 +39,7 @@ Goal: a working globe showing the last 72 hours of earthquakes.
 - [ ] Monorepo scaffold (`apps/desktop`, `packages/*`, `engine/`)
 - [ ] Electron + React + Vite + TS, hardened main/preload
 - [ ] Cesium viewer mounted, camera controls
-- [ ] Basemap switching (OSM / terrain / NASA GIBS satellite)
+- [ ] Basemap switching (OSM / NASA GIBS satellite)
 - [ ] SQLite + SpatiaLite schema and migration runner
 - [ ] USGS ingest adapter → normalized schema
 - [ ] Earthquake event layer (size = magnitude, color = depth)
@@ -101,7 +101,6 @@ interface GlobeLayer {
 | CME/flare + arrival times | `api.nasa.gov/DONKI/` (free key) |
 | Magnetometers | INTERMAGNET, SuperMAG (registration) |
 | Satellite imagery | NASA GIBS (no key) |
-| Terrain | Cesium Ion (free tier) |
 | Faults | USGS Quaternary Fault DB (US), GEM Global Active Faults |
 | Ephemeris | JPL DE440 via Skyfield |
 
