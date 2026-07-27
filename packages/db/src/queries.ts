@@ -124,3 +124,35 @@ export function queryEarthquakesInBoundingBox(
 
   return rows.map(rowToEvent);
 }
+
+/**
+ * A cheap signature of the catalogue's state.
+ *
+ * Compared before and after an ingest to decide whether anything actually
+ * changed. `MAX(updated_utc)` is what catches USGS *revisions* — a magnitude
+ * refinement or an automatic→reviewed status flip changes no row count, but
+ * does bump that timestamp.
+ *
+ * Without it, every poll would push a fresh event array to the renderer, the
+ * earthquake layer would rebuild, and Cesium would destroy whichever entity
+ * the user has selected — closing the inspector panel once a minute.
+ */
+export interface CatalogSignature {
+  count: number;
+  latestUpdatedUtc: string | null;
+}
+
+export function catalogSignature(db: DatabaseSync): CatalogSignature {
+  const row = db
+    .prepare('SELECT COUNT(*) AS count, MAX(updated_utc) AS latest FROM earthquakes')
+    .get();
+
+  return {
+    count: Number(row?.['count'] ?? 0),
+    latestUpdatedUtc: (row?.['latest'] as string | null) ?? null,
+  };
+}
+
+export function signaturesMatch(a: CatalogSignature, b: CatalogSignature): boolean {
+  return a.count === b.count && a.latestUpdatedUtc === b.latestUpdatedUtc;
+}

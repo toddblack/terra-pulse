@@ -1,4 +1,4 @@
-import type { BasemapId } from '@terra-pulse/schema';
+import type { BackdropTone } from '@terra-pulse/schema';
 
 /**
  * The visual grammar for earthquake marks. Pure — no Cesium imports — so the
@@ -66,10 +66,6 @@ const DEPTH_COLORS_DARK_BASEMAP = [
 const HALO_LIGHT_BASEMAP = '#ffffff';
 const HALO_DARK_BASEMAP = '#0b0b0b';
 
-function isDarkBasemap(basemap: BasemapId): boolean {
-  return basemap === 'satellite';
-}
-
 /** Index into `DEPTH_BINS`. Depths outside the range clamp to an end bin. */
 export function depthBinIndex(depthKm: number): number {
   if (!Number.isFinite(depthKm)) return 0;
@@ -82,20 +78,17 @@ export function depthBinIndex(depthKm: number): number {
   return 0;
 }
 
-export function depthColorHex(depthKm: number, basemap: BasemapId): string {
-  const palette = isDarkBasemap(basemap)
-    ? DEPTH_COLORS_DARK_BASEMAP
-    : DEPTH_COLORS_LIGHT_BASEMAP;
-  return palette[depthBinIndex(depthKm)]!;
+export function depthColorHex(depthKm: number, tone: BackdropTone): string {
+  return depthLegendColors(tone)[depthBinIndex(depthKm)]!;
 }
 
-/** Ordered swatches for the legend, matching the active basemap. */
-export function depthLegendColors(basemap: BasemapId): readonly string[] {
-  return isDarkBasemap(basemap) ? DEPTH_COLORS_DARK_BASEMAP : DEPTH_COLORS_LIGHT_BASEMAP;
+/** Ordered swatches for the legend, matching the active backdrop. */
+export function depthLegendColors(tone: BackdropTone): readonly string[] {
+  return tone === 'dark' ? DEPTH_COLORS_DARK_BASEMAP : DEPTH_COLORS_LIGHT_BASEMAP;
 }
 
-export function haloColorHex(basemap: BasemapId): string {
-  return isDarkBasemap(basemap) ? HALO_DARK_BASEMAP : HALO_LIGHT_BASEMAP;
+export function haloColorHex(tone: BackdropTone): string {
+  return tone === 'dark' ? HALO_DARK_BASEMAP : HALO_LIGHT_BASEMAP;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,8 +118,8 @@ export function isEmphasized(magnitude: number): boolean {
   return Number.isFinite(magnitude) && magnitude >= EMPHASIS_MAGNITUDE_THRESHOLD;
 }
 
-export function emphasisRingColorHex(basemap: BasemapId): string {
-  return isDarkBasemap(basemap) ? EMPHASIS_RING_DARK_BASEMAP : EMPHASIS_RING_LIGHT_BASEMAP;
+export function emphasisRingColorHex(tone: BackdropTone): string {
+  return tone === 'dark' ? EMPHASIS_RING_DARK_BASEMAP : EMPHASIS_RING_LIGHT_BASEMAP;
 }
 
 export function emphasisRingPixelSize(magnitude: number): number {

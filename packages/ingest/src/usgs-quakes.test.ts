@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { fetchRecentEarthquakes, usgsFeatureToEarthquakeEvent } from './usgs-quakes';
+import {
+  fetchEarthquakeFeed,
+  fetchRecentEarthquakes,
+  usgsFeatureToEarthquakeEvent,
+} from './usgs-quakes';
 
 // Real feature captured from earthquake.usgs.gov's live feed while designing
 // this adapter — not hand-invented, so the shape is trustworthy.
@@ -99,5 +103,70 @@ describe('fetchRecentEarthquakes (real network call)', () => {
       expect(typeof event.id).toBe('string');
       expect(new Date(event.timeUtc).toString()).not.toBe('Invalid Date');
     }
+  });
+});
+
+describe('fetchEarthquakeFeed (real network call)', () => {
+  it('returns correctly-shaped events from the 2.5_day bucket', async () => {
+    const events = await fetchEarthquakeFeed('2.5_day');
+
+    expect(Array.isArray(events)).toBe(true);
+    // Global M2.5+ activity over a full day is effectively guaranteed; an
+    // empty result here would mean the URL or parsing is wrong.
+    expect(events.length).toBeGreaterThan(0);
+
+    for (const event of events) {
+      expect(typeof event.id).toBe('string');
+      expect(Number.isFinite(event.magnitude)).toBe(true);
+      expect(new Date(event.timeUtc).toString()).not.toBe('Invalid Date');
+    }
+  });
+
+  it('does not guarantee its own magnitude floor — the bucket label is approximate', async () => {
+    // Observed live: the "2.5_day" bucket returned an M2.46. USGS revises
+    // magnitudes after an event is placed in a bucket, and the boundary uses
+    // rounded display magnitude. This adapter reports the feed faithfully
+    // (non-negotiable #7); enforcing the app's floor is the caller's job, so
+    // the catalogue keeps one consistent rule rather than "2.5+, mostly".
+    const events = await fetchEarthquakeFeed('2.5_day');
+    const belowFloor = events.filter((event) => event.magnitude < 2.5);
+
+    // Not asserting stragglers *exist* — that depends on the hour. The point
+    // is that finding them is normal and must not be treated as a bug.
+    for (const event of belowFloor) {
+      expect(event.magnitude).toBeGreaterThan(2.0);
+    }
+  });
+
+  it('produces the same normalised shape as the FDSN path', async () => {
+    // The two endpoints return identical GeoJSON, which is why they share a
+    // normaliser. If USGS ever diverged them, this catches it.
+    const [feedEvent] = await fetchEarthquakeFeed('2.5_day');
+    expect(feedEvent).toBeDefined();
+    expect(Object.keys(feedEvent!).sort()).toEqual(
+      [
+        'alertLevel',
+        'depthKm',
+        'id',
+        'latitude',
+        'longitude',
+        'magnitude',
+        'magnitudeType',
+        'place',
+        'significance',
+        'status',
+        'timeUtc',
+        'tsunami',
+        'updatedUtc',
+        'url',
+      ].sort(),
+    );
+  });
+
+  it('tolerates a quiet bucket returning no events', async () => {
+    // 2.5_hour legitimately returns count: 0 during quiet hours. An empty
+    // array must be a normal result, never an error or a signal to clear.
+    const events = await fetchEarthquakeFeed('2.5_hour');
+    expect(Array.isArray(events)).toBe(true);
   });
 });

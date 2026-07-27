@@ -1,16 +1,10 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import { useGlobeStore } from '../state/useGlobeStore';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
-import { createOsmBasemap } from '../layers/osm-basemap';
-import { createSatelliteBasemap } from '../layers/satellite-basemap';
-import { createEarthquakeLayer, eventIdFromEntityId } from '../layers/earthquake-layer';
+import { eventIdFromEntityId } from '../layers/earthquake-layer';
+import { useGlobeLayers } from './useGlobeLayers';
 import styles from './CesiumViewer.module.css';
-
-const BASEMAP_FACTORIES = {
-  osm: createOsmBasemap,
-  satellite: createSatelliteBasemap,
-} as const;
 
 /**
  * Floor for the camera height used when centring on an event. The current
@@ -19,18 +13,25 @@ const BASEMAP_FACTORIES = {
  */
 const MIN_FOCUS_ALTITUDE_M = 250_000;
 
-/** Show events regardless if the basemap's tiles haven't settled by now. */
-const TILE_WAIT_FALLBACK_MS = 5_000;
+/**
+ * How far the pointer must travel with the button held before it counts as a
+ * drag rather than a slightly shaky click.
+ */
+const DRAG_THRESHOLD_PX = 5;
 
 export function CesiumViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
-  // Whether events have been on screen at least once — gates the first-paint
-  // wait for basemap tiles so it doesn't re-trigger on later rebuilds.
-  const hasShownEventsRef = useRef(false);
-  const activeBasemap = useGlobeStore((state) => state.activeBasemap);
+  // The viewer lives in a ref (it must not trigger re-renders), so this is
+  // what tells dependent effects that it now exists.
+  const [viewerReadyToken, setViewerReadyToken] = useState(0);
+
+  const activeBasemapId = useGlobeStore((state) => state.activeBasemapId);
+  const layerVisibility = useGlobeStore((state) => state.layerVisibility);
+
   const events = useEarthquakeStore((state) => state.events);
   const select = useEarthquakeStore((state) => state.select);
+  const selectedEventId = useEarthquakeStore((state) => state.selectedEventId);
   const focusRequest = useEarthquakeStore((state) => state.focusRequest);
 
   // Viewer lifecycle: created once on mount, destroyed once on unmount.
@@ -38,10 +39,10 @@ export function CesiumViewer() {
     if (!containerRef.current) return;
 
     const viewer = new Cesium.Viewer(containerRef.current, {
-      baseLayer: false, // we mount our own basemap layers below
+      baseLayer: false, // basemaps are mounted by the layer registry
       animation: false,
       timeline: false,
-      baseLayerPicker: false, // replaced by our own BasemapToggle panel
+      baseLayerPicker: false, // replaced by our own LayerPanel
       geocoder: false,
       sceneModePicker: false,
       navigationHelpButton: false,
@@ -49,6 +50,7 @@ export function CesiumViewer() {
       infoBox: false, // replaced by our own EarthquakeInspector panel
     });
     viewerRef.current = viewer;
+    setViewerReadyToken((token) => token + 1);
 
     return () => {
       // Non-negotiable #5: Cesium objects are not reclaimed by GC —
@@ -58,88 +60,94 @@ export function CesiumViewer() {
     };
   }, []);
 
-  // Active basemap lifecycle: swaps whenever the store's selection changes.
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer) return;
+  // All layer mounting/unmounting lives in the registry-driven hook.
+  useGlobeLayers({
+    viewerRef,
+    activeBasemapId,
+    layerVisibility,
+    events,
+    viewerReadyToken,
+  });
 
-    const layer = BASEMAP_FACTORIES[activeBasemap]();
-    layer.mount(viewer);
-
-    return () => {
-      layer.unmount();
-    };
-  }, [activeBasemap]);
-
-  // Earthquake layer. Rebuilt wholesale when the event set or basemap changes
-  // — the depth ramp is basemap-dependent, so a swap genuinely needs new
-  // colours. Rebuilding a few hundred entities is cheap and obviously
-  // correct; incremental diffing is a Phase 6 concern needing a benchmark.
+  // Globe click → store.
   //
-  // On the very first paint this waits for the globe's tiles. Events come from
-  // local SQLite in milliseconds while basemap tiles come over the network, so
-  // without the wait the dots hang in empty space before the planet arrives.
-  // Only the first mount waits: after that, switching basemaps briefly empties
-  // the tile queue again, and re-gating would make the events blink out.
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || events.length === 0) return;
-
-    let layer: ReturnType<typeof createEarthquakeLayer> | null = null;
-    let cancelled = false;
-    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
-
-    const mountLayer = () => {
-      if (cancelled || layer) return;
-      hasShownEventsRef.current = true;
-      layer = createEarthquakeLayer(events, activeBasemap);
-      layer.mount(viewer);
-    };
-
-    const onTileProgress = (queuedTileCount: number) => {
-      if (queuedTileCount === 0) mountLayer();
-    };
-
-    if (hasShownEventsRef.current || viewer.scene.globe.tilesLoaded) {
-      mountLayer();
-    } else {
-      viewer.scene.globe.tileLoadProgressEvent.addEventListener(onTileProgress);
-      // If tiles never finish — offline, a blocked host — the events should
-      // still show rather than being held hostage by the basemap.
-      fallbackTimer = setTimeout(mountLayer, TILE_WAIT_FALLBACK_MS);
-    }
-
-    return () => {
-      cancelled = true;
-      clearTimeout(fallbackTimer);
-      if (!viewer.isDestroyed()) {
-        viewer.scene.globe.tileLoadProgressEvent.removeEventListener(onTileProgress);
-      }
-      layer?.unmount();
-    };
-  }, [events, activeBasemap]);
-
-  // Globe click → store. Using selectedEntityChanged rather than a raw
-  // ScreenSpaceEventHandler gets deselect-on-empty-click for free and leaves
-  // nothing extra to tear down.
+  // Explicit picking rather than Cesium's `selectedEntityChanged`, which fires
+  // with `undefined` both when the user clicks empty space *and* when the
+  // selected entity is destroyed. Those are indistinguishable to a listener —
+  // so once the 60s poll started rebuilding the layer, the panel would close
+  // on its own every time new data arrived. Doing our own pick means
+  // "deselected" can only mean the user actually clicked nothing.
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
 
-    const onSelectionChanged = () => {
-      const entityId = viewer.selectedEntity?.id;
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+
+    handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      const picked: unknown = viewer.scene.pick(movement.position);
+      const entityId: unknown =
+        picked && typeof picked === 'object' && 'id' in picked
+          ? (picked as { id?: { id?: unknown } }).id?.id
+          : undefined;
+
       // Clicking a large event's emphasis ring must select the event itself,
       // not the ring entity that happens to carry the hit.
       select(typeof entityId === 'string' ? eventIdFromEntityId(entityId) : null);
-    };
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-    viewer.selectedEntityChanged.addEventListener(onSelectionChanged);
+    // Dragging the globe clears the selection: once you start moving the view
+    // you're done with that event, and a panel describing it is just clutter.
+    //
+    // Tracked from the raw pointer rather than a camera event because the
+    // camera also moves when *we* fly it to a freshly-selected event — using
+    // camera movement would make selecting an event instantly deselect it.
+    let dragOrigin: Cesium.Cartesian2 | undefined;
+
+    handler.setInputAction((event: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      dragOrigin = Cesium.Cartesian2.clone(event.position);
+    }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+    handler.setInputAction((event: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
+      if (!dragOrigin) return;
+      if (Cesium.Cartesian2.distance(dragOrigin, event.endPosition) < DRAG_THRESHOLD_PX) return;
+
+      select(null);
+      // Cleared so a single drag deselects once rather than on every frame.
+      dragOrigin = undefined;
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+    handler.setInputAction(() => {
+      dragOrigin = undefined;
+    }, Cesium.ScreenSpaceEventType.LEFT_UP);
+
     return () => {
-      viewer.selectedEntityChanged.removeEventListener(onSelectionChanged);
+      // Non-negotiable #5 applies to handlers too.
+      handler.destroy();
     };
-  }, [select]);
+  }, [select, viewerReadyToken]);
 
-  // "Centre camera" from the inspector panel.
+  // Store → Cesium selection, so the reticle follows the store and survives a
+  // layer rebuild. Entities live inside each layer's own data source, so this
+  // searches the mounted sources rather than `viewer.entities`.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+
+    if (selectedEventId === null) {
+      viewer.selectedEntity = undefined;
+      return;
+    }
+
+    for (let i = 0; i < viewer.dataSources.length; i++) {
+      const entity = viewer.dataSources.get(i).entities.getById(selectedEventId);
+      if (entity) {
+        viewer.selectedEntity = entity;
+        return;
+      }
+    }
+  }, [selectedEventId, events, viewerReadyToken]);
+
+  // Centring on an event, from selection or the inspector's Recenter button.
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || !focusRequest) return;

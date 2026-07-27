@@ -35,14 +35,14 @@ function createFakeViewer(options?: { destroyed?: boolean }): Cesium.Viewer {
 
 describe('earthquake layer', () => {
   it('conforms to the GlobeLayer contract as an events layer', () => {
-    const layer = createEarthquakeLayer([], 'osm');
+    const layer = createEarthquakeLayer([], 'light');
     expect(layer.id).toBe('earthquakes');
     expect(layer.category).toBe('events');
     expect(layer.defaultVisible).toBe(true);
   });
 
   it('adds one data source holding one entity per event', () => {
-    const layer = createEarthquakeLayer([makeEvent({ id: 'a' }), makeEvent({ id: 'b' })], 'osm');
+    const layer = createEarthquakeLayer([makeEvent({ id: 'a' }), makeEvent({ id: 'b' })], 'light');
     const viewer = createFakeViewer();
 
     layer.mount(viewer);
@@ -55,7 +55,7 @@ describe('earthquake layer', () => {
   });
 
   it('removes and destroys the data source on unmount', () => {
-    const layer = createEarthquakeLayer([makeEvent()], 'osm');
+    const layer = createEarthquakeLayer([makeEvent()], 'light');
     const viewer = createFakeViewer();
 
     layer.mount(viewer);
@@ -66,7 +66,7 @@ describe('earthquake layer', () => {
   });
 
   it('does not touch an already-destroyed viewer on unmount', () => {
-    const layer = createEarthquakeLayer([makeEvent()], 'osm');
+    const layer = createEarthquakeLayer([makeEvent()], 'light');
     const viewer = createFakeViewer();
 
     layer.mount(viewer);
@@ -77,7 +77,7 @@ describe('earthquake layer', () => {
   });
 
   it('detaches the data source if it unmounts before the async add resolves', async () => {
-    const layer = createEarthquakeLayer([makeEvent()], 'osm');
+    const layer = createEarthquakeLayer([makeEvent()], 'light');
     const viewer = createFakeViewer();
 
     layer.mount(viewer);
@@ -91,7 +91,7 @@ describe('earthquake layer', () => {
   });
 
   it('does nothing on unmount if never mounted', () => {
-    const layer = createEarthquakeLayer([makeEvent()], 'osm');
+    const layer = createEarthquakeLayer([makeEvent()], 'light');
     expect(() => layer.unmount()).not.toThrow();
   });
 
@@ -101,7 +101,7 @@ describe('earthquake layer', () => {
         makeEvent({ id: 'inside', timeUtc: '2026-07-20T12:00:00.000Z' }),
         makeEvent({ id: 'outside', timeUtc: '2026-07-01T00:00:00.000Z' }),
       ],
-      'osm',
+      'light',
     );
     const viewer = createFakeViewer();
     layer.mount(viewer);
@@ -119,7 +119,7 @@ describe('earthquake layer', () => {
         makeEvent({ id: 'small', magnitude: 4.2 }),
         makeEvent({ id: 'big', magnitude: 6.1 }),
       ],
-      'osm',
+      'light',
     );
     const viewer = createFakeViewer();
     layer.mount(viewer);
@@ -134,7 +134,7 @@ describe('earthquake layer', () => {
   it('hides a large event’s ring along with its dot when filtered out', () => {
     const layer = createEarthquakeLayer(
       [makeEvent({ id: 'big', magnitude: 6.1, timeUtc: '2026-07-01T00:00:00.000Z' })],
-      'osm',
+      'light',
     );
     const viewer = createFakeViewer();
     layer.mount(viewer);
@@ -153,7 +153,7 @@ describe('earthquake layer', () => {
   });
 
   it('toggles the whole data source with setVisible', () => {
-    const layer = createEarthquakeLayer([makeEvent()], 'osm');
+    const layer = createEarthquakeLayer([makeEvent()], 'light');
     const viewer = createFakeViewer();
     layer.mount(viewer);
     const added = vi.mocked(viewer.dataSources.add).mock.calls[0]![0] as Cesium.CustomDataSource;

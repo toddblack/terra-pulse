@@ -1,8 +1,12 @@
 import { app, BrowserWindow, session } from 'electron';
 import { join } from 'node:path';
 import dotenv from 'dotenv';
-import { openDatabase, queryEarthquakes } from '@terra-pulse/db';
-import { registerEarthquakeIpcHandlers, refreshEarthquakes } from './ipc/earthquakes';
+import { openDatabase } from '@terra-pulse/db';
+import {
+  backfillEarthquakes,
+  registerEarthquakeIpcHandlers,
+  startEarthquakePolling,
+} from './ipc/earthquakes';
 import { registerExternalLinkIpcHandlers } from './ipc/external-links';
 
 // dotenv.config() with no options resolves relative to process.cwd(), but
@@ -59,7 +63,7 @@ const CONTENT_SECURITY_POLICY = [
   "worker-src 'self' blob:",
 ].join('; ');
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -117,6 +121,8 @@ function createWindow(): void {
   load.catch((error: unknown) => {
     console.error('Failed to load the renderer', error);
   });
+
+  return mainWindow;
 }
 
 app
@@ -126,18 +132,25 @@ app
     registerEarthquakeIpcHandlers(db);
     registerExternalLinkIpcHandlers();
 
-    // Populate on first run (empty db) rather than always fetching on start —
-    // a manual refresh is available via IPC for anything after that.
-    if (queryEarthquakes(db, {}).length === 0) {
-      await refreshEarthquakes(db).catch((error: unknown) => {
-        console.error('Initial earthquake fetch failed', error);
-      });
-    }
+    // Backfill the whole display window on every launch, not just when the
+    // database is empty. This is what closes the gap from the app having been
+    // shut — the 60s poll only covers the last 24h.
+    await backfillEarthquakes(db).catch((error: unknown) => {
+      console.error('Startup earthquake backfill failed', error);
+    });
 
-    createWindow();
+    let mainWindow = createWindow();
+
+    // Push updates to the renderer rather than having it poll the database.
+    const stopPolling = startEarthquakePolling(db, (result) => {
+      if (!mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('earthquakes:updated', result);
+      }
+    });
+    app.on('will-quit', stopPolling);
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
     });
   })
   .catch((error: unknown) => {

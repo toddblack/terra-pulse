@@ -1,12 +1,44 @@
 import { create } from 'zustand';
-import type { BasemapId } from '@terra-pulse/schema';
+import {
+  DEFAULT_BASEMAP_ID,
+  backdropToneFor,
+  defaultOverlayVisibility,
+  type BasemapId,
+} from '../layers/registry';
+import type { BackdropTone } from '@terra-pulse/schema';
 
 interface GlobeState {
-  activeBasemap: BasemapId;
+  /** Exclusive group — exactly one basemap is active (PROJECT_PLAN §4). */
+  activeBasemapId: BasemapId;
+  /** Independent toggles, keyed by layer id. */
+  layerVisibility: Record<string, boolean>;
+
   setActiveBasemap: (id: BasemapId) => void;
+  toggleLayer: (id: string) => void;
+  setLayerVisible: (id: string, visible: boolean) => void;
 }
 
 export const useGlobeStore = create<GlobeState>((set) => ({
-  activeBasemap: 'osm',
-  setActiveBasemap: (id) => set({ activeBasemap: id }),
+  activeBasemapId: DEFAULT_BASEMAP_ID,
+  layerVisibility: defaultOverlayVisibility(),
+
+  setActiveBasemap: (id) => set({ activeBasemapId: id }),
+
+  toggleLayer: (id) =>
+    set((state) => ({
+      layerVisibility: { ...state.layerVisibility, [id]: !state.layerVisibility[id] },
+    })),
+
+  setLayerVisible: (id, visible) =>
+    set((state) => ({
+      layerVisibility: { ...state.layerVisibility, [id]: visible },
+    })),
 }));
+
+/**
+ * The active backdrop's tone. Selector rather than stored state so it can
+ * never drift out of sync with the basemap it describes.
+ */
+export function selectBackdropTone(state: GlobeState): BackdropTone {
+  return backdropToneFor(state.activeBasemapId);
+}

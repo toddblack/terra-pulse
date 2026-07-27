@@ -1,13 +1,42 @@
 import { ipcMain } from 'electron';
 import type { DatabaseSync } from 'node:sqlite';
-import { insertEarthquakes, queryEarthquakes, type EarthquakeQuery } from '@terra-pulse/db';
-import { fetchRecentEarthquakes } from '@terra-pulse/ingest';
-import type { EarthquakeEvent } from '@terra-pulse/schema';
+import {
+  catalogSignature,
+  insertEarthquakes,
+  queryEarthquakes,
+  signaturesMatch,
+  type EarthquakeQuery,
+} from '@terra-pulse/db';
+import { fetchEarthquakeFeed, fetchRecentEarthquakes } from '@terra-pulse/ingest';
+import type { EarthquakeEvent, EarthquakeSyncResult } from '@terra-pulse/schema';
 
 const SEVENTY_TWO_HOURS_MS = 72 * 60 * 60 * 1000;
 const DEFAULT_MIN_MAGNITUDE = 2.5;
 
-async function refreshEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]> {
+/**
+ * The summary feeds are CDN-cached with `Cache-Control: max-age=60`, so
+ * polling faster returns byte-identical data. 60s is the ceiling on useful
+ * freshness, not a compromise.
+ */
+const POLL_INTERVAL_MS = 60_000;
+
+/**
+ * The feed bucket's own label is approximate — a "2.5_day" response was
+ * observed containing an M2.46, because USGS revises magnitudes after an event
+ * lands in a bucket. Applying the floor here keeps the catalogue answerable
+ * with one rule ("M2.5+, last 72h") rather than "M2.5+, mostly". The adapter
+ * itself stays faithful to the source (non-negotiable #7).
+ */
+function atOrAboveFloor(events: EarthquakeEvent[]): EarthquakeEvent[] {
+  return events.filter((event) => event.magnitude >= DEFAULT_MIN_MAGNITUDE);
+}
+
+/**
+ * Backfill the full display window. Runs on every launch — this is what closes
+ * the gap from the app having been shut, and it's the only endpoint that takes
+ * an arbitrary time range.
+ */
+async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]> {
   const endUtc = new Date();
   const startUtc = new Date(endUtc.getTime() - SEVENTY_TWO_HOURS_MS);
   const events = await fetchRecentEarthquakes({
@@ -15,8 +44,58 @@ async function refreshEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]> 
     endUtc,
     minMagnitude: DEFAULT_MIN_MAGNITUDE,
   });
-  insertEarthquakes(db, events);
+  insertEarthquakes(db, atOrAboveFloor(events));
   return events;
+}
+
+/**
+ * One poll of the cached summary feed.
+ *
+ * An empty response is a normal quiet period, not an error and not a signal to
+ * clear anything — the upsert simply has nothing to do.
+ */
+async function pollOnce(db: DatabaseSync): Promise<EarthquakeSyncResult> {
+  const before = catalogSignature(db);
+  const events = await fetchEarthquakeFeed('2.5_day');
+  insertEarthquakes(db, atOrAboveFloor(events));
+  const after = catalogSignature(db);
+
+  return {
+    changed: !signaturesMatch(before, after),
+    syncedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Starts the 60s poll loop. Returns a stop function for app shutdown.
+ *
+ * `onResult` fires on every *successful* poll, changed or not, so the UI's
+ * freshness indicator stays honest through quiet periods. Failures are logged
+ * and swallowed: a dropped network must not kill the loop.
+ */
+export function startEarthquakePolling(
+  db: DatabaseSync,
+  onResult: (result: EarthquakeSyncResult) => void,
+): () => void {
+  let stopped = false;
+
+  const tick = () => {
+    pollOnce(db).then(
+      (result) => {
+        if (!stopped) onResult(result);
+      },
+      (error: unknown) => {
+        console.error('Earthquake poll failed (will retry)', error);
+      },
+    );
+  };
+
+  const interval = setInterval(tick, POLL_INTERVAL_MS);
+
+  return () => {
+    stopped = true;
+    clearInterval(interval);
+  };
 }
 
 export function registerEarthquakeIpcHandlers(db: DatabaseSync): void {
@@ -24,9 +103,10 @@ export function registerEarthquakeIpcHandlers(db: DatabaseSync): void {
     return queryEarthquakes(db, query);
   });
 
-  ipcMain.handle('earthquakes:refresh', (): Promise<EarthquakeEvent[]> => refreshEarthquakes(db));
+  ipcMain.handle('earthquakes:refresh', async (): Promise<EarthquakeEvent[]> => {
+    await pollOnce(db);
+    return queryEarthquakes(db, {});
+  });
 }
 
-// Exported separately from the IPC registration so main/index.ts can call it
-// directly on startup (populate if empty) without going through IPC itself.
-export { refreshEarthquakes };
+export { backfillEarthquakes };

@@ -54,10 +54,15 @@ export interface FetchRecentEarthquakesOptions {
   minMagnitude?: number;
 }
 
-// FDSN's parameterized query endpoint, not the pre-built feed buckets — the
-// milestone calls for an exact 72-hour window, and the buckets only come in
-// fixed day/week/month sizes. See PROJECT_PLAN.md's Storage/data-source
-// notes for the full reasoning.
+/**
+ * Backfill over an exact window.
+ *
+ * Uses FDSN's parameterised query rather than a summary feed because only it
+ * accepts arbitrary start/end times — the feeds come in fixed hour/day/week
+ * buckets. It is a live database query (measured `X-Cache: Miss`), so it's
+ * right for a once-per-launch backfill and wrong to poll; see
+ * `fetchEarthquakeFeed` for the polling path.
+ */
 export async function fetchRecentEarthquakes(
   options: FetchRecentEarthquakesOptions,
 ): Promise<EarthquakeEvent[]> {
@@ -72,6 +77,38 @@ export async function fetchRecentEarthquakes(
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`USGS request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const data = (await response.json()) as UsgsFeatureCollection;
+  return data.features.map(usgsFeatureToEarthquakeEvent);
+}
+
+const USGS_FEED_BASE_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary';
+
+/**
+ * The pre-built summary buckets. `2.5_day` matches this app's M2.5+ floor.
+ *
+ * Deliberately the *day* bucket rather than `2.5_hour` for polling: it's
+ * self-healing if the machine sleeps (the next poll still covers 24h, no
+ * gap-detection needed), and re-reading existing events is how USGS revisions
+ * get picked up — magnitudes are refined and `status` flips automatic →
+ * reviewed in the hours after an event.
+ */
+export type EarthquakeFeedBucket = '2.5_hour' | '2.5_day' | 'all_hour' | 'all_day';
+
+/**
+ * Poll-friendly fetch. These are CDN-cached with `Cache-Control: max-age=60`,
+ * so polling faster than 60s returns byte-identical data.
+ *
+ * Returns whatever the bucket holds, which is legitimately an empty array
+ * during a quiet hour — callers must not read that as "no data exists".
+ */
+export async function fetchEarthquakeFeed(
+  bucket: EarthquakeFeedBucket,
+): Promise<EarthquakeEvent[]> {
+  const response = await fetch(`${USGS_FEED_BASE_URL}/${bucket}.geojson`);
+  if (!response.ok) {
+    throw new Error(`USGS feed request failed: ${response.status} ${response.statusText}`);
   }
 
   const data = (await response.json()) as UsgsFeatureCollection;
