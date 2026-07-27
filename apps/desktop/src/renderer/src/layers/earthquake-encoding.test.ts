@@ -73,34 +73,34 @@ describe('depthClass', () => {
 });
 
 describe('depthColorHex', () => {
-  it('returns a distinct colour per bin for a given basemap', () => {
-    const colors = [0, 35, 150, 400, 600].map((d) => depthColorHex(d, 'osm'));
+  it('returns a distinct colour per bin for a given backdrop tone', () => {
+    const colors = [0, 35, 150, 400, 600].map((d) => depthColorHex(d, 'light'));
     expect(new Set(colors).size).toBe(DEPTH_BINS.length);
   });
 
-  it('uses a different ramp per basemap so marks stay readable on both', () => {
-    expect(depthColorHex(10, 'osm')).not.toBe(depthColorHex(10, 'satellite'));
+  it('uses a different ramp per backdrop tone so marks stay readable on both', () => {
+    expect(depthColorHex(10, 'light')).not.toBe(depthColorHex(10, 'dark'));
   });
 
-  it('keeps shallow events the most prominent on both basemaps', () => {
+  it('keeps shallow events the most prominent on both backdrop tones', () => {
     // Inverted lightness direction per basemap is deliberate: on light
     // terrain "prominent" means dark, on dark imagery it means light.
-    const [lightShallow] = depthLegendColors('osm');
-    const [darkShallow] = depthLegendColors('satellite');
+    const [lightShallow] = depthLegendColors('light');
+    const [darkShallow] = depthLegendColors('dark');
     expect(lightShallow).toBe('#0d366b'); // darkest step
     expect(darkShallow).toBe('#cde2fb'); // lightest step
   });
 
   it('supplies one legend swatch per bin', () => {
-    expect(depthLegendColors('osm')).toHaveLength(DEPTH_BINS.length);
-    expect(depthLegendColors('satellite')).toHaveLength(DEPTH_BINS.length);
+    expect(depthLegendColors('light')).toHaveLength(DEPTH_BINS.length);
+    expect(depthLegendColors('dark')).toHaveLength(DEPTH_BINS.length);
   });
 });
 
 describe('haloColorHex', () => {
   it('opposes the fill ramp so marks separate from any terrain underneath', () => {
-    expect(haloColorHex('osm')).toBe('#ffffff');
-    expect(haloColorHex('satellite')).toBe('#0b0b0b');
+    expect(haloColorHex('light')).toBe('#ffffff');
+    expect(haloColorHex('dark')).toBe('#0b0b0b');
   });
 });
 
@@ -160,7 +160,7 @@ describe('magnitude emphasis', () => {
   });
 
   it('opposes the halo, since the ring sits on bare terrain rather than on the fill', () => {
-    expect(emphasisRingColorHex('osm')).not.toBe(haloColorHex('osm'));
-    expect(emphasisRingColorHex('satellite')).not.toBe(haloColorHex('satellite'));
+    expect(emphasisRingColorHex('light')).not.toBe(haloColorHex('light'));
+    expect(emphasisRingColorHex('dark')).not.toBe(haloColorHex('dark'));
   });
 });

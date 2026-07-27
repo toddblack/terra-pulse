@@ -1,5 +1,5 @@
 import * as Cesium from 'cesium';
-import type { BasemapId, EarthquakeEvent, GlobeLayer } from '@terra-pulse/schema';
+import type { BackdropTone, EarthquakeEvent, GlobeLayer } from '@terra-pulse/schema';
 import {
   depthColorHex,
   emphasisRingColorHex,
@@ -27,7 +27,7 @@ export function eventIdFromEntityId(entityId: string): string {
 
 export function createEarthquakeLayer(
   events: readonly EarthquakeEvent[],
-  basemap: BasemapId,
+  tone: BackdropTone,
 ): GlobeLayer {
   let viewer: Cesium.Viewer | null = null;
   let dataSource: Cesium.CustomDataSource | null = null;
@@ -36,8 +36,8 @@ export function createEarthquakeLayer(
   let timeWindow: { startMs: number; endMs: number } | null = null;
 
   function buildEntities(target: Cesium.CustomDataSource): void {
-    const halo = Cesium.Color.fromCssColorString(haloColorHex(basemap));
-    const ringColor = Cesium.Color.fromCssColorString(emphasisRingColorHex(basemap));
+    const halo = Cesium.Color.fromCssColorString(haloColorHex(tone));
+    const ringColor = Cesium.Color.fromCssColorString(emphasisRingColorHex(tone));
 
     for (const event of events) {
       // Ring first, so the dot draws over it rather than under.
@@ -66,7 +66,7 @@ export function createEarthquakeLayer(
         position: Cesium.Cartesian3.fromDegrees(event.longitude, event.latitude),
         point: {
           pixelSize: magnitudePixelSize(event.magnitude),
-          color: Cesium.Color.fromCssColorString(depthColorHex(event.depthKm, basemap)),
+          color: Cesium.Color.fromCssColorString(depthColorHex(event.depthKm, tone)),
           outlineColor: halo,
           outlineWidth: 1.5,
         },

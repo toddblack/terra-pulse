@@ -1,5 +1,5 @@
 import { useEarthquakeStore, selectEventById } from '../state/useEarthquakeStore';
-import { useGlobeStore } from '../state/useGlobeStore';
+import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { depthClass, depthColorHex } from '../layers/earthquake-encoding';
 import styles from './EarthquakeInspector.module.css';
 
@@ -20,7 +20,7 @@ function formatCoordinate(value: number, positive: string, negative: string): st
 }
 
 export function EarthquakeInspector() {
-  const activeBasemap = useGlobeStore((state) => state.activeBasemap);
+  const backdropTone = useGlobeStore(selectBackdropTone);
   const selectedEventId = useEarthquakeStore((state) => state.selectedEventId);
   const event = useEarthquakeStore((state) => selectEventById(state, state.selectedEventId));
   const select = useEarthquakeStore((state) => state.select);
@@ -39,7 +39,7 @@ export function EarthquakeInspector() {
           <div className={styles.magnitudeBlock}>
             <span
               className={styles.depthSwatch}
-              style={{ backgroundColor: depthColorHex(event.depthKm, activeBasemap) }}
+              style={{ backgroundColor: depthColorHex(event.depthKm, backdropTone) }}
               aria-hidden="true"
             />
             <span className={styles.magnitude}>M{event.magnitude.toFixed(1)}</span>

@@ -1,4 +1,4 @@
-import { useGlobeStore } from '../state/useGlobeStore';
+import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import {
   DEPTH_BINS,
@@ -13,11 +13,31 @@ import styles from './DepthLegend.module.css';
 // covers, so the reader can eyeball a mark on the globe against it.
 const MAGNITUDE_SAMPLES = [3, 5, 7];
 
+/**
+ * Relative freshness. Deliberately coarse — the poll runs every 60s, so
+ * second-level precision would imply an accuracy the data doesn't have.
+ */
+function formatFreshness(lastSyncedAt: string | null): string {
+  if (lastSyncedAt === null) return 'not yet synced';
+
+  const ageMs = Date.now() - new Date(lastSyncedAt).getTime();
+  if (!Number.isFinite(ageMs) || ageMs < 0) return 'just now';
+
+  const ageMinutes = Math.floor(ageMs / 60_000);
+  if (ageMinutes < 1) return 'just now';
+  if (ageMinutes === 1) return '1 min ago';
+  if (ageMinutes < 60) return `${ageMinutes} min ago`;
+
+  const ageHours = Math.floor(ageMinutes / 60);
+  return ageHours === 1 ? '1 hr ago' : `${ageHours} hr ago`;
+}
+
 export function DepthLegend() {
-  const activeBasemap = useGlobeStore((state) => state.activeBasemap);
+  const backdropTone = useGlobeStore(selectBackdropTone);
   const eventCount = useEarthquakeStore((state) => state.events.length);
   const status = useEarthquakeStore((state) => state.status);
-  const colors = depthLegendColors(activeBasemap);
+  const lastSyncedAt = useEarthquakeStore((state) => state.lastSyncedAt);
+  const colors = depthLegendColors(backdropTone);
 
   return (
     <div id="depth-legend" className={styles.legend}>
@@ -63,7 +83,7 @@ export function DepthLegend() {
             <span className={styles.magnitudeDotCell} aria-hidden="true">
               <span
                 className={styles.emphasisRing}
-                style={{ borderColor: emphasisRingColorHex(activeBasemap) }}
+                style={{ borderColor: emphasisRingColorHex(backdropTone) }}
               />
             </span>
             <span className={styles.binLabel}>M{EMPHASIS_MAGNITUDE_THRESHOLD}+</span>
@@ -77,6 +97,9 @@ export function DepthLegend() {
           : status === 'error'
             ? 'Failed to load'
             : `${eventCount} events · last 72h · M2.5+`}
+        {status === 'ready' && (
+          <span className={styles.freshness}>updated {formatFreshness(lastSyncedAt)}</span>
+        )}
       </p>
     </div>
   );

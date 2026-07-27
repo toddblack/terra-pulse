@@ -98,3 +98,9 @@
   font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
 }
+
+.freshness {
+  display: block;
+  margin-top: 0.125rem;
+  color: rgb(120 135 155);
+}

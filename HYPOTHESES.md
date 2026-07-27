@@ -209,11 +209,38 @@ Things noticed in Explore mode that are **not yet hypotheses**. Moving an entry
 up into Registered Hypotheses requires fixing every parameter and, where
 possible, testing against data not used to generate the observation.
 
-*(none yet)*
-
 | Date | Observation | Registered as |
 |---|---|---|
-| | | |
+| 2026-07-27 | Interest in whether **slow slip events and earthquake swarms act as precursors** to larger events. Raised before any swarm data had been looked at in this app — nothing here was prompted by an observed pattern. | Not registered |
+
+### Notes on the slow-slip / swarm idea (2026-07-27)
+
+Recorded now, ahead of looking at anything, so the reasoning is dated.
+
+**Slow slip is not observable with the current data source.** SSEs release
+M6–7 equivalent energy over days to months without seismic shaking, so they
+produce no located events in a seismometer catalogue. Detecting them needs
+GNSS displacement time series, tectonic tremor catalogues, borehole
+strainmeters, or InSAR — none of which this app ingests. No filtering of USGS
+FDSN data can surface one.
+
+**Swarms are observable**, and in subduction zones sometimes accompany slow
+slip. They are a related but distinct signal. Most swarm events fall below the
+current M2.5 display floor, so lowering that floor is a prerequisite for even
+seeing them.
+
+**The base-rate problem is the hard part.** Cascadia produces episodic tremor
+and slip roughly every 14 months and almost none precede a great earthquake.
+Slow slip and migrating foreshocks were documented before Tohoku (2011) and
+Iquique (2014), but retrospective identification is not prediction. Any
+registered test has to survive that denominator.
+
+**Conflict with non-negotiable #2.** Declustering (Gardner-Knopoff) exists to
+strip clustered sequences as aftershock contamination — which is precisely
+what a swarm is. If swarms are the signal, the project's mandatory
+declustering step would delete it. Any hypothesis registered from this must
+state explicitly how it handles that, rather than silently inheriting the
+shared declustering parameter.
 
 ---
 

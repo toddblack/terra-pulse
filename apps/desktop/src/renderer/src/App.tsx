@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { CesiumViewer } from './globe/CesiumViewer';
-import { BasemapToggle } from './panels/BasemapToggle';
+import { LayerPanel } from './panels/LayerPanel';
 import { DepthLegend } from './panels/DepthLegend';
 import { EarthquakeInspector } from './panels/EarthquakeInspector';
 import { useEarthquakeStore } from './state/useEarthquakeStore';
@@ -8,15 +8,30 @@ import styles from './App.module.css';
 
 export default function App() {
   const load = useEarthquakeStore((state) => state.load);
+  const noteSynced = useEarthquakeStore((state) => state.noteSynced);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  // Main polls USGS every 60s and pushes the result. Only re-query when the
+  // catalogue actually changed — a quiet poll just moves the freshness label,
+  // because replacing the event set would rebuild the globe layer and destroy
+  // whichever event the user currently has open in the inspector.
+  useEffect(() => {
+    return window.terraPulse.earthquakes.onUpdated((result) => {
+      if (result.changed) {
+        void load();
+      } else {
+        noteSynced(result.syncedAt);
+      }
+    });
+  }, [load, noteSynced]);
+
   return (
     <div id="app-shell" className={styles.appShell}>
       <CesiumViewer />
-      <BasemapToggle />
+      <LayerPanel />
       <DepthLegend />
       <EarthquakeInspector />
     </div>

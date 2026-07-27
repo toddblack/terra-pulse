@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { EarthquakeEvent } from '@terra-pulse/schema';
 import { openDatabase } from './client';
-import { insertEarthquakes, queryEarthquakes, queryEarthquakesInBoundingBox } from './queries';
+import {
+  catalogSignature,
+  insertEarthquakes,
+  queryEarthquakes,
+  queryEarthquakesInBoundingBox,
+  signaturesMatch,
+} from './queries';
 
 function makeEvent(overrides: Partial<EarthquakeEvent> = {}): EarthquakeEvent {
   return {
@@ -117,5 +123,50 @@ describe('earthquake queries', () => {
 
     expect(stale).toHaveLength(0);
     expect(updated.map((e) => e.id)).toEqual(['us0001']);
+  });
+});
+
+describe('catalogSignature', () => {
+  it('reports zero for an empty catalogue', () => {
+    const db = openDatabase(':memory:');
+    expect(catalogSignature(db)).toEqual({ count: 0, latestUpdatedUtc: null });
+  });
+
+  it('is unchanged when re-ingesting identical data', () => {
+    // The whole point: a poll that finds nothing new must not look like a
+    // change, or the renderer rebuilds and closes the user's open inspector.
+    const db = openDatabase(':memory:');
+    insertEarthquakes(db, [makeEvent()]);
+    const before = catalogSignature(db);
+
+    insertEarthquakes(db, [makeEvent()]);
+
+    expect(signaturesMatch(before, catalogSignature(db))).toBe(true);
+  });
+
+  it('changes when a new event arrives', () => {
+    const db = openDatabase(':memory:');
+    insertEarthquakes(db, [makeEvent({ id: 'first' })]);
+    const before = catalogSignature(db);
+
+    insertEarthquakes(db, [makeEvent({ id: 'second' })]);
+
+    expect(signaturesMatch(before, catalogSignature(db))).toBe(false);
+  });
+
+  it('changes when an existing event is revised, without the count moving', () => {
+    // USGS refines magnitudes and flips status automatic→reviewed for hours
+    // after an event. Row count alone would miss it entirely.
+    const db = openDatabase(':memory:');
+    insertEarthquakes(db, [makeEvent({ magnitude: 5.0, updatedUtc: '2026-07-20T12:05:00.000Z' })]);
+    const before = catalogSignature(db);
+
+    insertEarthquakes(db, [
+      makeEvent({ magnitude: 5.4, status: 'reviewed', updatedUtc: '2026-07-20T14:30:00.000Z' }),
+    ]);
+    const after = catalogSignature(db);
+
+    expect(after.count).toBe(before.count);
+    expect(signaturesMatch(before, after)).toBe(false);
   });
 });

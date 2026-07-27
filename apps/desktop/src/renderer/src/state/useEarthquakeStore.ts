@@ -3,6 +3,9 @@ import type { EarthquakeEvent } from '@terra-pulse/schema';
 
 type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
+/** How far back the globe shows events. The database keeps more than this. */
+const DISPLAY_WINDOW_MS = 72 * 60 * 60 * 1000;
+
 interface EarthquakeState {
   /**
    * The single canonical copy of the loaded event set (PROJECT_PLAN §7.5).
@@ -13,6 +16,8 @@ interface EarthquakeState {
   status: LoadStatus;
   error: string | null;
   selectedEventId: string | null;
+  /** When main last successfully reached USGS — drives the freshness label. */
+  lastSyncedAt: string | null;
 
   /**
    * A pending "fly the camera here" request. Carries a nonce so clicking the
@@ -23,6 +28,8 @@ interface EarthquakeState {
 
   load: () => Promise<void>;
   refresh: () => Promise<void>;
+  /** Records a poll that found nothing new: freshness moves, events don't. */
+  noteSynced: (syncedAt: string) => void;
   select: (id: string | null) => void;
   requestFocus: (eventId: string) => void;
 }
@@ -32,13 +39,20 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   status: 'idle',
   error: null,
   selectedEventId: null,
+  lastSyncedAt: null,
   focusRequest: null,
 
   load: async () => {
     set({ status: 'loading', error: null });
     try {
-      const events = await window.terraPulse.earthquakes.query({});
-      set({ events, status: 'ready' });
+      // Explicit window rather than "everything". The database retains events
+      // beyond the display window on purpose (PROJECT_PLAN Tier 1 keeps M4.5+
+      // long-term), so an unbounded query would silently drift past 72h as
+      // polling accumulates rows.
+      const events = await window.terraPulse.earthquakes.query({
+        startUtc: new Date(Date.now() - DISPLAY_WINDOW_MS).toISOString(),
+      });
+      set({ events, status: 'ready', lastSyncedAt: new Date().toISOString() });
     } catch (error: unknown) {
       set({
         status: 'error',
@@ -51,8 +65,11 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   refresh: async () => {
     set({ status: 'loading', error: null });
     try {
-      const events = await window.terraPulse.earthquakes.refresh();
-      set({ events, status: 'ready' });
+      await window.terraPulse.earthquakes.refresh();
+      const events = await window.terraPulse.earthquakes.query({
+        startUtc: new Date(Date.now() - DISPLAY_WINDOW_MS).toISOString(),
+      });
+      set({ events, status: 'ready', lastSyncedAt: new Date().toISOString() });
     } catch (error: unknown) {
       set({
         status: 'error',
@@ -60,6 +77,8 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
       });
     }
   },
+
+  noteSynced: (syncedAt) => set({ lastSyncedAt: syncedAt }),
 
   // Selecting an event also centres the camera on it. Deselecting does not
   // move the camera — yanking the view around on a dismiss would be worse

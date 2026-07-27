@@ -1,2 +1,2 @@
-export { fetchRecentEarthquakes } from './usgs-quakes';
-export type { FetchRecentEarthquakesOptions } from './usgs-quakes';
+export { fetchRecentEarthquakes, fetchEarthquakeFeed } from './usgs-quakes';
+export type { FetchRecentEarthquakesOptions, EarthquakeFeedBucket } from './usgs-quakes';

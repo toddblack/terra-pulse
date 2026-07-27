@@ -25,6 +25,18 @@ export interface EarthquakeQuery {
   minMagnitude?: number;
 }
 
+/**
+ * The result of one catalogue sync, pushed from main to the renderer.
+ *
+ * `changed` is false on a quiet poll — the renderer uses it to refresh its
+ * freshness indicator without replacing the event set, which would otherwise
+ * rebuild the globe layer and destroy the user's current selection.
+ */
+export interface EarthquakeSyncResult {
+  changed: boolean;
+  syncedAt: string;
+}
+
 export interface BoundingBox {
   minLon: number;
   maxLon: number;
