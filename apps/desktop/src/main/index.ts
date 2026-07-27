@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import dotenv from 'dotenv';
 import { openDatabase, queryEarthquakes } from '@terra-pulse/db';
 import { registerEarthquakeIpcHandlers, refreshEarthquakes } from './ipc/earthquakes';
+import { registerExternalLinkIpcHandlers } from './ipc/external-links';
 
 // dotenv.config() with no options resolves relative to process.cwd(), but
 // pnpm runs this package's scripts with apps/desktop as cwd, not the repo
@@ -62,6 +63,10 @@ function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    // The inspector sits left of the viewport centre (where a selected event
+    // is flown to); below roughly this width the two would start to collide.
+    minWidth: 940,
+    minHeight: 600,
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
@@ -80,6 +85,20 @@ function createWindow(): void {
     mainWindow.show();
   });
 
+  // Nothing in this app should ever navigate the window away from its own UI,
+  // or spawn an Electron window for an external site. Both are denied outright
+  // — external links go through the validated shell:open-external handler and
+  // open in the user's real browser instead (PROJECT_PLAN §8).
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    // The dev server reloads by navigating to its own origin; that's the one
+    // legitimate case. Everything else is blocked.
+    if (rendererDevUrl && url.startsWith(devServerOrigin)) return;
+    event.preventDefault();
+    console.warn('Blocked in-app navigation to:', url);
+  });
+
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
       responseHeaders: {
@@ -89,31 +108,43 @@ function createWindow(): void {
     });
   });
 
-  if (rendererDevUrl) {
-    mainWindow.loadURL(rendererDevUrl);
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
-  }
+  // A rejected load leaves a blank window with no other symptom — worth
+  // logging rather than letting it fail silently.
+  const load = rendererDevUrl
+    ? mainWindow.loadURL(rendererDevUrl)
+    : mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
+
+  load.catch((error: unknown) => {
+    console.error('Failed to load the renderer', error);
+  });
 }
 
-app.whenReady().then(async () => {
-  const db = openDatabase(join(app.getPath('userData'), 'terra-pulse.sqlite'));
-  registerEarthquakeIpcHandlers(db);
+app
+  .whenReady()
+  .then(async () => {
+    const db = openDatabase(join(app.getPath('userData'), 'terra-pulse.sqlite'));
+    registerEarthquakeIpcHandlers(db);
+    registerExternalLinkIpcHandlers();
 
-  // Populate on first run (empty db) rather than always fetching on start —
-  // a manual refresh is available via IPC for anything after that.
-  if (queryEarthquakes(db, {}).length === 0) {
-    await refreshEarthquakes(db).catch((error: unknown) => {
-      console.error('Initial earthquake fetch failed', error);
+    // Populate on first run (empty db) rather than always fetching on start —
+    // a manual refresh is available via IPC for anything after that.
+    if (queryEarthquakes(db, {}).length === 0) {
+      await refreshEarthquakes(db).catch((error: unknown) => {
+        console.error('Initial earthquake fetch failed', error);
+      });
+    }
+
+    createWindow();
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
-  }
-
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  })
+  .catch((error: unknown) => {
+    // Opening the database or registering IPC failed — the app cannot work
+    // from here, so make it loud rather than showing an empty window.
+    console.error('Startup failed', error);
   });
-});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

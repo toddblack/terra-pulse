@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { CesiumViewer } from './globe/CesiumViewer';
 import { BasemapToggle } from './panels/BasemapToggle';
 import { DepthLegend } from './panels/DepthLegend';
+import { EarthquakeInspector } from './panels/EarthquakeInspector';
 import { useEarthquakeStore } from './state/useEarthquakeStore';
 import styles from './App.module.css';
 
@@ -17,6 +18,7 @@ export default function App() {
       <CesiumViewer />
       <BasemapToggle />
       <DepthLegend />
+      <EarthquakeInspector />
     </div>
   );
 }

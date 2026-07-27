@@ -61,7 +61,17 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
     }
   },
 
-  select: (id) => set({ selectedEventId: id }),
+  // Selecting an event also centres the camera on it. Deselecting does not
+  // move the camera — yanking the view around on a dismiss would be worse
+  // than leaving it where the user last put it.
+  select: (id) =>
+    set((state) => ({
+      selectedEventId: id,
+      focusRequest:
+        id === null
+          ? state.focusRequest
+          : { eventId: id, nonce: (state.focusRequest?.nonce ?? 0) + 1 },
+    })),
 
   requestFocus: (eventId) =>
     set((state) => ({

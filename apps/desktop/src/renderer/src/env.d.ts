@@ -11,6 +11,10 @@ declare global {
         query(query?: EarthquakeQuery): Promise<EarthquakeEvent[]>;
         refresh(): Promise<EarthquakeEvent[]>;
       };
+      shell: {
+        /** Resolves false if main refused to open the URL. */
+        openExternal(url: string): Promise<boolean>;
+      };
     };
   }
 }

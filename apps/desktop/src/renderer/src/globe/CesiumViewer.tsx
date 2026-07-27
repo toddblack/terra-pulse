@@ -12,12 +12,22 @@ const BASEMAP_FACTORIES = {
   satellite: createSatelliteBasemap,
 } as const;
 
-/** Camera height when centring on an event — close enough to see the region. */
-const FOCUS_ALTITUDE_M = 1_500_000;
+/**
+ * Floor for the camera height used when centring on an event. The current
+ * height is preserved otherwise — snapping to a fixed altitude would tear away
+ * the user's global view every time they clicked something.
+ */
+const MIN_FOCUS_ALTITUDE_M = 250_000;
+
+/** Show events regardless if the basemap's tiles haven't settled by now. */
+const TILE_WAIT_FALLBACK_MS = 5_000;
 
 export function CesiumViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
+  // Whether events have been on screen at least once — gates the first-paint
+  // wait for basemap tiles so it doesn't re-trigger on later rebuilds.
+  const hasShownEventsRef = useRef(false);
   const activeBasemap = useGlobeStore((state) => state.activeBasemap);
   const events = useEarthquakeStore((state) => state.events);
   const select = useEarthquakeStore((state) => state.select);
@@ -65,15 +75,47 @@ export function CesiumViewer() {
   // — the depth ramp is basemap-dependent, so a swap genuinely needs new
   // colours. Rebuilding a few hundred entities is cheap and obviously
   // correct; incremental diffing is a Phase 6 concern needing a benchmark.
+  //
+  // On the very first paint this waits for the globe's tiles. Events come from
+  // local SQLite in milliseconds while basemap tiles come over the network, so
+  // without the wait the dots hang in empty space before the planet arrives.
+  // Only the first mount waits: after that, switching basemaps briefly empties
+  // the tile queue again, and re-gating would make the events blink out.
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || events.length === 0) return;
 
-    const layer = createEarthquakeLayer(events, activeBasemap);
-    layer.mount(viewer);
+    let layer: ReturnType<typeof createEarthquakeLayer> | null = null;
+    let cancelled = false;
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const mountLayer = () => {
+      if (cancelled || layer) return;
+      hasShownEventsRef.current = true;
+      layer = createEarthquakeLayer(events, activeBasemap);
+      layer.mount(viewer);
+    };
+
+    const onTileProgress = (queuedTileCount: number) => {
+      if (queuedTileCount === 0) mountLayer();
+    };
+
+    if (hasShownEventsRef.current || viewer.scene.globe.tilesLoaded) {
+      mountLayer();
+    } else {
+      viewer.scene.globe.tileLoadProgressEvent.addEventListener(onTileProgress);
+      // If tiles never finish — offline, a blocked host — the events should
+      // still show rather than being held hostage by the basemap.
+      fallbackTimer = setTimeout(mountLayer, TILE_WAIT_FALLBACK_MS);
+    }
 
     return () => {
-      layer.unmount();
+      cancelled = true;
+      clearTimeout(fallbackTimer);
+      if (!viewer.isDestroyed()) {
+        viewer.scene.globe.tileLoadProgressEvent.removeEventListener(onTileProgress);
+      }
+      layer?.unmount();
     };
   }, [events, activeBasemap]);
 
@@ -105,8 +147,13 @@ export function CesiumViewer() {
     const event = events.find((candidate) => candidate.id === focusRequest.eventId);
     if (!event) return;
 
+    // Rotate to the event at the height the camera is already at, so the
+    // user's zoom level survives the click.
+    const height = Math.max(viewer.camera.positionCartographic.height, MIN_FOCUS_ALTITUDE_M);
+
     viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(event.longitude, event.latitude, FOCUS_ALTITUDE_M),
+      destination: Cesium.Cartesian3.fromDegrees(event.longitude, event.latitude, height),
+      duration: 1,
     });
   }, [focusRequest, events]);
 
