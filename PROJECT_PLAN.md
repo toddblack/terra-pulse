@@ -453,7 +453,8 @@ server-side proxying of all third-party API calls.
 ### Phase 2 — Layers & Time
 - Layer registry and toggle UI
 - Fault line + plate boundary overlays
-- Terrain and satellite basemaps
+- ~~Terrain and satellite basemaps~~ — satellite shipped in Phase 1; terrain
+  dropped, see §11
 - Time window selector + scrubber playback
 - Marker clustering / progressive detail
 - Antipode chord visualization

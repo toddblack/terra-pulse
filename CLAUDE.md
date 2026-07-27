@@ -32,18 +32,36 @@ Two modes, deliberately separate:
 
 ## Current phase
 
-**Phase 1 — Foundation.** Not yet started.
+**Phase 1 — Foundation. Complete.** Milestone met: the globe shows the last
+72 hours of earthquakes, clickable, on two basemaps.
 
-Goal: a working globe showing the last 72 hours of earthquakes.
+- [x] Monorepo scaffold (`apps/desktop`, `packages/*`)
+- [x] Electron + React + Vite + TS, hardened main/preload
+- [x] Cesium viewer mounted, camera controls
+- [x] Basemap switching (OSM / NASA GIBS satellite)
+- [x] SQLite + R-Tree schema and migration runner
+- [x] USGS ingest adapter → normalized schema
+- [x] Earthquake event layer (size = magnitude, colour = depth)
+- [x] Click-to-inspect panel
 
-- [ ] Monorepo scaffold (`apps/desktop`, `packages/*`, `engine/`)
-- [ ] Electron + React + Vite + TS, hardened main/preload
-- [ ] Cesium viewer mounted, camera controls
-- [ ] Basemap switching (OSM / NASA GIBS satellite)
-- [ ] SQLite + R-Tree schema and migration runner
-- [ ] USGS ingest adapter → normalized schema
-- [ ] Earthquake event layer (size = magnitude, color = depth)
-- [ ] Click-to-inspect panel
+`engine/` is not scaffolded — nothing needs it until Phase 4, and an empty
+Python package would just be scaffolding ahead of need.
+
+**Next: Phase 2 — Layers & Time.** See `PROJECT_PLAN.md` §9.
+
+### Conventions this phase established
+
+- Every globe layer is a factory returning `GlobeLayer`, holding its Cesium
+  objects in closure. See `layers/osm-basemap.ts` for the smallest example.
+- `unmount()` always guards on `viewer.isDestroyed()`. React effect cleanup
+  order relative to the viewer's own teardown is not guaranteed, and this
+  caused a real crash before the guard existed.
+- Visual encoding lives in pure, Cesium-free modules (`earthquake-encoding.ts`)
+  so it can be unit-tested without a WebGL context.
+- Colour choices are validated with the `dataviz` skill's script against the
+  actual basemap colours, not eyeballed.
+- The renderer never reaches the network directly. Ingest runs in main; the
+  renderer sees normalised data over IPC.
 
 ---
 

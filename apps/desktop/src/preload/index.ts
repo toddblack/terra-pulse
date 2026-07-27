@@ -9,4 +9,10 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.invoke('earthquakes:query', query),
     refresh: (): Promise<EarthquakeEvent[]> => ipcRenderer.invoke('earthquakes:refresh'),
   },
+  shell: {
+    // Resolves false if main refused the URL. The allowlist lives in main
+    // (ipc/external-links.ts) — the renderer can ask, but doesn't decide.
+    openExternal: (url: string): Promise<boolean> =>
+      ipcRenderer.invoke('shell:open-external', url),
+  },
 });

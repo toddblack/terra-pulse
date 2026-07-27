@@ -41,7 +41,7 @@ describe('earthquake layer', () => {
     expect(layer.defaultVisible).toBe(true);
   });
 
-  it('adds one data source holding one entity per event', async () => {
+  it('adds one data source holding one entity per event', () => {
     const layer = createEarthquakeLayer([makeEvent({ id: 'a' }), makeEvent({ id: 'b' })], 'osm');
     const viewer = createFakeViewer();
 

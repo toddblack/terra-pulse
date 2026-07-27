@@ -1,0 +1,175 @@
+.inspector {
+  position: absolute;
+  /* Floats beside the selected event rather than docking to the window edge.
+     A selected event is flown to the viewport centre, so anchoring the panel's
+     right edge to the centreline keeps it adjacent to the mark at any window
+     size. The 4rem gap clears both the selection reticle and the emphasis
+     ring on large events. */
+  top: 50%;
+  right: calc(50% + 4rem);
+  width: 19rem;
+  transform: translateY(-50%);
+  padding: 0.875rem 1rem 1rem;
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 88%);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 40%);
+  color: rgb(226 232 240);
+  font-size: 0.8125rem;
+}
+
+/* Pointer aimed at the selected mark. Lives on .inspector rather than the
+   scroll area because an overflow container would clip it. */
+.inspector::after {
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  width: 0;
+  height: 0;
+  border: 0.5rem solid transparent;
+  border-left-color: rgb(15 23 42 / 88%);
+  content: '';
+  transform: translateY(-50%);
+}
+
+.scrollArea {
+  /* Clears the basemap toggle and legend along the bottom edge. */
+  max-height: calc(100vh - 10rem);
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.magnitudeBlock {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.depthSwatch {
+  align-self: center;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 55%);
+}
+
+.magnitude {
+  font-size: 1.375rem;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.magnitudeType {
+  color: rgb(148 163 184);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.closeButton {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: rgb(148 163 184);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background-color: rgb(51 65 85);
+  color: rgb(226 232 240);
+}
+
+.place {
+  margin: 0.5rem 0 0;
+  color: rgb(203 213 225);
+  line-height: 1.4;
+}
+
+.fieldList {
+  margin: 0.875rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+}
+
+.field {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.field + .field {
+  margin-top: 0.625rem;
+}
+
+.term {
+  flex: none;
+  color: rgb(148 163 184);
+  font-size: 0.75rem;
+}
+
+.value {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.subValue {
+  display: block;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+.alertLabel {
+  text-transform: capitalize;
+}
+
+/* PAGER levels are USGS's own scale, so they keep USGS's own colour meaning
+   rather than borrowing anything from the depth ramp. */
+.alertLabel[data-alert='green'] {
+  color: rgb(74 222 128);
+}
+
+.alertLabel[data-alert='yellow'] {
+  color: rgb(250 204 21);
+}
+
+.alertLabel[data-alert='orange'] {
+  color: rgb(251 146 60);
+}
+
+.alertLabel[data-alert='red'] {
+  color: rgb(248 113 113);
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.actionButton {
+  flex: 1;
+  padding: 0.4375rem 0.5rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.375rem;
+  background: transparent;
+  color: rgb(203 213 225);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.actionButton:hover {
+  background-color: rgb(51 65 85);
+  color: white;
+}
