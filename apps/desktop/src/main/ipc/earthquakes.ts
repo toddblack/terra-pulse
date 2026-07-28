@@ -2,12 +2,18 @@ import { ipcMain } from 'electron';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   catalogSignature,
+  findCandidateMatches,
   insertEarthquakes,
   queryEarthquakes,
   signaturesMatch,
   type EarthquakeQuery,
 } from '@terra-pulse/db';
-import { fetchEarthquakeFeed, fetchRecentEarthquakes } from '@terra-pulse/ingest';
+import {
+  fetchEarthquakeFeed,
+  fetchEmscEarthquakes,
+  fetchRecentEarthquakes,
+  isProbableDuplicate,
+} from '@terra-pulse/ingest';
 import type { EarthquakeEvent, EarthquakeSyncResult } from '@terra-pulse/schema';
 
 /**
@@ -15,9 +21,9 @@ import type { EarthquakeEvent, EarthquakeSyncResult } from '@terra-pulse/schema'
  * of this, which is why changing the range never needs a fetch.
  *
  * The floor is M1.0 rather than the display default because the low end is
- * where swarm and induced seismicity live — but note it is *heavily* US-biased
- * (86% at M1+, vs 6% at M4+), because that's where the dense networks are.
- * The UI labels that; see PROJECT_PLAN §10.
+ * where swarm and induced seismicity live. USGS alone is heavily US-biased
+ * there (86% at M1+, 6% at M4+); EMSC fills the non-US gap. See PROJECT_PLAN
+ * §10 for the measurements.
  */
 const INGEST_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
 const INGEST_MIN_MAGNITUDE = 1.0;
@@ -30,14 +36,34 @@ const INGEST_MIN_MAGNITUDE = 1.0;
 const POLL_INTERVAL_MS = 60_000;
 
 /**
- * The feed bucket's own label is approximate — a "2.5_day" response was
- * observed containing an M2.46, because USGS revises magnitudes after an event
- * lands in a bucket. Applying the floor here keeps the catalogue answerable
- * with one rule ("M2.5+, last 72h") rather than "M2.5+, mostly". The adapter
- * itself stays faithful to the source (non-negotiable #7).
+ * Feed bucket labels are approximate — a "2.5_day" response was observed
+ * containing an M2.46, because USGS revises magnitudes after an event lands in
+ * a bucket. Applying the floor here keeps the catalogue answerable with one
+ * rule rather than "M1+, mostly". Adapters stay faithful to their source
+ * (non-negotiable #7); policy lives at the call site.
  */
 function atOrAboveFloor(events: EarthquakeEvent[]): EarthquakeEvent[] {
   return events.filter((event) => event.magnitude >= INGEST_MIN_MAGNITUDE);
+}
+
+/**
+ * Stores EMSC events that aren't already covered by a USGS record.
+ *
+ * USGS wins every match: it carries PAGER alert, tsunami flag and
+ * significance, none of which EMSC provides. EMSC exists purely to fill the
+ * sub-M4 coverage gap outside the United States.
+ *
+ * Matching consults the *database*, not just the current batch — an EMSC event
+ * may duplicate a USGS record ingested on an earlier poll. `findCandidateMatches`
+ * narrows via the R-Tree so this stays cheap across hundreds of candidates.
+ */
+function insertEmscFillingGaps(db: DatabaseSync, emscEvents: EarthquakeEvent[]): void {
+  const novel = emscEvents.filter((candidate) => {
+    const nearbyUsgs = findCandidateMatches(db, candidate, 'usgs');
+    return !nearbyUsgs.some((known) => isProbableDuplicate(candidate, known));
+  });
+
+  insertEarthquakes(db, novel);
 }
 
 /**
@@ -48,13 +74,27 @@ function atOrAboveFloor(events: EarthquakeEvent[]): EarthquakeEvent[] {
 async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]> {
   const endUtc = new Date();
   const startUtc = new Date(endUtc.getTime() - INGEST_WINDOW_MS);
-  const events = await fetchRecentEarthquakes({
+  // USGS first and unconditionally — it is the authoritative source, so its
+  // records must already be present before EMSC is tested against them.
+  const usgsEvents = await fetchRecentEarthquakes({
     startUtc,
     endUtc,
     minMagnitude: INGEST_MIN_MAGNITUDE,
   });
-  insertEarthquakes(db, atOrAboveFloor(events));
-  return events;
+  insertEarthquakes(db, atOrAboveFloor(usgsEvents));
+
+  // EMSC is supplementary: if it fails, the globe still works with USGS data.
+  try {
+    const emscEvents = await fetchEmscEarthquakes({
+      startUtc,
+      minMagnitude: INGEST_MIN_MAGNITUDE,
+    });
+    insertEmscFillingGaps(db, atOrAboveFloor(emscEvents));
+  } catch (error: unknown) {
+    console.error('EMSC backfill failed; continuing with USGS only', error);
+  }
+
+  return usgsEvents;
 }
 
 /**
@@ -65,8 +105,20 @@ async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]>
  */
 async function pollOnce(db: DatabaseSync): Promise<EarthquakeSyncResult> {
   const before = catalogSignature(db);
-  const events = await fetchEarthquakeFeed('1.0_day');
-  insertEarthquakes(db, atOrAboveFloor(events));
+
+  const usgsEvents = await fetchEarthquakeFeed('1.0_day');
+  insertEarthquakes(db, atOrAboveFloor(usgsEvents));
+
+  try {
+    const emscEvents = await fetchEmscEarthquakes({
+      startUtc: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      minMagnitude: INGEST_MIN_MAGNITUDE,
+    });
+    insertEmscFillingGaps(db, atOrAboveFloor(emscEvents));
+  } catch (error: unknown) {
+    console.error('EMSC poll failed; continuing with USGS only', error);
+  }
+
   const after = catalogSignature(db);
 
   return {

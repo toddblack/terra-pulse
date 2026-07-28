@@ -542,6 +542,38 @@ server-side proxying of all third-party API calls.
       Also note the low end is contaminated by **induced** seismicity:
       Texas, Oklahoma and New Mexico were all top-10 regions for M1–2, largely
       wastewater injection rather than tectonics.
+
+      **Update 2026-07-28 — EMSC added as a second source.** EMSC aggregates
+      ~70 national agency catalogs, which is precisely the data USGS's global
+      feed lacks. Measured on the merged catalog (USGS authoritative, EMSC
+      filling gaps, 4-day sample):
+
+      | Floor | USGS alone | Merged | US share before → after |
+      |---|---|---|---|
+      | M1+ | 1,084 | 2,764 | 86% → **35%** |
+      | M2+ | 465 | 1,813 | 69% → **20%** |
+      | M3+ | 186 | 923 | 31% → **7%** |
+      | M4+ | 125 | 250 | 6% → **3%** |
+
+      A sharper finding fell out of the dedup check. Match rate between the two
+      sources, by band:
+
+      | Band | USGS | EMSC | EMSC matching a USGS record |
+      |---|---|---|---|
+      | M4.0–4.5 | 43 | 150 | 23% |
+      | M4.5–5.0 | 43 | 53 | 77% |
+      | M5.0+ | 39 | 43 | 91% |
+
+      **USGS's global feed is materially incomplete between M4.0 and M4.5** —
+      EMSC reports ~3.5× as many events there. Completeness begins at M4.5,
+      not M4. This pins the Tier 1 threshold more precisely than the earlier
+      measurement did: M4.5+ is right, and M4+ would not have been.
+
+      The residual limitation is no longer US bias. It is that small events are
+      only recorded where instrument networks are dense — an M2 in the
+      mid-Pacific is detected by nobody, and no aggregator changes that. Any
+      spatial analysis below ~M4.5 still needs the completeness correction
+      §5.3 requires.
 - [ ] How many magnetometer stations can Cesium render smoothly before
       clustering becomes necessary?
 

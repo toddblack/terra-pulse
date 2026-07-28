@@ -33,6 +33,7 @@ describe('usgsFeatureToEarthquakeEvent', () => {
 
     expect(event).toEqual({
       id: 'us7000t38a',
+      source: 'usgs',
       magnitude: 5,
       magnitudeType: 'mb',
       place: '96 km NNW of Port-Olry, Vanuatu',
@@ -107,12 +108,12 @@ describe('fetchRecentEarthquakes (real network call)', () => {
 });
 
 describe('fetchEarthquakeFeed (real network call)', () => {
-  it('returns correctly-shaped events from the 2.5_day bucket', async () => {
-    const events = await fetchEarthquakeFeed('2.5_day');
+  it('returns correctly-shaped events from the bucket the app actually polls', async () => {
+    const events = await fetchEarthquakeFeed('1.0_day');
 
     expect(Array.isArray(events)).toBe(true);
-    // Global M2.5+ activity over a full day is effectively guaranteed; an
-    // empty result here would mean the URL or parsing is wrong.
+    // Global M1+ activity over a full day is effectively guaranteed; an empty
+    // result here would mean the URL or parsing is wrong.
     expect(events.length).toBeGreaterThan(0);
 
     for (const event of events) {
@@ -123,6 +124,9 @@ describe('fetchEarthquakeFeed (real network call)', () => {
   });
 
   it('does not guarantee its own magnitude floor — the bucket label is approximate', async () => {
+    // Deliberately still 2.5_day: this documents a quirk observed in that
+    // specific bucket, and re-pointing it at 1.0_day would test nothing.
+    //
     // Observed live: the "2.5_day" bucket returned an M2.46. USGS revises
     // magnitudes after an event is placed in a bucket, and the boundary uses
     // rounded display magnitude. This adapter reports the feed faithfully
@@ -141,12 +145,13 @@ describe('fetchEarthquakeFeed (real network call)', () => {
   it('produces the same normalised shape as the FDSN path', async () => {
     // The two endpoints return identical GeoJSON, which is why they share a
     // normaliser. If USGS ever diverged them, this catches it.
-    const [feedEvent] = await fetchEarthquakeFeed('2.5_day');
+    const [feedEvent] = await fetchEarthquakeFeed('1.0_day');
     expect(feedEvent).toBeDefined();
     expect(Object.keys(feedEvent!).sort()).toEqual(
       [
         'alertLevel',
         'depthKm',
+        'source',
         'id',
         'latitude',
         'longitude',
@@ -164,9 +169,10 @@ describe('fetchEarthquakeFeed (real network call)', () => {
   });
 
   it('tolerates a quiet bucket returning no events', async () => {
-    // 2.5_hour legitimately returns count: 0 during quiet hours. An empty
-    // array must be a normal result, never an error or a signal to clear.
-    const events = await fetchEarthquakeFeed('2.5_hour');
+    // An hour bucket legitimately returns count: 0 during quiet periods —
+    // observed live on 2.5_hour. An empty array must be a normal result,
+    // never an error or a signal to clear the globe.
+    const events = await fetchEarthquakeFeed('1.0_hour');
     expect(Array.isArray(events)).toBe(true);
   });
 });

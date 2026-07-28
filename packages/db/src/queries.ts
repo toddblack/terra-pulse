@@ -1,9 +1,15 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { EarthquakeEvent, EarthquakeQuery, BoundingBox } from '@terra-pulse/schema';
+import type {
+  EarthquakeEvent,
+  EarthquakeQuery,
+  EarthquakeSource,
+  BoundingBox,
+} from '@terra-pulse/schema';
 
 function rowToEvent(row: Record<string, unknown>): EarthquakeEvent {
   return {
-    id: row['usgs_id'] as string,
+    id: row['event_id'] as string,
+    source: row['source'] as EarthquakeSource,
     magnitude: row['magnitude'] as number,
     magnitudeType: row['magnitude_type'] as string,
     place: row['place'] as string,
@@ -12,10 +18,10 @@ function rowToEvent(row: Record<string, unknown>): EarthquakeEvent {
     longitude: row['longitude'] as number,
     latitude: row['latitude'] as number,
     depthKm: row['depth_km'] as number,
-    status: row['status'] as string,
+    status: row['status'] as string | null,
     tsunami: Boolean(row['tsunami']),
     alertLevel: row['alert_level'] as string | null,
-    significance: row['significance'] as number,
+    significance: row['significance'] as number | null,
     url: row['url'] as string,
   };
 }
@@ -26,11 +32,12 @@ export function insertEarthquakes(db: DatabaseSync, events: EarthquakeEvent[]): 
   // handing out a new row_id and orphaning the linked rtree row.
   const upsert = db.prepare(`
     INSERT INTO earthquakes
-      (usgs_id, magnitude, magnitude_type, place, time_utc, updated_utc,
+      (event_id, source, magnitude, magnitude_type, place, time_utc, updated_utc,
        longitude, latitude, depth_km, status, tsunami, alert_level,
        significance, url)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(usgs_id) DO UPDATE SET
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(event_id) DO UPDATE SET
+      source = excluded.source,
       magnitude = excluded.magnitude,
       magnitude_type = excluded.magnitude_type,
       place = excluded.place,
@@ -55,6 +62,7 @@ export function insertEarthquakes(db: DatabaseSync, events: EarthquakeEvent[]): 
   for (const event of events) {
     const result = upsert.get(
       event.id,
+      event.source,
       event.magnitude,
       event.magnitudeType,
       event.place,
@@ -155,4 +163,44 @@ export function catalogSignature(db: DatabaseSync): CatalogSignature {
 
 export function signaturesMatch(a: CatalogSignature, b: CatalogSignature): boolean {
   return a.count === b.count && a.latestUpdatedUtc === b.latestUpdatedUtc;
+}
+
+/**
+ * Finds an already-stored event from `source` that plausibly *is* the given
+ * candidate — the same earthquake reported by a different agency.
+ *
+ * Narrows with the R-Tree first (a bbox around the candidate), then hands the
+ * survivors to the caller's predicate. Without the spatial index this would be
+ * a full scan per candidate, and a poll ingests hundreds of them.
+ *
+ * The bbox is deliberately generous: it only has to be a superset of whatever
+ * the predicate accepts, so a degree of latitude (~111 km) comfortably covers
+ * a 50 km match radius without needing projection maths here.
+ */
+export function findCandidateMatches(
+  db: DatabaseSync,
+  candidate: Pick<EarthquakeEvent, 'longitude' | 'latitude' | 'timeUtc'>,
+  source: EarthquakeSource,
+  radiusDegrees = 1,
+): EarthquakeEvent[] {
+  const rows = db
+    .prepare(
+      `
+      SELECT earthquakes.*
+      FROM earthquakes_rtree
+      JOIN earthquakes ON earthquakes.row_id = earthquakes_rtree.id
+      WHERE earthquakes_rtree.min_lon <= ? AND earthquakes_rtree.max_lon >= ?
+        AND earthquakes_rtree.min_lat <= ? AND earthquakes_rtree.max_lat >= ?
+        AND earthquakes.source = ?
+    `,
+    )
+    .all(
+      candidate.longitude + radiusDegrees,
+      candidate.longitude - radiusDegrees,
+      candidate.latitude + radiusDegrees,
+      candidate.latitude - radiusDegrees,
+      source,
+    );
+
+  return rows.map(rowToEvent);
 }

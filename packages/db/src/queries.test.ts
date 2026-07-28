@@ -12,6 +12,7 @@ import {
 function makeEvent(overrides: Partial<EarthquakeEvent> = {}): EarthquakeEvent {
   return {
     id: 'us0001',
+    source: 'usgs',
     magnitude: 5.2,
     magnitudeType: 'mb',
     place: '10km SSW of Somewhere',

@@ -5,6 +5,7 @@ export {
   queryEarthquakesInBoundingBox,
   catalogSignature,
   signaturesMatch,
+  findCandidateMatches,
 } from './queries';
 export type { CatalogSignature } from './queries';
 // EarthquakeQuery/BoundingBox live in @terra-pulse/schema, not here — they're

@@ -137,7 +137,10 @@ export function depthClass(depthKm: number): 'shallow' | 'intermediate' | 'deep'
 // Magnitude → size
 // ---------------------------------------------------------------------------
 
-const MIN_MAGNITUDE = 2.5;
+// Must match the lowest floor the UI offers, or every event below it clamps
+// to the same size and the encoding goes dead across that range. This was
+// 2.5 while that was the display floor; the M1 selector exposed the bug.
+const MIN_MAGNITUDE = 1;
 const MAX_MAGNITUDE = 8;
 const MIN_PIXEL_SIZE = 5;
 const MAX_PIXEL_SIZE = 22;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { openDatabase } from './client';
 import { runMigrations } from './migrate';
+import { migrations } from './migrations';
 
 describe('openDatabase', () => {
   it('creates the earthquakes table and the rtree spatial index against an in-memory db', () => {
@@ -23,7 +24,9 @@ describe('openDatabase', () => {
     // already-existing table — not throwing confirms the skip logic works.
     expect(() => runMigrations(db)).not.toThrow();
 
+    // Against migrations.length rather than a literal, so adding a migration
+    // doesn't require editing this assertion.
     const appliedCount = db.prepare('SELECT COUNT(*) AS count FROM schema_migrations').get();
-    expect(appliedCount?.['count']).toBe(1);
+    expect(appliedCount?.['count']).toBe(migrations.length);
   });
 });
