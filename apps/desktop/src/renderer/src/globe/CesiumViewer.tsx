@@ -4,6 +4,7 @@ import { useGlobeStore } from '../state/useGlobeStore';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { eventIdFromEntityId } from '../layers/earthquake-layer';
 import { useGlobeLayers } from './useGlobeLayers';
+import { useVisibleEarthquakes } from './useVisibleEarthquakes';
 import styles from './CesiumViewer.module.css';
 
 /**
@@ -29,7 +30,9 @@ export function CesiumViewer() {
   const activeBasemapId = useGlobeStore((state) => state.activeBasemapId);
   const layerVisibility = useGlobeStore((state) => state.layerVisibility);
 
-  const events = useEarthquakeStore((state) => state.events);
+  // The filtered projection, not the canonical set — the layer, the camera
+  // and the selection all operate on what's actually on screen.
+  const events = useVisibleEarthquakes();
   const select = useEarthquakeStore((state) => state.select);
   const selectedEventId = useEarthquakeStore((state) => state.selectedEventId);
   const focusRequest = useEarthquakeStore((state) => state.focusRequest);

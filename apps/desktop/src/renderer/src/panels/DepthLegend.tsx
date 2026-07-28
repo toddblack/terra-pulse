@@ -1,5 +1,6 @@
 import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
+import { useVisibleEarthquakes } from '../globe/useVisibleEarthquakes';
 import {
   DEPTH_BINS,
   EMPHASIS_MAGNITUDE_THRESHOLD,
@@ -12,6 +13,11 @@ import styles from './DepthLegend.module.css';
 // Sample magnitudes for the size ramp — spans the range the scale actually
 // covers, so the reader can eyeball a mark on the globe against it.
 const MAGNITUDE_SAMPLES = [3, 5, 7];
+
+/** Matches the labels on RangeControls so the two can't disagree. */
+function formatWindow(hours: number): string {
+  return hours % 24 === 0 && hours > 24 ? `${hours / 24}d` : `${hours}h`;
+}
 
 /**
  * Relative freshness. Deliberately coarse — the poll runs every 60s, so
@@ -34,9 +40,11 @@ function formatFreshness(lastSyncedAt: string | null): string {
 
 export function DepthLegend() {
   const backdropTone = useGlobeStore(selectBackdropTone);
-  const eventCount = useEarthquakeStore((state) => state.events.length);
   const status = useEarthquakeStore((state) => state.status);
   const lastSyncedAt = useEarthquakeStore((state) => state.lastSyncedAt);
+  const minMagnitude = useEarthquakeStore((state) => state.minMagnitude);
+  const windowHours = useEarthquakeStore((state) => state.windowHours);
+  const visibleCount = useVisibleEarthquakes().length;
   const colors = depthLegendColors(backdropTone);
 
   return (
@@ -96,7 +104,7 @@ export function DepthLegend() {
           ? 'Loading…'
           : status === 'error'
             ? 'Failed to load'
-            : `${eventCount} events · last 72h · M2.5+`}
+            : `${visibleCount} events · ${formatWindow(windowHours)} · M${minMagnitude}+`}
         {status === 'ready' && (
           <span className={styles.freshness}>updated {formatFreshness(lastSyncedAt)}</span>
         )}

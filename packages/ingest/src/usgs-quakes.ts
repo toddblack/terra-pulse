@@ -94,7 +94,15 @@ const USGS_FEED_BASE_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/su
  * get picked up — magnitudes are refined and `status` flips automatic →
  * reviewed in the hours after an event.
  */
-export type EarthquakeFeedBucket = '2.5_hour' | '2.5_day' | 'all_hour' | 'all_day';
+export type EarthquakeFeedBucket =
+  | '1.0_hour'
+  | '1.0_day'
+  | '2.5_hour'
+  | '2.5_day'
+  | '4.5_hour'
+  | '4.5_day'
+  | 'all_hour'
+  | 'all_day';
 
 /**
  * Poll-friendly fetch. These are CDN-cached with `Cache-Control: max-age=60`,
