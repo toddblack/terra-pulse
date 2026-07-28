@@ -85,14 +85,28 @@ export function EarthquakeInspector() {
             </dd>
           </div>
 
-          <div className={styles.field}>
-            <dt className={styles.term}>Significance</dt>
-            <dd className={styles.value}>{event.significance}</dd>
-          </div>
+          {event.significance !== null && (
+            <div className={styles.field}>
+              <dt className={styles.term}>Significance</dt>
+              <dd className={styles.value}>{event.significance}</dd>
+            </div>
+          )}
+
+          {event.status !== null && (
+            <div className={styles.field}>
+              <dt className={styles.term}>Review status</dt>
+              <dd className={styles.value}>{event.status}</dd>
+            </div>
+          )}
 
           <div className={styles.field}>
-            <dt className={styles.term}>Review status</dt>
-            <dd className={styles.value}>{event.status}</dd>
+            <dt className={styles.term}>Source</dt>
+            <dd className={styles.value}>
+              {event.source === 'usgs' ? 'USGS' : 'EMSC'}
+              <span className={styles.subValue}>
+                {event.source === 'usgs' ? 'global network' : 'national agencies'}
+              </span>
+            </dd>
           </div>
 
           {event.alertLevel !== null && (
@@ -126,14 +140,16 @@ export function EarthquakeInspector() {
           </button>
           {/* Not an <a href> — that would navigate the Electron window itself.
               Goes through main, which validates the URL and hands it to the OS. */}
-          <button
-            id="inspector-usgs-link"
-            type="button"
-            className={styles.actionButton}
-            onClick={openUsgsPage}
-          >
-            USGS page ↗
-          </button>
+          {event.source === 'usgs' && (
+            <button
+              id="inspector-usgs-link"
+              type="button"
+              className={styles.actionButton}
+              onClick={openUsgsPage}
+            >
+              USGS page ↗
+            </button>
+          )}
         </div>
       </div>
     </aside>

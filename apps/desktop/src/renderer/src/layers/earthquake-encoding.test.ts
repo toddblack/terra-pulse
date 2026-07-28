@@ -113,8 +113,15 @@ describe('magnitudePixelSize', () => {
   });
 
   it('clamps below the minimum magnitude so small events stay clickable', () => {
-    expect(magnitudePixelSize(0)).toBe(magnitudePixelSize(2.5));
-    expect(magnitudePixelSize(-1)).toBe(magnitudePixelSize(2.5));
+    expect(magnitudePixelSize(0)).toBe(magnitudePixelSize(1));
+    expect(magnitudePixelSize(-1)).toBe(magnitudePixelSize(1));
+  });
+
+  it('still differentiates across the smallest magnitudes the UI can select', () => {
+    // Regression guard: the scale floor must track the lowest selectable
+    // floor. When it was stuck at 2.5, every M1-2.5 event drew identically.
+    expect(magnitudePixelSize(2)).toBeGreaterThan(magnitudePixelSize(1));
+    expect(magnitudePixelSize(2.5)).toBeGreaterThan(magnitudePixelSize(2));
   });
 
   it('clamps above the maximum so a great earthquake cannot blow out the view', () => {

@@ -32,6 +32,7 @@ export function usgsFeatureToEarthquakeEvent(feature: UsgsFeature): EarthquakeEv
   const [longitude, latitude, depthKm] = feature.geometry.coordinates;
   return {
     id: feature.id,
+    source: 'usgs',
     magnitude: feature.properties.mag ?? 0,
     magnitudeType: feature.properties.magType ?? 'unknown',
     place: feature.properties.place ?? 'Unknown location',
@@ -86,7 +87,8 @@ export async function fetchRecentEarthquakes(
 const USGS_FEED_BASE_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary';
 
 /**
- * The pre-built summary buckets. `2.5_day` matches this app's M2.5+ floor.
+ * The pre-built summary buckets. This app polls `1.0_day`, matching its M1.0
+ * ingest floor; the rest are listed because USGS publishes them.
  *
  * Deliberately the *day* bucket rather than `2.5_hour` for polling: it's
  * self-healing if the machine sleeps (the next poll still covers 24h, no

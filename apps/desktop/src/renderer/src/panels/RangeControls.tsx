@@ -2,23 +2,27 @@ import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import styles from './RangeControls.module.css';
 
 /**
- * Magnitude floors, annotated by what the catalogue actually contains there.
+ * Magnitude floors, annotated by what the merged catalogue actually contains.
  *
- * Measured against the USGS global feed (14 days): 86% of M1+ events are in
- * the United States, 69% at M2+, 31% at M3+ — but only 6% at M4+. That isn't
- * geology, it's instrumentation: dense networks exist in the US, while an
- * identical M2 off Vanuatu is invisible to a global network and lands only in
- * a national catalogue this app doesn't ingest.
+ * Measured on the USGS + EMSC merge (4-day sample), US share by floor:
+ * M1+ 35% · M2+ 20% · M3+ 7% · M4+ 3%. Adding EMSC's national-agency
+ * aggregation transformed this — USGS alone was 86% / 69% / 31% / 6%.
  *
- * Without the note, switching M3+ → M4+ transforms the map with no explanation
- * and invites exactly the wrong conclusion. See PROJECT_PLAN §5.3 and §10.
+ * The residual caveat is no longer "this is a US map". It is that small events
+ * are only recorded where instrument networks are dense: an M2 in the mid-
+ * Pacific is detected by nobody, and no aggregator fixes that. Completeness
+ * becomes genuinely global around M4.5 — measured, USGS misses ~70% of what
+ * EMSC reports between M4.0 and M4.5.
+ *
+ * Without the note, switching floors transforms the map with no explanation
+ * and invites the wrong conclusion. See PROJECT_PLAN §5.3 and §10.
  */
 const MAGNITUDE_OPTIONS: { value: number; label: string; note?: string }[] = [
-  { value: 1, label: 'M1+', note: 'US networks' },
-  { value: 2, label: 'M2+', note: 'US networks' },
-  { value: 3, label: 'M3+', note: 'mostly US' },
-  { value: 4, label: 'M4+', note: 'global' },
-  { value: 5, label: 'M5+', note: 'global' },
+  { value: 1, label: 'M1+', note: 'instrumented regions only' },
+  { value: 2, label: 'M2+', note: 'instrumented regions only' },
+  { value: 3, label: 'M3+', note: 'near-global' },
+  { value: 4, label: 'M4+', note: 'near-global' },
+  { value: 5, label: 'M5+', note: 'globally complete' },
 ];
 
 const WINDOW_OPTIONS: { value: number; label: string }[] = [

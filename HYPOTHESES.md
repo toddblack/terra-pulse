@@ -226,8 +226,8 @@ FDSN data can surface one.
 
 **Swarms are observable**, and in subduction zones sometimes accompany slow
 slip. They are a related but distinct signal. Most swarm events fall below the
-current M2.5 display floor, so lowering that floor is a prerequisite for even
-seeing them.
+display floor, so lowering that floor is a prerequisite for even seeing them.
+The globe now offers M1+ and ingests to M1.0 from USGS and EMSC combined.
 
 **The base-rate problem is the hard part.** Cascadia produces episodic tremor
 and slip roughly every 14 months and almost none precede a great earthquake.
