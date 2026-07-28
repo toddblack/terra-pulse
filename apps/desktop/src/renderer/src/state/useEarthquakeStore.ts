@@ -3,8 +3,14 @@ import type { EarthquakeEvent } from '@terra-pulse/schema';
 
 type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
-/** How far back the globe shows events. The database keeps more than this. */
-const DISPLAY_WINDOW_MS = 72 * 60 * 60 * 1000;
+/**
+ * The widest range main ingests. Every UI selection is a subset of this, so
+ * changing the range filters in memory rather than refetching.
+ */
+const INGEST_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
+
+export const DEFAULT_MIN_MAGNITUDE = 4;
+export const DEFAULT_WINDOW_HOURS = 72;
 
 interface EarthquakeState {
   /**
@@ -19,6 +25,10 @@ interface EarthquakeState {
   /** When main last successfully reached USGS — drives the freshness label. */
   lastSyncedAt: string | null;
 
+  /** Display filters. Applied in memory over `events`, never refetched. */
+  minMagnitude: number;
+  windowHours: number;
+
   /**
    * A pending "fly the camera here" request. Carries a nonce so clicking the
    * same event twice still re-triggers — without it the second click would be
@@ -32,6 +42,8 @@ interface EarthquakeState {
   noteSynced: (syncedAt: string) => void;
   select: (id: string | null) => void;
   requestFocus: (eventId: string) => void;
+  setMinMagnitude: (minMagnitude: number) => void;
+  setWindowHours: (windowHours: number) => void;
 }
 
 export const useEarthquakeStore = create<EarthquakeState>((set) => ({
@@ -40,17 +52,19 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   error: null,
   selectedEventId: null,
   lastSyncedAt: null,
+  minMagnitude: DEFAULT_MIN_MAGNITUDE,
+  windowHours: DEFAULT_WINDOW_HOURS,
   focusRequest: null,
 
   load: async () => {
     set({ status: 'loading', error: null });
     try {
-      // Explicit window rather than "everything". The database retains events
-      // beyond the display window on purpose (PROJECT_PLAN Tier 1 keeps M4.5+
-      // long-term), so an unbounded query would silently drift past 72h as
-      // polling accumulates rows.
+      // Loads the *widest* range the UI can ask for, not the current
+      // selection — narrowing happens in memory (PROJECT_PLAN §7.5: one
+      // canonical copy, all views derived). An unbounded query would instead
+      // drift ever wider as polling accumulates rows.
       const events = await window.terraPulse.earthquakes.query({
-        startUtc: new Date(Date.now() - DISPLAY_WINDOW_MS).toISOString(),
+        startUtc: new Date(Date.now() - INGEST_WINDOW_MS).toISOString(),
       });
       set({ events, status: 'ready', lastSyncedAt: new Date().toISOString() });
     } catch (error: unknown) {
@@ -67,7 +81,7 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
     try {
       await window.terraPulse.earthquakes.refresh();
       const events = await window.terraPulse.earthquakes.query({
-        startUtc: new Date(Date.now() - DISPLAY_WINDOW_MS).toISOString(),
+        startUtc: new Date(Date.now() - INGEST_WINDOW_MS).toISOString(),
       });
       set({ events, status: 'ready', lastSyncedAt: new Date().toISOString() });
     } catch (error: unknown) {
@@ -79,6 +93,9 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   },
 
   noteSynced: (syncedAt) => set({ lastSyncedAt: syncedAt }),
+
+  setMinMagnitude: (minMagnitude) => set({ minMagnitude }),
+  setWindowHours: (windowHours) => set({ windowHours }),
 
   // Selecting an event also centres the camera on it. Deselecting does not
   // move the camera — yanking the view around on a dismiss would be worse

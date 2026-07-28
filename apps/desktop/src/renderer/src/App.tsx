@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { CesiumViewer } from './globe/CesiumViewer';
 import { LayerPanel } from './panels/LayerPanel';
+import { RangeControls } from './panels/RangeControls';
 import { DepthLegend } from './panels/DepthLegend';
 import { EarthquakeInspector } from './panels/EarthquakeInspector';
 import { useEarthquakeStore } from './state/useEarthquakeStore';
@@ -31,6 +32,7 @@ export default function App() {
   return (
     <div id="app-shell" className={styles.appShell}>
       <CesiumViewer />
+      <RangeControls />
       <LayerPanel />
       <DepthLegend />
       <EarthquakeInspector />

@@ -508,6 +508,40 @@ server-side proxying of all third-party API calls.
       a binary that pulls their data.
 - [ ] Magnitude-of-completeness map — compute from catalog, or is there a
       published gridded product to use directly?
+
+      **Measured 2026-07-28** (USGS global feed, 14-day sample) — the bias is
+      far larger than "some regions are better instrumented", and it has a
+      sharp edge between M3 and M4:
+
+      | Floor | Events | % United States |
+      |---|---|---|
+      | M1+ | 3,425 | 86% |
+      | M2+ | 1,464 | 69% |
+      | M2.5+ | 908 | 51% |
+      | M3+ | 630 | 31% |
+      | M4+ | 455 | **6%** |
+      | M5+ | 111 | 7% |
+
+      By band: M1–2 and M2–3 are both **99% US**; M3–4 is 95% US; M4–5 drops
+      to 6%. Roughly **92% of all non-US events in the feed are M4+** — only
+      ~37 non-US events below M4 worldwide in two weeks.
+
+      This is not geology. Japan, Chile, Indonesia and Greece are extremely
+      active and nearly absent below M4 because their small events go to
+      national catalogs this app does not ingest, while a dense US network
+      records an equivalent M2 many times over.
+
+      Two consequences already acted on:
+      - The globe's magnitude selector labels coverage per floor, so a user
+        cannot mistake the US network for a global pattern (§5.3's detection
+        bias, made visible rather than documented).
+      - It confirms **M4.5+ as the right Tier 1 analysis threshold** — that is
+        where the catalog becomes globally honest. H5 in particular cannot use
+        anything below it without the completeness correction.
+
+      Also note the low end is contaminated by **induced** seismicity:
+      Texas, Oklahoma and New Mexico were all top-10 regions for M1–2, largely
+      wastewater injection rather than tectonics.
 - [ ] How many magnetometer stations can Cesium render smoothly before
       clustering becomes necessary?
 

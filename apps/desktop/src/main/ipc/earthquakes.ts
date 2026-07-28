@@ -10,8 +10,17 @@ import {
 import { fetchEarthquakeFeed, fetchRecentEarthquakes } from '@terra-pulse/ingest';
 import type { EarthquakeEvent, EarthquakeSyncResult } from '@terra-pulse/schema';
 
-const SEVENTY_TWO_HOURS_MS = 72 * 60 * 60 * 1000;
-const DEFAULT_MIN_MAGNITUDE = 2.5;
+/**
+ * The widest range the UI can ask for. Everything the user selects is a subset
+ * of this, which is why changing the range never needs a fetch.
+ *
+ * The floor is M1.0 rather than the display default because the low end is
+ * where swarm and induced seismicity live — but note it is *heavily* US-biased
+ * (86% at M1+, vs 6% at M4+), because that's where the dense networks are.
+ * The UI labels that; see PROJECT_PLAN §10.
+ */
+const INGEST_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
+const INGEST_MIN_MAGNITUDE = 1.0;
 
 /**
  * The summary feeds are CDN-cached with `Cache-Control: max-age=60`, so
@@ -28,7 +37,7 @@ const POLL_INTERVAL_MS = 60_000;
  * itself stays faithful to the source (non-negotiable #7).
  */
 function atOrAboveFloor(events: EarthquakeEvent[]): EarthquakeEvent[] {
-  return events.filter((event) => event.magnitude >= DEFAULT_MIN_MAGNITUDE);
+  return events.filter((event) => event.magnitude >= INGEST_MIN_MAGNITUDE);
 }
 
 /**
@@ -38,11 +47,11 @@ function atOrAboveFloor(events: EarthquakeEvent[]): EarthquakeEvent[] {
  */
 async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]> {
   const endUtc = new Date();
-  const startUtc = new Date(endUtc.getTime() - SEVENTY_TWO_HOURS_MS);
+  const startUtc = new Date(endUtc.getTime() - INGEST_WINDOW_MS);
   const events = await fetchRecentEarthquakes({
     startUtc,
     endUtc,
-    minMagnitude: DEFAULT_MIN_MAGNITUDE,
+    minMagnitude: INGEST_MIN_MAGNITUDE,
   });
   insertEarthquakes(db, atOrAboveFloor(events));
   return events;
@@ -56,7 +65,7 @@ async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]>
  */
 async function pollOnce(db: DatabaseSync): Promise<EarthquakeSyncResult> {
   const before = catalogSignature(db);
-  const events = await fetchEarthquakeFeed('2.5_day');
+  const events = await fetchEarthquakeFeed('1.0_day');
   insertEarthquakes(db, atOrAboveFloor(events));
   const after = catalogSignature(db);
 
