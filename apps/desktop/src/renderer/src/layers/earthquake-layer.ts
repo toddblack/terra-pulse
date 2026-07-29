@@ -1,12 +1,16 @@
 import * as Cesium from 'cesium';
 import type { BackdropTone, EarthquakeEvent, GlobeLayer } from '@terra-pulse/schema';
 import {
+  HALO_WIDTH,
+  RECENT_HALO_WIDTH,
   depthColorHex,
   emphasisRingColorHex,
   emphasisRingPixelSize,
   haloColorHex,
   isEmphasized,
+  isRecentEvent,
   magnitudePixelSize,
+  recentHaloColorHex,
 } from './earthquake-encoding';
 
 // A large event is drawn as two entities: the dot, plus a concentric ring.
@@ -37,7 +41,11 @@ export function createEarthquakeLayer(
 
   function buildEntities(target: Cesium.CustomDataSource): void {
     const halo = Cesium.Color.fromCssColorString(haloColorHex(tone));
+    const recentHalo = Cesium.Color.fromCssColorString(recentHaloColorHex(tone));
     const ringColor = Cesium.Color.fromCssColorString(emphasisRingColorHex(tone));
+    // One "now" for the whole build, so two events either side of the 24h
+    // boundary can't disagree within a single render.
+    const nowMs = Date.now();
 
     for (const event of events) {
       // Ring first, so the dot draws over it rather than under.
@@ -67,8 +75,11 @@ export function createEarthquakeLayer(
         point: {
           pixelSize: magnitudePixelSize(event.magnitude),
           color: Cesium.Color.fromCssColorString(depthColorHex(event.depthKm, tone)),
-          outlineColor: halo,
-          outlineWidth: 1.5,
+          // A red, slightly heavier stroke on anything from the last 24 hours.
+          // Independent of the emphasis ring, so a recent large event shows
+          // both: red stroke for "today", ring for "big".
+          outlineColor: isRecentEvent(event.timeUtc, nowMs) ? recentHalo : halo,
+          outlineWidth: isRecentEvent(event.timeUtc, nowMs) ? RECENT_HALO_WIDTH : HALO_WIDTH,
         },
       });
     }

@@ -1,7 +1,116 @@
 import { describe, expect, it } from 'vitest';
+
+/**
+ * Perceptual colour difference in OKLab, scaled by 100 — the same measure the
+ * dataviz validator reports, so thresholds here mean what they mean elsewhere
+ * in this project.
+ *
+ * Deliberately *not* WCAG contrast ratio. That measures luminance only, and a
+ * red ring on a blue dot does its work through hue: the pair can be obvious to
+ * the eye while scoring badly on luminance. The first version of this test used
+ * contrast ratio and rejected a perfectly good colour — for the record, even
+ * plain white only reaches 2.50:1 against the lightest depth fill, so a 3:1
+ * text threshold was never the right bar for a decorative edge.
+ */
+function perceptualDistance(a: string, b: string): number {
+  const toOklab = (hex: string): [number, number, number] => {
+    const channel = (c: number): number => {
+      const v = c / 255;
+      return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    const r = channel(parseInt(hex.slice(1, 3), 16));
+    const g = channel(parseInt(hex.slice(3, 5), 16));
+    const bl = channel(parseInt(hex.slice(5, 7), 16));
+
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * bl);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * bl);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * bl);
+
+    return [
+      0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+      1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+      0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+    ];
+  };
+
+  const [l1, a1, b1] = toOklab(a);
+  const [l2, a2, b2] = toOklab(b);
+  return Math.hypot(l1 - l2, a1 - a2, b1 - b2) * 100;
+}
+
+const HOUR_MS = 60 * 60 * 1000;
+const NOW = Date.parse('2026-07-29T12:00:00Z');
+const agedHours = (hours: number): string => new Date(NOW - hours * HOUR_MS).toISOString();
+
+describe('isRecentEvent', () => {
+  it('counts an event from an hour ago', () => {
+    expect(isRecentEvent(agedHours(1), NOW)).toBe(true);
+  });
+
+  it('excludes an event older than the window', () => {
+    expect(isRecentEvent(agedHours(RECENT_WINDOW_HOURS + 1), NOW)).toBe(false);
+  });
+
+  it('includes an event exactly at the boundary', () => {
+    // Inclusive, so "past 24h" in the legend is literally true.
+    expect(isRecentEvent(agedHours(RECENT_WINDOW_HOURS), NOW)).toBe(true);
+  });
+
+  it('treats a future-dated event as recent', () => {
+    // Clock skew between the agency and this machine produces small negative
+    // ages. Hiding those would drop the newest events, which is the opposite
+    // of what this encoding is for.
+    expect(isRecentEvent(agedHours(-2), NOW)).toBe(true);
+  });
+
+  it('does not treat an unparseable timestamp as recent', () => {
+    // Falling back to "recent" would light up the globe on bad data.
+    expect(isRecentEvent('not a date', NOW)).toBe(false);
+    expect(isRecentEvent('', NOW)).toBe(false);
+  });
+});
+
+describe('recency halo', () => {
+  it('reads clearly against every depth fill on both basemaps', () => {
+    // The stroke must be obvious against the dot it surrounds, whatever depth
+    // that dot encodes. Measured ΔE runs 29-44 on light and 31-50 on dark, so
+    // the 20 floor here is comfortable headroom above the 15 the rest of this
+    // project uses — a colour that dropped near blue would fail loudly.
+    for (const tone of ['light', 'dark'] as const) {
+      const halo = recentHaloColorHex(tone);
+      for (const fill of depthLegendColors(tone)) {
+        expect(perceptualDistance(halo, fill)).toBeGreaterThan(20);
+      }
+    }
+  });
+
+  it('inverts per tone, following the neutral halo', () => {
+    // The light basemap's ramp runs dark so its recency stroke is bright; the
+    // dark basemap's ramp runs pale so its stroke is deep. Comparing each
+    // against black orders them by lightness.
+    const light = perceptualDistance(recentHaloColorHex('light'), '#000000');
+    const dark = perceptualDistance(recentHaloColorHex('dark'), '#000000');
+    expect(light).toBeGreaterThan(dark);
+  });
+
+  it('stays distinct from the neutral halo it replaces', () => {
+    for (const tone of ['light', 'dark'] as const) {
+      expect(recentHaloColorHex(tone)).not.toBe(haloColorHex(tone));
+    }
+  });
+
+  it('draws slightly heavier than the neutral halo', () => {
+    // Hue alone is easy to miss on a 5px dot.
+    expect(RECENT_HALO_WIDTH).toBeGreaterThan(HALO_WIDTH);
+  });
+});
+
 import {
   DEPTH_BINS,
   EMPHASIS_MAGNITUDE_THRESHOLD,
+  HALO_WIDTH,
+  RECENT_HALO_WIDTH,
+  RECENT_WINDOW_HOURS,
   depthBinIndex,
   depthClass,
   depthColorHex,
@@ -10,7 +119,9 @@ import {
   emphasisRingPixelSize,
   haloColorHex,
   isEmphasized,
+  isRecentEvent,
   magnitudePixelSize,
+  recentHaloColorHex,
 } from './earthquake-encoding';
 
 describe('depthBinIndex', () => {

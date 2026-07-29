@@ -94,8 +94,19 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
 
   noteSynced: (syncedAt) => set({ lastSyncedAt: syncedAt }),
 
-  setMinMagnitude: (minMagnitude) => set({ minMagnitude }),
-  setWindowHours: (windowHours) => set({ windowHours }),
+  // Changing a display filter clears the selection.
+  //
+  // Without this the inspector kept describing an event that had just been
+  // filtered off the globe — its marker gone, its panel still open, and no way
+  // to see what it was referring to. Clearing unconditionally rather than only
+  // when the selected event drops out of range: "changing the filter resets
+  // the selection" is a rule you can predict, whereas clearing sometimes and
+  // not others is the kind of behaviour that reads as a glitch.
+  //
+  // Note this sets `selectedEventId` directly rather than calling `select`,
+  // because `select` also parks a focus request. There is nothing to fly to.
+  setMinMagnitude: (minMagnitude) => set({ minMagnitude, selectedEventId: null }),
+  setWindowHours: (windowHours) => set({ windowHours, selectedEventId: null }),
 
   // Selecting an event also centres the camera on it. Deselecting does not
   // move the camera — yanking the view around on a dismiss would be worse
