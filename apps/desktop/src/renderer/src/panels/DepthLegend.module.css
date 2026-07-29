@@ -104,3 +104,29 @@
   margin-top: 0.125rem;
   color: rgb(120 135 155);
 }
+
+/* Line-shaped swatch for linear features, distinct from the round event
+   markers so the two keys can't be confused. */
+.lineSwatch {
+  flex: none;
+  width: 0.75rem;
+  height: 2px;
+  border-radius: 1px;
+}
+
+/* Sized to match .lineSwatch's column so the boundary and subduction keys
+   line up when both are showing. */
+.toothSwatch {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 0.75rem;
+}
+
+.attribution {
+  display: block;
+  margin-top: 0.25rem;
+  color: rgb(120 135 155);
+  font-size: 0.625rem;
+}
