@@ -10,9 +10,14 @@
   user-select: none;
 }
 
+/* Wraps because the basemap list is registry-driven and grows: four options
+   already exceed a comfortable single row, and the panel is anchored to the
+   viewport corner where unbounded width would crowd the globe. */
 .basemapGroup {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
+  max-width: 16rem;
 }
 
 .basemapButton {

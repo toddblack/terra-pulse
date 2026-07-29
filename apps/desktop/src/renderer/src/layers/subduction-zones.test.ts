@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type * as Cesium from 'cesium';
 import { createSubductionZonesLayer } from './subduction-zones';
-import { kinematicColorHex } from './plate-kinematics';
+import { kinematicCasingColorHex, kinematicColorHex } from './plate-kinematics';
 import { toothImageDataUri } from './subduction-encoding';
 import trenchData from '../data/subduction-trenches.json';
 
@@ -65,7 +65,10 @@ describe('subduction zones layer', () => {
     for (const tone of ['light', 'dark'] as const) {
       const source = mountAndGetSource(tone);
       const tooth = source.entities.values.find((e) => e.id.startsWith('tooth-'));
-      const expected = toothImageDataUri(kinematicColorHex('convergent', tone));
+      const expected = toothImageDataUri(
+        kinematicColorHex('convergent', tone),
+        kinematicCasingColorHex(tone),
+      );
       expect(tooth?.billboard?.image?.getValue()).toBe(expected);
     }
   });

@@ -192,23 +192,32 @@ describe('azimuthUnitVectorEnu', () => {
 
 describe('toothImageDataUri', () => {
   it('produces an inline SVG data URI', () => {
-    expect(toothImageDataUri('#eb6834')).toMatch(/^data:image\/svg\+xml,/);
+    expect(toothImageDataUri('#eb6834', '#0b0b0b')).toMatch(/^data:image\/svg\+xml,/);
   });
 
   it('carries the requested colour through', () => {
-    expect(decodeURIComponent(toothImageDataUri('#eb6834'))).toContain('#eb6834');
+    expect(decodeURIComponent(toothImageDataUri('#eb6834', '#0b0b0b'))).toContain('#eb6834');
+  });
+
+  it('draws a casing so the tooth stays visible over blue water', () => {
+    // Convergent orange alone measures 1.49:1 against GEBCO's seafloor. The
+    // stroke is what gives the tooth an edge independent of the backdrop.
+    const svg = decodeURIComponent(toothImageDataUri('#eb6834', '#0b0b0b'));
+    expect(svg).toContain('stroke="#0b0b0b"');
+    expect(svg).toMatch(/stroke-width="[1-9]/);
   });
 
   it('puts the triangle in the upper half so its base lands on the trench', () => {
     // The billboard is centred on a trench point, so the image centre (10, 20)
     // must be the middle of the tooth's base, not the middle of the triangle.
-    const svg = decodeURIComponent(toothImageDataUri('#eb6834'));
+    // Geometry is inset by half the stroke width to keep the casing in frame.
+    const svg = decodeURIComponent(toothImageDataUri('#eb6834', '#0b0b0b'));
     expect(svg).toContain('viewBox="0 0 20 40"');
-    expect(svg).toContain('M10 0 L20 20 L0 20 Z');
+    expect(svg).toContain('M10 1 L19 20 L1 20 Z');
   });
 
   it('needs no DOM, so it works under the node test environment', () => {
-    expect(typeof toothImageDataUri('#000000')).toBe('string');
+    expect(typeof toothImageDataUri('#000000', '#ffffff')).toBe('string');
   });
 });
 

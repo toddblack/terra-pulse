@@ -1,7 +1,11 @@
 import * as Cesium from 'cesium';
 import type { BackdropTone, GlobeLayer } from '@terra-pulse/schema';
 import trenchData from '../data/subduction-trenches.json';
-import { kinematicColorHex } from './plate-kinematics';
+import {
+  KINEMATIC_CASING_WIDTH,
+  kinematicCasingColorHex,
+  kinematicColorHex,
+} from './plate-kinematics';
 import {
   TOOTH_PIXEL_HEIGHT,
   TOOTH_PIXEL_WIDTH,
@@ -72,12 +76,23 @@ export function createSubductionZonesLayer(tone: BackdropTone): GlobeLayer {
     // convergent colour rather than introducing a fourth hue that would need
     // the whole palette re-checked.
     const colorHex = kinematicColorHex('convergent', tone);
+    const casingHex = kinematicCasingColorHex(tone);
     // One material and one image shared across every entity rather than
     // allocating them per feature.
-    const material = new Cesium.ColorMaterialProperty(
-      Cesium.Color.fromCssColorString(colorHex),
-    );
-    const toothImage = toothImageDataUri(colorHex);
+    //
+    // Cased like the plate boundaries, and for the same measured reason: over
+    // GEBCO's blue water the convergent orange alone is 1.49:1 against the
+    // backdrop, which is not a visible line.
+    const color = Cesium.Color.fromCssColorString(colorHex);
+    const material =
+      casingHex === null
+        ? new Cesium.ColorMaterialProperty(color)
+        : new Cesium.PolylineOutlineMaterialProperty({
+            color,
+            outlineColor: Cesium.Color.fromCssColorString(casingHex),
+            outlineWidth: KINEMATIC_CASING_WIDTH,
+          });
+    const toothImage = toothImageDataUri(colorHex, casingHex);
 
     for (const [index, run] of (trenchData.t as TrenchRun[]).entries()) {
       target.entities.add({

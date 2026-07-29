@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import type * as Cesium from 'cesium';
 import { createPlateBoundariesLayer } from './plate-boundaries';
-import { KINEMATIC_GROUPS, isKinematicGroup, kinematicColorHex } from './plate-kinematics';
+import {
+  KINEMATIC_CASING_WIDTH,
+  KINEMATIC_GROUPS,
+  isKinematicGroup,
+  kinematicCasingColorHex,
+  kinematicColorHex,
+  kinematicLineWidth,
+  kinematicTotalLineWidth,
+} from './plate-kinematics';
 import boundaryData from '../data/plate-boundaries.json';
 
 function createFakeViewer(options?: { destroyed?: boolean }): Cesium.Viewer {
@@ -75,6 +83,60 @@ describe('kinematicColorHex', () => {
         expect(depthRampBlues).not.toContain(kinematicColorHex(group, tone));
       }
     }
+  });
+});
+
+describe('boundary casing', () => {
+  /** WCAG contrast ratio between two hex colours. */
+  function contrastRatio(a: string, b: string): number {
+    const channel = (c: number): number => {
+      const v = c / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    };
+    const luminance = (hex: string): number =>
+      0.2126 * channel(parseInt(hex.slice(1, 3), 16)) +
+      0.7152 * channel(parseInt(hex.slice(3, 5), 16)) +
+      0.0722 * channel(parseInt(hex.slice(5, 7), 16));
+    const values = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (values[0]! + 0.05) / (values[1]! + 0.05);
+  }
+
+  it('separates every boundary colour from its casing by at least 3:1', () => {
+    // This is the property that makes the casing work. The line's inner edge
+    // is colour-against-casing, which does not depend on the basemap at all —
+    // so a boundary stays visible over pale ridge water and deep ocean alike.
+    // Without it, all three colours measured 1.01-1.25:1 against the shallow
+    // Mid-Atlantic Ridge and effectively vanished.
+    for (const tone of ['light', 'dark'] as const) {
+      const casing = kinematicCasingColorHex(tone);
+      if (casing === null) continue;
+      for (const group of KINEMATIC_GROUPS) {
+        expect(contrastRatio(kinematicColorHex(group, tone), casing)).toBeGreaterThan(3);
+      }
+    }
+  });
+
+  it('cases the imagery basemaps but not the flat OSM one', () => {
+    // Not an oversight — the light palette spans lightness and cannot clear
+    // 3:1 against any single casing, and doesn't need to: OSM is one
+    // consistent pale surface, which is what that palette was validated
+    // against. See the note in plate-kinematics.ts.
+    expect(kinematicCasingColorHex('dark')).not.toBeNull();
+    expect(kinematicCasingColorHex('light')).toBeNull();
+  });
+
+  it('widens the line by the casing so the coloured core keeps its weight', () => {
+    for (const group of KINEMATIC_GROUPS) {
+      expect(kinematicTotalLineWidth(group)).toBe(
+        kinematicLineWidth(group) + KINEMATIC_CASING_WIDTH,
+      );
+    }
+  });
+
+  it('still draws convergent margins heaviest', () => {
+    expect(kinematicTotalLineWidth('convergent')).toBeGreaterThan(
+      kinematicTotalLineWidth('divergent'),
+    );
   });
 });
 

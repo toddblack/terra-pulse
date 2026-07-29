@@ -38,7 +38,7 @@ Two modes, deliberately separate:
 - [x] Monorepo scaffold (`apps/desktop`, `packages/*`)
 - [x] Electron + React + Vite + TS, hardened main/preload
 - [x] Cesium viewer mounted, camera controls
-- [x] Basemap switching (OSM / NASA GIBS satellite)
+- [x] Basemap switching (OSM / GIBS relief / GEBCO seafloor)
 - [x] SQLite + R-Tree schema and migration runner
 - [x] USGS ingest adapter → normalized schema
 - [x] Earthquake event layer (size = magnitude, colour = depth)
@@ -118,7 +118,8 @@ interface GlobeLayer {
 | Space weather JSON | `services.swpc.noaa.gov/products/` |
 | CME/flare + arrival times | `api.nasa.gov/DONKI/` (free key) |
 | Magnetometers | INTERMAGNET, SuperMAG (registration) |
-| Satellite imagery | NASA GIBS (no key) |
+| Satellite imagery | NASA GIBS (no key) — `BlueMarble_ShadedRelief_Bathymetry` |
+| Bathymetry | GEBCO via BODC WMS, `wms.gebco.net` (no key) |
 | Faults | USGS Quaternary Fault DB (US), GEM Global Active Faults |
 | Ephemeris | JPL DE440 via Skyfield |
 

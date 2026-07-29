@@ -81,11 +81,19 @@ export const TRENCH_LINE_WIDTH = 2.5;
  * trench point therefore sits its base *on* the trench line and points the
  * apex away from it — the cartographic convention, where teeth sit on the
  * overriding-plate side.
+ *
+ * The `casingHex` stroke is the same device the boundary lines use: over blue
+ * water the convergent orange alone measures 1.49:1 against the backdrop, so
+ * the tooth would smear into the seafloor. The outline gives it an edge that
+ * doesn't depend on what's underneath. Geometry is inset by half the stroke
+ * width so the casing stays inside the viewBox.
  */
-export function toothImageDataUri(colorHex: string): string {
+export function toothImageDataUri(colorHex: string, casingHex: string | null): string {
+  const stroke =
+    casingHex === null ? '' : ` stroke="${casingHex}" stroke-width="2" stroke-linejoin="round"`;
   const svg =
     `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="40" viewBox="0 0 20 40">` +
-    `<path d="M10 0 L20 20 L0 20 Z" fill="${colorHex}"/>` +
+    `<path d="M10 1 L19 20 L1 20 Z" fill="${colorHex}"${stroke}/>` +
     `</svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }

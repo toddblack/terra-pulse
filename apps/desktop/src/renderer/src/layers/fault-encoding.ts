@@ -7,27 +7,46 @@ import type { BackdropTone } from '@terra-pulse/schema';
  */
 
 /**
- * One muted grey, not a colour scale.
+ * One colour, not a scale.
  *
  * There are 664,447 km of mapped fault here. Colouring them by slip type would
- * put three saturated hues across the whole globe and make them compete with
- * the earthquake marks, which are the point of the app. Faults are context, so
- * they're styled as context and recede.
+ * put three more saturated hues across the whole globe and make them compete
+ * with the earthquake marks, which are the point of the app. So faults get a
+ * single colour regardless of what kind of fault they are.
  *
- * Validated with the dataviz script against the set faults can actually be
- * confused with — the other *line* features (plate boundaries and trenches).
- * Worst normal-vision separation: ΔE 18.0 light, 15.7 dark, both clearing the
- * 15 floor. Contrast against the basemap surface is 4.55:1 light, 6.64:1 dark.
+ * ## Why red, and the cost that was accepted knowingly
  *
- * Deliberately *not* compared against the earthquake depth ramp. That ramp
- * spans the full lightness range on the dark basemap (#cde2fb to #256abf), so
- * no neutral grey could clear ΔE 15 against all five of its steps — but the
- * comparison is meaningless: faults are hairline strokes and events are haloed
- * dots. Shape separates them, not hue.
+ * This was a muted grey (#7a736c / #a89f96) on the reasoning that faults are
+ * context and should recede. That failed in practice on the GEBCO seafloor
+ * basemap, where grey measured 1.50:1 against the water and simply got lost.
+ *
+ * Red is a deliberate trade, made with the numbers on the table. It **clashes
+ * with the convergent boundary colour** — `#d95926` is a warm orange-red, and
+ * the best available red separates from it by only **ΔE 10.5**, under the 15
+ * floor. `#ff1744` was picked precisely because its slight magenta lean
+ * maximises that separation; the pure reds tested scored 8.2-8.7.
+ *
+ * The clash is tolerable here for two specific reasons: faults are a layer you
+ * toggle, so the two are rarely being read against each other under pressure,
+ * and the boundary lines are cased and heavier, which distinguishes them by
+ * weight even where hue nearly matches.
+ *
+ * **A known limit, recorded rather than hidden.** Red is far more visible than
+ * grey on land, where most mapped faults are, but on the *palest* shallow water
+ * (~#3388bb, mid-ocean ridge crests) it measures around 1.05:1 and will still
+ * wash out. Hue alone cannot fix that — it's the same trap the boundary colours
+ * fell into. The fix, if it ever matters, is the casing device from
+ * `plate-kinematics.ts`, not another hue.
+ *
+ * Deliberately *not* compared against the earthquake depth ramp: that ramp
+ * spans the full lightness range on the dark basemap (#cde2fb to #256abf), and
+ * the comparison is meaningless anyway — faults are hairline strokes and events
+ * are haloed dots. Shape separates them, not hue.
  */
 const FAULT_COLORS: Record<BackdropTone, string> = {
-  light: '#7a736c',
-  dark: '#a89f96',
+  // Deeper on pale OSM so it doesn't glare; brighter over imagery.
+  light: '#d90429',
+  dark: '#ff1744',
 };
 
 export function faultColorHex(tone: BackdropTone): string {
