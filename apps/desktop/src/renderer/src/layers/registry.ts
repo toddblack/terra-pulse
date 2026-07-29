@@ -5,7 +5,8 @@ import type {
   LayerContext,
 } from '@terra-pulse/schema';
 import { createOsmBasemap } from './osm-basemap';
-import { createSatelliteBasemap } from './satellite-basemap';
+import { createReliefBasemap } from './relief-basemap';
+import { createSeafloorBasemap } from './seafloor-basemap';
 import { createEarthquakeLayer } from './earthquake-layer';
 import { createPlateBoundariesLayer } from './plate-boundaries';
 import { createSubductionZonesLayer } from './subduction-zones';
@@ -62,12 +63,29 @@ export const BASEMAP_REGISTRATIONS = [
     tone: 'light',
     create: () => createOsmBasemap(),
   },
+  // Plain Blue Marble satellite imagery used to sit here. Dropped once Relief
+  // shipped: it's the same imagery with seafloor relief shaded in, so the
+  // plain version was strictly less informative for a globe about seismicity,
+  // and an option nobody picks is only maintenance.
   {
-    id: 'satellite',
-    label: 'Satellite',
+    id: 'relief',
+    label: 'Relief',
     category: 'basemap',
     tone: 'dark',
-    create: () => createSatelliteBasemap(),
+    create: () => createReliefBasemap(),
+  },
+  {
+    id: 'seafloor',
+    label: 'Seafloor',
+    category: 'basemap',
+    // Measured, not assumed. GEBCO's deep ocean sits around #335588, and the
+    // depth ramp is blue too — so the ramps were checked against it. The
+    // light-basemap ramp collapses (worst step ΔE 3.9, effectively invisible);
+    // the dark ramp's worst is 9.7 with the rest at 18-46, because its shallow
+    // end is pale blue. Hence 'dark'. The mark halo carries figure-ground on
+    // top of that, which is what it exists for.
+    tone: 'dark',
+    create: () => createSeafloorBasemap(),
   },
 ] as const satisfies readonly BasemapRegistration[];
 

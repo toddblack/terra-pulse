@@ -40,7 +40,17 @@ describe('registry invariants', () => {
 describe('backdropToneFor', () => {
   it('returns the declared tone of a known basemap', () => {
     expect(backdropToneFor('osm')).toBe('light');
-    expect(backdropToneFor('satellite')).toBe('dark');
+    expect(backdropToneFor('relief')).toBe('dark');
+    expect(backdropToneFor('seafloor')).toBe('dark');
+  });
+
+  it('declares a tone for every registered basemap', () => {
+    // Marks drawn on top pick their colours from this. A basemap without one
+    // would silently fall back to 'light' and could put the depth ramp on a
+    // background it was never checked against.
+    for (const entry of BASEMAP_REGISTRATIONS) {
+      expect(backdropToneFor(entry.id)).toBe(entry.tone);
+    }
   });
 
   it('falls back to light for an unknown id rather than throwing', () => {

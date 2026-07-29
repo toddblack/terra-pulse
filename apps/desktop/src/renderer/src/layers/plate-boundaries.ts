@@ -2,9 +2,12 @@ import * as Cesium from 'cesium';
 import type { BackdropTone, GlobeLayer } from '@terra-pulse/schema';
 import boundaryData from '../data/plate-boundaries.json';
 import {
+  KINEMATIC_CASING_WIDTH,
   isKinematicGroup,
+  kinematicCasingColorHex,
   kinematicColorHex,
   kinematicLineWidth,
+  kinematicTotalLineWidth,
   type KinematicGroup,
 } from './plate-kinematics';
 
@@ -37,13 +40,25 @@ export function createPlateBoundariesLayer(tone: BackdropTone): GlobeLayer {
   function buildEntities(target: Cesium.CustomDataSource): void {
     // One material per group rather than per polyline — 1,683 runs sharing
     // three materials instead of allocating 1,683 of them.
-    const materials = new Map<KinematicGroup, Cesium.ColorMaterialProperty>();
+    //
+    // (Safe to share here, unlike in `active-faults.ts`: these are entity
+    // MaterialPropertys owned by the entity layer, not the `Polyline` objects
+    // of a PolylineCollection, which destroy their own material on teardown.)
+    // Casing only where it's been measured to help — over imagery, whose
+    // backdrop varies. Null over the flat OSM surface. See plate-kinematics.ts.
+    const casingHex = kinematicCasingColorHex(tone);
+    const materials = new Map<KinematicGroup, Cesium.MaterialProperty>();
     for (const group of ['convergent', 'divergent', 'transform'] as const) {
+      const color = Cesium.Color.fromCssColorString(kinematicColorHex(group, tone));
       materials.set(
         group,
-        new Cesium.ColorMaterialProperty(
-          Cesium.Color.fromCssColorString(kinematicColorHex(group, tone)),
-        ),
+        casingHex === null
+          ? new Cesium.ColorMaterialProperty(color)
+          : new Cesium.PolylineOutlineMaterialProperty({
+              color,
+              outlineColor: Cesium.Color.fromCssColorString(casingHex),
+              outlineWidth: KINEMATIC_CASING_WIDTH,
+            }),
       );
     }
 
@@ -55,7 +70,11 @@ export function createPlateBoundariesLayer(tone: BackdropTone): GlobeLayer {
         polyline: {
           positions: Cesium.Cartesian3.fromDegreesArray(run.p),
           material: materials.get(run.g),
-          width: kinematicLineWidth(run.g),
+          // With a casing the total is core + casing, so the coloured core
+          // keeps the weight it had rather than getting thinner. Without one,
+          // the core width *is* the whole line.
+          width:
+            casingHex === null ? kinematicLineWidth(run.g) : kinematicTotalLineWidth(run.g),
           // Runs span hundreds of km. Straight chords between vertices would
           // cut through the ellipsoid and vanish below the surface at grazing
           // angles; geodesic arcs follow the curve.

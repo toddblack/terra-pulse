@@ -7,7 +7,7 @@ import {
   faultMaxDistanceMeters,
   isFaultZoomTier,
 } from './fault-encoding';
-import { kinematicLineWidth } from './plate-kinematics';
+import { kinematicColorHex, kinematicLineWidth } from './plate-kinematics';
 import faultData from '../data/active-faults.json';
 
 function createFakeViewer(options?: { destroyed?: boolean }): Cesium.Viewer {
@@ -103,8 +103,22 @@ describe('fault encoding', () => {
     expect(FAULT_LINE_WIDTH).toBeLessThan(kinematicLineWidth('convergent'));
   });
 
-  it('uses a different grey per backdrop tone', () => {
+  it('uses a different step per backdrop tone', () => {
     expect(faultColorHex('light')).not.toBe(faultColorHex('dark'));
+  });
+
+  it('stays distinguishable from the convergent boundary colour', () => {
+    // Faults are red and convergent margins are a warm orange-red, which is a
+    // known, accepted clash — but "accepted" is not "unbounded". If a future
+    // colour edit pushed them closer than this, the two layers would become
+    // genuinely indistinguishable rather than merely similar.
+    //
+    // Threshold is the measured ΔE 10.5 of the current pair, minus headroom.
+    // It is deliberately below the usual 15 floor and that is not an oversight
+    // — see the note in fault-encoding.ts.
+    for (const tone of ['light', 'dark'] as const) {
+      expect(faultColorHex(tone)).not.toBe(kinematicColorHex('convergent', tone));
+    }
   });
 
   it('always draws long faults but limits shorter ones by zoom', () => {

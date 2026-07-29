@@ -115,9 +115,10 @@ All free, all confirmed available.
 |---|---|---|
 | USGS real-time feeds | `earthquake.usgs.gov/earthquakes/feed/v1.0/summary/` | Pre-built buckets (hour/day/week/month × magnitude). CDN-cached, ~1 min refresh. **Use these for live view.** |
 | USGS FDSN Event Service | `earthquake.usgs.gov/fdsnws/event/1/query` | Parameterized: time range, bbox, radius, magnitude, depth. **Use for historical backfill.** |
-| **Plate boundaries + motion** ✅ | `github.com/fraxen/tectonicplates` — Bird (2003) PB2002 | **Shipped**, both as toggleable overlays. Derived from `PB2002_steps.json` by `scripts/vendor-plate-data.mjs` into 185 KB of merged polylines (1,683 runs) plus 18 KB of relative-motion vectors (281 arrows). Licence **ODC-BY 1.0** — attribution required and credited in-app; modification permitted, and the derivation is scripted for reproducibility. **Correction to an earlier note here:** the full classification *does* exist — the steps file carries all seven of Bird's classes (`SUB/OCB/CCB/OSR/CRB/OTF/CTF`) plus per-segment velocity azimuth and rate. It was the thinner `PB2002_boundaries.json` that only marked subduction. Rendered as three kinematic groups rather than seven classes because the palette validator passes three categorical colours all-pairs and cannot pass seven. Motion arrows are **relative** (left plate w.r.t. right), not absolute — absolute would require Euler poles and a reference-frame choice. |
-| USGS Quaternary Faults | Quaternary Fault and Fold Database | US fault lines, GeoJSON. |
-| GEM Global Active Faults | `github.com/GEMScienceTools/gem-global-active-faults` | Worldwide fault coverage. **Measured:** 10.6 MB, 13,696 lines, 155k vertices, rich `slip_type`. Licence **CC-BY-SA-4.0** — share-alike, so any *modified* version (e.g. simplified geometry) would itself need to be CC-BY-SA. Bundling unmodified is normally aggregation rather than adaptation, but this warrants a deliberate decision given possible commercial use — and 13,696 polylines needs `PolylineCollection` rather than one entity each. |
+| **Plate boundaries** ✅ | `github.com/fraxen/tectonicplates` — Bird (2003) PB2002 | **Shipped** as a toggleable overlay. Derived from `PB2002_steps.json` by `scripts/vendor-plate-data.mjs` into 185 KB of merged polylines (1,683 runs). Licence **ODC-BY 1.0** — attribution required and credited in-app. The steps file carries all seven of Bird's classes (`SUB/OCB/CCB/OSR/CRB/OTF/CTF`); rendered as three kinematic groups because the palette validator passes three categorical colours all-pairs and cannot pass seven. **A motion-arrow layer built from `VELOCITYAZ` was shipped and then deleted** — that field is left-plate-w.r.t.-right with left/right set by digitisation order, so it encodes convergence *rate* and never *polarity*. See §Layer Inventory and the data README. |
+| **Subduction polarity** ✅ | `github.com/usgs/slab2` — Hayes et al. (2018) | **Shipped** as the `subduction-zones` overlay: trenches with cartographic sawteeth pointing down-dip. Only `trenches_usgs_2017.csv` is used (159 KB) — not the netCDF depth grids, which answer a different question. Licence **CC0**, so attribution is courtesy rather than obligation. Dip = trench strike + 90°, verified 15/16 against known trenches and pinned by a regression test. This is the *only* source here that knows which plate dives. |
+| **GEM Global Active Faults** ✅ | `github.com/GEMScienceTools/gem-global-active-faults` | **Shipped** as the `active-faults` overlay: 13,696 faults, 664,447 km, a single red, short faults revealed by zoom. (Was a muted grey; it measured 1.50:1 against GEBCO's water and got lost. Red **knowingly clashes** with the convergent boundary colour — best available separation is ΔE 10.5, under the 15 floor — accepted because faults are toggleable and boundary lines are cased and heavier. See `fault-encoding.ts`.) Derived to 2.39 MB (geometry + zoom tier only; all 23 attribute columns dropped as nothing renders them). Rendered via `PolylineCollection` — the Entity API allocates a primitive per feature — and pre-densified to a 50 km max chord because that API has no `ArcType.GEODESIC`. Licence **CC-BY-SA 4.0**: attribution required, and share-alike binds the *derived dataset*, not the app source. **It does not forbid commercial use** — that's CC-BY-NC, which this isn't. Open question only if imagery is ever sold commercially: CC-BY-SA lacks ODbL's "Produced Work" carve-out. |
+| USGS Quaternary Faults | Quaternary Fault and Fold Database | US fault lines, GeoJSON. Superseded by GEM for now; revisit only if the finer US mapping is specifically wanted. |
 
 ### Solar / Space Weather
 | Source | Endpoint | Notes |
@@ -145,9 +146,10 @@ Dst are planetary averages; ground magnetometers are points on a map.
 ### Imagery (globe basemaps)
 | Layer | Source | Cost |
 |---|---|---|
-| Satellite | **NASA GIBS** | Free, no key, near-real-time |
-| Satellite (alt) | Bing / Mapbox | Freemium, key required |
-| Basic/vector | OpenStreetMap raster | Free |
+| Basic ✅ | OpenStreetMap raster | Free, no key. Capped at zoom 19 — beyond that the tile server 400s. |
+| Relief ✅ | **NASA GIBS** `BlueMarble_ShadedRelief_Bathymetry` | Free, no key. Static composite, so no `{Time}` segment or Clock. Level 8 / 500 m ceiling. **Replaced plain `BlueMarble_NextGeneration`**, which was dropped: this is the same imagery with seafloor relief shaded in, so the flat-ocean version was strictly less informative for a globe about seismicity. |
+| Seafloor ✅ | **GEBCO** global bathymetric grid via BODC WMS (`wms.gebco.net`) | Free, no key, no fees; only stated constraint is "not for navigation". The one basemap rendered on demand rather than tiled, so it stays sharp past level 8 — at the cost of slower panning, since nothing is CDN-cached. Uses `GEBCO_LATEST` (shaded relief) over `GEBCO_LATEST_2` (colour-shaded): more topographic texture, less glare under the marks. |
+| Satellite (alt) | Bing / Mapbox | Freemium, key required — **not used**, and a key in the renderer would violate non-negotiable #6. |
 
 ---
 
@@ -173,15 +175,39 @@ interface GlobeLayer {
 
 **Basemaps** (exclusive, pick one)
 - Basic / OSM vector
-- Satellite (NASA GIBS)
+- Relief (NASA GIBS, Blue Marble + shaded relief + bathymetry) — replaced the
+  plain Blue Marble satellite basemap, which was dropped as strictly less
+  informative once this shipped
+- Seafloor (GEBCO global bathymetric grid, via BODC WMS) — the only basemap
+  that renders on demand rather than serving fixed tiles, so it stays sharp
+  past the level-8 ceiling the GIBS layers stop at. Free, no key; its only
+  stated constraint is a "not for navigation" disclaimer.
 - Night lights / blue marble
+
+> **The seafloor basemap forced two colour checks.**
+>
+> *Earthquake depth ramp.* GEBCO's deep ocean sits around `#335588` and the
+> depth ramp is also blue. The light-basemap ramp collapses against it — worst
+> step ΔE 3.9, effectively invisible — while the dark ramp's worst is 9.7 with
+> the rest at 18–46, because its shallow end is pale. Hence `tone: 'dark'`.
+>
+> *Plate boundary lines.* These were validated against a near-black surface,
+> back when "dark" meant Blue Marble. Over blue water all three measured under
+> 3:1 — 1.49/1.70/1.85 on the Mid-Atlantic Ridge, and 1.01/1.15/1.25 over the
+> pale ridge crest, where divergent and transform effectively vanished. Fixed
+> with a **casing** rather than by re-picking hues: the line's inner edge
+> (colour against casing) is 5.1–6.3:1 and is independent of the backdrop, so
+> the line carries its own contrast edge. Same principle as the earthquake mark
+> halo. Applied to the dark tone only — the light palette spans lightness and
+> cannot clear 3:1 against any single casing, and doesn't need to, since OSM is
+> one consistent pale surface.
 
 **Static overlays** (independent toggles)
 - Tectonic plate boundaries — colored by kinematics (convergent / divergent /
   transform), from Bird (2003) PB2002 steps
 - Subduction zones — trenches with cartographic sawteeth pointing down-dip,
   from USGS Slab2 (CC0)
-- Active faults — global (GEM), one muted grey, short faults revealed by zoom
+- Active faults — global (GEM), single red, short faults revealed by zoom
 - Fault lines — US (USGS Quaternary) — *superseded by GEM for now; revisit only
   if the finer US mapping is actually wanted*
 - Lat/long graticule

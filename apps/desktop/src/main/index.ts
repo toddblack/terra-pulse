@@ -58,8 +58,12 @@ const CONTENT_SECURITY_POLICY = [
   // OpenStreetMapImageryProvider requests the bare tile.openstreetmap.org
   // domain, not a subdomain of it — a *.tile.openstreetmap.org wildcard
   // alone does not match that, so both forms are listed explicitly.
-  "img-src 'self' data: blob: https://gibs.earthdata.nasa.gov https://tile.openstreetmap.org https://*.tile.openstreetmap.org",
-  `connect-src 'self' https://gibs.earthdata.nasa.gov https://tile.openstreetmap.org https://*.tile.openstreetmap.org${isDev ? ` ${devServerOrigin} ${devServerWsOrigin}` : ''}`,
+  // wms.gebco.net serves the GEBCO bathymetry basemap. Listed as an exact
+  // host with no wildcard, like every other entry — each one here is a place
+  // this app is permitted to talk to, so they get added deliberately and
+  // narrowly.
+  "img-src 'self' data: blob: https://gibs.earthdata.nasa.gov https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://wms.gebco.net",
+  `connect-src 'self' https://gibs.earthdata.nasa.gov https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://wms.gebco.net${isDev ? ` ${devServerOrigin} ${devServerWsOrigin}` : ''}`,
   "worker-src 'self' blob:",
 ].join('; ');
 
