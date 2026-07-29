@@ -11,9 +11,12 @@ import { OVERLAY_REGISTRATIONS, isOverlayVisible } from '../layers/registry';
 import {
   DEPTH_BINS,
   EMPHASIS_MAGNITUDE_THRESHOLD,
+  RECENT_HALO_WIDTH,
+  RECENT_WINDOW_HOURS,
   depthLegendColors,
   emphasisRingColorHex,
   magnitudePixelSize,
+  recentHaloColorHex,
 } from '../layers/earthquake-encoding';
 import styles from './DepthLegend.module.css';
 
@@ -114,6 +117,21 @@ export function DepthLegend() {
               />
             </span>
             <span className={styles.binLabel}>M{EMPHASIS_MAGNITUDE_THRESHOLD}+</span>
+          </li>
+          {/* The two are independent: a recent large event shows both. */}
+          <li className={styles.magnitudeRow}>
+            <span className={styles.magnitudeDotCell} aria-hidden="true">
+              <span
+                className={styles.magnitudeDot}
+                style={{
+                  width: `${magnitudePixelSize(4)}px`,
+                  height: `${magnitudePixelSize(4)}px`,
+                  outline: `${RECENT_HALO_WIDTH}px solid ${recentHaloColorHex(backdropTone)}`,
+                  outlineOffset: '-1px',
+                }}
+              />
+            </span>
+            <span className={styles.binLabel}>past {RECENT_WINDOW_HOURS}h</span>
           </li>
         </ul>
       </div>

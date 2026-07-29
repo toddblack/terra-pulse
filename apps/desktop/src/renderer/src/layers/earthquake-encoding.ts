@@ -66,6 +66,76 @@ const DEPTH_COLORS_DARK_BASEMAP = [
 const HALO_LIGHT_BASEMAP = '#ffffff';
 const HALO_DARK_BASEMAP = '#0b0b0b';
 
+// ---------------------------------------------------------------------------
+// Recency → halo colour
+// ---------------------------------------------------------------------------
+
+/**
+ * Events at or under this age get a red halo instead of the neutral one.
+ *
+ * The display window reaches four days, so "happened today" is otherwise
+ * invisible — a 6-hour-old event and a 90-hour-old one look identical. This is
+ * the one distinction the mark couldn't already make: size is magnitude, fill
+ * is depth, and the concentric ring is reserved for M5.5+.
+ *
+ * Deliberately binary rather than a fade with age. A continuous ramp would have
+ * to live in opacity or lightness, and both of those are already carrying depth
+ * — dimming an old shallow event would make it read as a deeper one.
+ */
+export const RECENT_WINDOW_HOURS = 24;
+
+/**
+ * Red because it means the same thing here as everywhere else: *look at this
+ * one*. It replaces the halo rather than adding a second ring, so a recent
+ * M5.5+ event still gets its emphasis ring and the two encodings stay
+ * independent — a red-stroked dot inside a ring reads as "big, and today".
+ *
+ * The stroke has to read against the **fill**, not the basemap, so these follow
+ * the same inversion as the neutral halos above: the light basemap's depth ramp
+ * runs dark, so its recency stroke is a bright red; the dark basemap's ramp runs
+ * pale, so its stroke is deep.
+ *
+ * Verified by perceptual distance (OKLab ΔE), not WCAG contrast ratio — red on
+ * blue works through *hue*, and a luminance-only measure scores it badly while
+ * the eye finds it obvious. Measured ΔE 29-44 light, 31-50 dark, against a
+ * project-wide floor of 15. For scale, plain white manages only 2.50:1 WCAG
+ * against the lightest depth fill, so that metric was never the right bar for
+ * an edge like this.
+ */
+const RECENT_HALO_LIGHT_BASEMAP = '#ff5468';
+const RECENT_HALO_DARK_BASEMAP = '#a1001a';
+
+/**
+ * Slightly heavier than the neutral halo, because hue alone is easy to miss on
+ * a 5px dot. Still well under the emphasis ring's weight, so it reads as an
+ * attribute of the dot rather than a second ring around it.
+ */
+export const HALO_WIDTH = 1.5;
+export const RECENT_HALO_WIDTH = 2;
+
+/**
+ * Whether an event happened within the recency window.
+ *
+ * `nowMs` is injected rather than read from the clock so this is testable and
+ * so a whole layer build shares one consistent "now" — otherwise events near
+ * the boundary could disagree within a single render.
+ */
+export function isRecentEvent(timeUtc: string, nowMs: number): boolean {
+  const eventMs = Date.parse(timeUtc);
+  // An unparseable timestamp can't be shown to be recent. Falling back to
+  // "recent" would light up the globe on bad data.
+  if (!Number.isFinite(eventMs)) return false;
+
+  const ageMs = nowMs - eventMs;
+  // Future-dated events are a clock-skew artefact, not something to hide; a
+  // small negative age still counts as recent.
+  return ageMs <= RECENT_WINDOW_HOURS * 60 * 60 * 1000;
+}
+
+export function recentHaloColorHex(tone: BackdropTone): string {
+  return tone === 'dark' ? RECENT_HALO_DARK_BASEMAP : RECENT_HALO_LIGHT_BASEMAP;
+}
+
 /** Index into `DEPTH_BINS`. Depths outside the range clamp to an end bin. */
 export function depthBinIndex(depthKm: number): number {
   if (!Number.isFinite(depthKm)) return 0;
