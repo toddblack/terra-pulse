@@ -29,11 +29,24 @@ const INGEST_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
 const INGEST_MIN_MAGNITUDE = 1.0;
 
 /**
- * The summary feeds are CDN-cached with `Cache-Control: max-age=60`, so
- * polling faster returns byte-identical data. 60s is the ceiling on useful
- * freshness, not a compromise.
+ * How often the background poll runs.
+ *
+ * The summary feeds are CDN-cached with `Cache-Control: max-age=60`, so 60s is
+ * the *fastest* useful rate — this used to poll at exactly that, on the
+ * reasoning that anything slower threw away real freshness.
+ *
+ * That reasoning only counted one side. Every poll that finds new events
+ * rebuilds the earthquake layer, and a rebuild lands as a visible hitch if it
+ * happens while the user is rotating the globe. Once a minute, that's often
+ * enough to be intrusive during ordinary use. Five minutes is quiet enough not
+ * to interrupt, and no earthquake becomes less interesting for having been on
+ * screen four minutes later.
+ *
+ * The freshness that matters is on demand, not on a timer: the legend shows
+ * how stale the data is and offers a Refresh button, so anyone who wants this
+ * second's catalogue can have it without the app twitching all day.
  */
-const POLL_INTERVAL_MS = 60_000;
+const POLL_INTERVAL_MS = 5 * 60_000;
 
 /**
  * Feed bucket labels are approximate — a "2.5_day" response was observed
@@ -128,7 +141,7 @@ async function pollOnce(db: DatabaseSync): Promise<EarthquakeSyncResult> {
 }
 
 /**
- * Starts the 60s poll loop. Returns a stop function for app shutdown.
+ * Starts the background poll loop. Returns a stop function for app shutdown.
  *
  * `onResult` fires on every *successful* poll, changed or not, so the UI's
  * freshness indicator stays honest through quiet periods. Failures are logged

@@ -148,14 +148,39 @@ export function CesiumViewer() {
         return;
       }
     }
+
+    // Selected but not on screen — the filters excluded it, or the layer was
+    // rebuilt without it. Clear rather than fall through: leaving the previous
+    // value would keep Cesium holding an entity that has since been destroyed.
+    viewer.selectedEntity = undefined;
   }, [selectedEventId, events, viewerReadyToken]);
 
+  /**
+   * Events for the focus effect, read through a ref so that changing the
+   * filters doesn't move the camera.
+   *
+   * The focus effect needs the event list to look up coordinates, but it must
+   * fire *only* when a new focus is requested. With `events` as a dependency,
+   * adjusting the magnitude or time filter re-ran the effect while a
+   * `focusRequest` from some earlier click was still in the store — so the
+   * globe flew back to a previously selected quake instead of staying where
+   * the user had it.
+   */
+  const eventsRef = useRef(events);
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
+
   // Centring on an event, from selection or the inspector's Recenter button.
+  //
+  // `focusRequest` carries a nonce, so this fires once per request and re-fires
+  // when the same event is picked again. That nonce is the *only* thing that
+  // should move the camera.
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || !focusRequest) return;
 
-    const event = events.find((candidate) => candidate.id === focusRequest.eventId);
+    const event = eventsRef.current.find((candidate) => candidate.id === focusRequest.eventId);
     if (!event) return;
 
     // Rotate to the event at the height the camera is already at, so the
@@ -166,7 +191,7 @@ export function CesiumViewer() {
       destination: Cesium.Cartesian3.fromDegrees(event.longitude, event.latitude, height),
       duration: 1,
     });
-  }, [focusRequest, events]);
+  }, [focusRequest]);
 
   return <div id="cesium-viewport" ref={containerRef} className={styles.viewport} />;
 }

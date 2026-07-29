@@ -6,6 +6,7 @@ import {
   KINEMATIC_LABELS,
   kinematicColorHex,
 } from '../layers/plate-kinematics';
+import { faultColorHex } from '../layers/fault-encoding';
 import { OVERLAY_REGISTRATIONS, isOverlayVisible } from '../layers/registry';
 import {
   DEPTH_BINS,
@@ -26,8 +27,9 @@ function formatWindow(hours: number): string {
 }
 
 /**
- * Relative freshness. Deliberately coarse — the poll runs every 60s, so
- * second-level precision would imply an accuracy the data doesn't have.
+ * Relative freshness. Deliberately coarse — the background poll runs every few
+ * minutes, so second-level precision would imply an accuracy the data doesn't
+ * have. The Refresh button beside it is the answer to "but I want it *now*".
  */
 function formatFreshness(lastSyncedAt: string | null): string {
   if (lastSyncedAt === null) return 'not yet synced';
@@ -48,6 +50,7 @@ export function DepthLegend() {
   const backdropTone = useGlobeStore(selectBackdropTone);
   const status = useEarthquakeStore((state) => state.status);
   const lastSyncedAt = useEarthquakeStore((state) => state.lastSyncedAt);
+  const refresh = useEarthquakeStore((state) => state.refresh);
   const minMagnitude = useEarthquakeStore((state) => state.minMagnitude);
   const windowHours = useEarthquakeStore((state) => state.windowHours);
   const visibleCount = useVisibleEarthquakes().length;
@@ -61,6 +64,7 @@ export function DepthLegend() {
   };
   const boundariesVisible = isLayerOn('plate-boundaries');
   const subductionVisible = isLayerOn('subduction-zones');
+  const faultsVisible = isLayerOn('active-faults');
 
   return (
     <div id="depth-legend" className={styles.legend}>
@@ -156,14 +160,45 @@ export function DepthLegend() {
         </div>
       )}
 
+      {faultsVisible && (
+        <div className={styles.section}>
+          <h2 className={styles.heading}>Faults</h2>
+          <ul className={styles.binList}>
+            <li className={styles.binRow}>
+              <span
+                className={styles.lineSwatch}
+                style={{ backgroundColor: faultColorHex(backdropTone), height: '1px' }}
+                aria-hidden="true"
+              />
+              <span className={styles.binLabel}>active fault</span>
+            </li>
+          </ul>
+          {/* Without this, a sparse region reads as "no faults here" when it
+              actually means "not zoomed in far enough yet". */}
+          <p className={styles.note}>shorter faults appear as you zoom in</p>
+        </div>
+      )}
+
       <p className={styles.footnote}>
         {status === 'loading'
           ? 'Loading…'
           : status === 'error'
             ? 'Failed to load'
             : `${visibleCount} events · ${formatWindow(windowHours)} · M${minMagnitude}+`}
-        {status === 'ready' && (
-          <span className={styles.freshness}>updated {formatFreshness(lastSyncedAt)}</span>
+        {status !== 'loading' && (
+          <span className={styles.freshness}>
+            updated {formatFreshness(lastSyncedAt)}
+            {/* On-demand freshness, so the background poll can stay slow
+                enough not to interrupt a rotation. */}
+            <button
+              type="button"
+              id="earthquake-refresh"
+              className={styles.refreshButton}
+              onClick={() => void refresh()}
+            >
+              Refresh
+            </button>
+          </span>
         )}
         {/* ODC-BY makes the Bird credit a licence condition, not a courtesy.
             Slab2 is CC0 and needs no attribution at all — it's cited because
@@ -176,6 +211,12 @@ export function DepthLegend() {
         {subductionVisible && (
           <span className={styles.attribution}>
             Slabs: Hayes et al. (2018) · USGS Slab2 · CC0
+          </span>
+        )}
+        {/* CC-BY-SA makes this credit mandatory, like the Bird one. */}
+        {faultsVisible && (
+          <span className={styles.attribution}>
+            Faults: GEM Global Active Faults · Styron &amp; Pagani (2020) · CC-BY-SA 4.0
           </span>
         )}
       </p>

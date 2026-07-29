@@ -181,8 +181,9 @@ interface GlobeLayer {
   transform), from Bird (2003) PB2002 steps
 - Subduction zones — trenches with cartographic sawteeth pointing down-dip,
   from USGS Slab2 (CC0)
-- Fault lines — US (USGS Quaternary)
-- Fault lines — global (GEM)
+- Active faults — global (GEM), one muted grey, short faults revealed by zoom
+- Fault lines — US (USGS Quaternary) — *superseded by GEM for now; revisit only
+  if the finer US mapping is actually wanted*
 - Lat/long graticule
 - Day/night terminator
 
@@ -205,6 +206,15 @@ interface GlobeLayer {
 > to a median 21 km but diverge to 166 km at p90, and any merge rule that got a
 > match wrong would silently drop a real boundary. Details in
 > `apps/desktop/src/renderer/src/data/README.md`.
+
+> **The GEM fault data is CC-BY-SA, and that was a deliberate decision.**
+> Share-alike binds the derived dataset (`active-faults.json`), not the
+> application code — software that reads a dataset isn't an adaptation of it.
+> CC-BY-SA does **not** forbid commercial use; that's CC-BY-NC, which this
+> isn't. The one open question, if this ever ships imagery commercially: unlike
+> ODbL, CC-BY-SA 4.0 has no "Produced Work" carve-out, so a rendered map
+> containing faults is arguably Adapted Material. GEM offers custom licensing
+> for uses that don't fit. Full reasoning in the data README.
 
 **Event layers** (time-driven)
 - Earthquakes — sized by magnitude, colored by depth

@@ -114,6 +114,15 @@
   border-radius: 1px;
 }
 
+/* Qualifies a key rather than labelling a swatch, so it sits quieter than
+   .binLabel and indents past the swatch column. */
+.note {
+  margin: 0.25rem 0 0 1.25rem;
+  color: rgb(120 135 155);
+  font-size: 0.625rem;
+  font-style: italic;
+}
+
 /* Sized to match .lineSwatch's column so the boundary and subduction keys
    line up when both are showing. */
 .toothSwatch {
@@ -122,6 +131,24 @@
   align-items: center;
   justify-content: center;
   width: 0.75rem;
+}
+
+/* Sits inline after the freshness text rather than as a separate control —
+   it answers the question that text raises, so it belongs beside it. */
+.refreshButton {
+  margin-left: 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: rgb(120 165 220);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.refreshButton:hover,
+.refreshButton:focus-visible {
+  color: rgb(150 195 245);
 }
 
 .attribution {
