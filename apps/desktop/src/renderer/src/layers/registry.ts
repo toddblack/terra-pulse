@@ -9,6 +9,7 @@ import { createSatelliteBasemap } from './satellite-basemap';
 import { createEarthquakeLayer } from './earthquake-layer';
 import { createPlateBoundariesLayer } from './plate-boundaries';
 import { createSubductionZonesLayer } from './subduction-zones';
+import { createActiveFaultsLayer } from './active-faults';
 
 /**
  * The single source of truth for which layers exist.
@@ -36,6 +37,19 @@ export interface BasemapRegistration extends LayerMetadata {
 
 export interface OverlayRegistration extends LayerMetadata {
   defaultVisible: boolean;
+  /**
+   * Whether this layer's contents depend on the earthquake event set.
+   *
+   * Layers that say yes are rebuilt whenever new events arrive; layers that
+   * say no are not. That distinction is load-bearing rather than cosmetic —
+   * the poll replaces `events` on a timer, and rebuilding the static layers
+   * along with it meant discarding and recreating 13,696 fault polylines
+   * every cycle, which stuttered the globe mid-rotation.
+   *
+   * Geological features don't change on a poll timer. Default is `false`,
+   * so a new layer opts in only if it genuinely reads `context.events`.
+   */
+  consumesEvents?: boolean;
   create(context: LayerContext): GlobeLayer;
 }
 
@@ -68,6 +82,8 @@ export const OVERLAY_REGISTRATIONS: readonly OverlayRegistration[] = [
     label: 'Earthquakes',
     category: 'events',
     defaultVisible: true,
+    // The only layer whose contents come from the event set.
+    consumesEvents: true,
     create: (context) => createEarthquakeLayer(context.events, context.backdropTone),
   },
   {
@@ -83,6 +99,13 @@ export const OVERLAY_REGISTRATIONS: readonly OverlayRegistration[] = [
     category: 'overlay',
     defaultVisible: false,
     create: (context) => createSubductionZonesLayer(context.backdropTone),
+  },
+  {
+    id: 'active-faults',
+    label: 'Active faults',
+    category: 'overlay',
+    defaultVisible: false,
+    create: (context) => createActiveFaultsLayer(context.backdropTone),
   },
 ];
 
