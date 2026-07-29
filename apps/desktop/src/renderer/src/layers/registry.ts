@@ -7,6 +7,8 @@ import type {
 import { createOsmBasemap } from './osm-basemap';
 import { createSatelliteBasemap } from './satellite-basemap';
 import { createEarthquakeLayer } from './earthquake-layer';
+import { createPlateBoundariesLayer } from './plate-boundaries';
+import { createSubductionZonesLayer } from './subduction-zones';
 
 /**
  * The single source of truth for which layers exist.
@@ -67,6 +69,20 @@ export const OVERLAY_REGISTRATIONS: readonly OverlayRegistration[] = [
     category: 'events',
     defaultVisible: true,
     create: (context) => createEarthquakeLayer(context.events, context.backdropTone),
+  },
+  {
+    id: 'plate-boundaries',
+    label: 'Plate boundaries',
+    category: 'overlay',
+    defaultVisible: true,
+    create: (context) => createPlateBoundariesLayer(context.backdropTone),
+  },
+  {
+    id: 'subduction-zones',
+    label: 'Subduction zones',
+    category: 'overlay',
+    defaultVisible: false,
+    create: (context) => createSubductionZonesLayer(context.backdropTone),
   },
 ];
 

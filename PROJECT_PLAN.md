@@ -115,8 +115,9 @@ All free, all confirmed available.
 |---|---|---|
 | USGS real-time feeds | `earthquake.usgs.gov/earthquakes/feed/v1.0/summary/` | Pre-built buckets (hour/day/week/month × magnitude). CDN-cached, ~1 min refresh. **Use these for live view.** |
 | USGS FDSN Event Service | `earthquake.usgs.gov/fdsnws/event/1/query` | Parameterized: time range, bbox, radius, magnitude, depth. **Use for historical backfill.** |
+| **Plate boundaries + motion** ✅ | `github.com/fraxen/tectonicplates` — Bird (2003) PB2002 | **Shipped**, both as toggleable overlays. Derived from `PB2002_steps.json` by `scripts/vendor-plate-data.mjs` into 185 KB of merged polylines (1,683 runs) plus 18 KB of relative-motion vectors (281 arrows). Licence **ODC-BY 1.0** — attribution required and credited in-app; modification permitted, and the derivation is scripted for reproducibility. **Correction to an earlier note here:** the full classification *does* exist — the steps file carries all seven of Bird's classes (`SUB/OCB/CCB/OSR/CRB/OTF/CTF`) plus per-segment velocity azimuth and rate. It was the thinner `PB2002_boundaries.json` that only marked subduction. Rendered as three kinematic groups rather than seven classes because the palette validator passes three categorical colours all-pairs and cannot pass seven. Motion arrows are **relative** (left plate w.r.t. right), not absolute — absolute would require Euler poles and a reference-frame choice. |
 | USGS Quaternary Faults | Quaternary Fault and Fold Database | US fault lines, GeoJSON. |
-| GEM Global Active Faults | GEM Foundation | Worldwide fault coverage. |
+| GEM Global Active Faults | `github.com/GEMScienceTools/gem-global-active-faults` | Worldwide fault coverage. **Measured:** 10.6 MB, 13,696 lines, 155k vertices, rich `slip_type`. Licence **CC-BY-SA-4.0** — share-alike, so any *modified* version (e.g. simplified geometry) would itself need to be CC-BY-SA. Bundling unmodified is normally aggregation rather than adaptation, but this warrants a deliberate decision given possible commercial use — and 13,696 polylines needs `PolylineCollection` rather than one entity each. |
 
 ### Solar / Space Weather
 | Source | Endpoint | Notes |
@@ -176,11 +177,34 @@ interface GlobeLayer {
 - Night lights / blue marble
 
 **Static overlays** (independent toggles)
-- Tectonic plate boundaries
+- Tectonic plate boundaries — colored by kinematics (convergent / divergent /
+  transform), from Bird (2003) PB2002 steps
+- Subduction zones — trenches with cartographic sawteeth pointing down-dip,
+  from USGS Slab2 (CC0)
 - Fault lines — US (USGS Quaternary)
 - Fault lines — global (GEM)
 - Lat/long graticule
 - Day/night terminator
+
+> **Two plate datasets, deliberately.** Bird's PB2002 gives *where* boundaries
+> are and how they behave; Slab2 gives subduction *polarity* — which plate
+> dives — which Bird structurally cannot.
+>
+> Bird's `VELOCITYAZ` is the velocity of the *left* plate w.r.t. the *right*,
+> where left/right come from digitisation order, so for converging plates it
+> points to the right-hand side by construction (1,129 of 1,129 subduction
+> steps, 100%). It encodes convergence *rate*, never direction of dip. A
+> relative-motion arrow layer built on it was 180° wrong at Tonga and Sumatra
+> and has been deleted.
+>
+> Slab2's trench file carries strike, and dip = strike + 90° verifies on 15 of
+> 16 known trenches — including Vanuatu and Manila, which dip against their
+> neighbours. That check is a regression test, not a note.
+>
+> The two are **separate toggles rather than merged**: their geometries agree
+> to a median 21 km but diverge to 166 km at p90, and any merge rule that got a
+> match wrong would silently drop a real boundary. Details in
+> `apps/desktop/src/renderer/src/data/README.md`.
 
 **Event layers** (time-driven)
 - Earthquakes — sized by magnitude, colored by depth
