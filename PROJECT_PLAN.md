@@ -52,7 +52,7 @@ between global seismicity and solar/astronomical events.*
 ### Storage
 | Concern | Choice | Rationale |
 |---|---|---|
-| Event catalog cache | **SQLite** | Two-tier: (1) one-time backfill of **M4.5+ global, 1970–present** ≈ 110k rows, tens of MB — this is the stats engine's working catalog; (2) on-demand cache for narrower/lower-magnitude queries, keyed by (window, magnitude, bbox) with TTL and size cap. |
+| Event catalog cache | **SQLite** | Three layers: (0) **rolling cache, shipped** — `COVERAGE_TIERS` in `packages/schema`, currently 7d at M1+ and 30d at M2.5+, pruned to the longest tier on each backfill; (1) one-time backfill of **M4.5+ global, 1970–present** — **294,647 rows, ~62 MB measured** (an earlier ≈110k estimate here was wrong by 2.7×), the stats engine's browsing catalog, with **analysis restricted to the M5.5+ subset**; (2) on-demand cache for narrower/lower-magnitude queries, keyed by (window, magnitude, bbox) with TTL and size cap. |
 | Spatial queries | SQLite's built-in **R-Tree** module | Fault-proximity and antipode-radius (bbox) queries without a Postgres server. Tried SpatiaLite first; the only available Windows binary is unmaintained and fails its own DLL init on a modern system (2016-era GEOS build) even after fixing the Windows DLL search-path issue. R-Tree ships inside SQLite core — no extension/binary to load at all — and covers what's actually needed. See Rejected Alternatives. |
 | User preferences | **SQLite table** or JSON config | Local only. |
 | Future cloud sync | *Supabase (deferred)* | Only if cross-device sync becomes a requirement. |
@@ -628,6 +628,39 @@ server-side proxying of all third-party API calls.
       EMSC reports ~3.5× as many events there. Completeness begins at M4.5,
       not M4. This pins the Tier 1 threshold more precisely than the earlier
       measurement did: M4.5+ is right, and M4+ would not have been.
+
+      **Update 2026-07-30 — M4.5+ is right for *space*, and wrong for *time*.**
+      The finding above is about a snapshot: at M4.5 the catalog stops being a
+      map of where the seismometers are. It says nothing about whether the
+      catalog is comparable *across decades*, and measured, it isn't. Global
+      counts per decade:
+
+      | Decade | M4.5+ | M5.0+ | M5.5+ | M6.5+ |
+      |---|---|---|---|---|
+      | 1950s | 3,149 | — | 2,496 | 309 |
+      | 1970s | 25,843 | 13,581 | 4,377 | 354 |
+      | 1990s | 43,144 | 14,660 | 4,865 | 489 |
+      | 2010s | 75,278 | 18,469 | 4,898 | 489 |
+
+      M4.5+ rose **24× since the 1950s and 3× since 1970**. The Earth did not
+      do that — networks densified and older events were never recorded to
+      begin with. M5.0+ still drifts 36%. **M5.5+ varies 12% and M6.5+ is flat
+      back to the 1950s.**
+
+      Consequences, both binding:
+
+      - **Analysis (Explore's counterpart) must read M5.5+, not M4.5+.** Any
+        decade-scale test against a slow-varying driver — the solar cycle above
+        all, which is the whole point of this project — would otherwise find a
+        strong correlation that is purely instrument deployment history. This
+        is the single largest threat to H1–H5 and it is invisible in the data
+        itself.
+      - **Explore may still browse M4.5+**, because looking at a specific era
+        is a legitimate thing to do. It carries a coverage label; it is never
+        the default for a long span.
+
+      Also measured: **FDSN caps every query at 20,000 events**, so the Tier 1
+      backfill has to be chunked and resumable regardless of design.
 
       The residual limitation is no longer US bias. It is that small events are
       only recorded where instrument networks are dense — an M2 in the

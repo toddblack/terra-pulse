@@ -1,6 +1,7 @@
 export { openDatabase } from './client';
 export {
   insertEarthquakes,
+  pruneEarthquakesBefore,
   queryEarthquakes,
   queryEarthquakesInBoundingBox,
   catalogSignature,

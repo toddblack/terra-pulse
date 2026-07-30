@@ -82,6 +82,47 @@ export function insertEarthquakes(db: DatabaseSync, events: EarthquakeEvent[]): 
   }
 }
 
+/**
+ * Deletes events older than `beforeUtc`. Returns how many went.
+ *
+ * The catalogue is a rolling cache, but nothing was ever removing anything —
+ * `insertEarthquakes` only upserts, so the table grew for the lifetime of the
+ * install regardless of the window on screen. Harmless while it held four days;
+ * worth fixing before a thirty-day ingest accelerates it.
+ *
+ * **Both tables, in one transaction.** Deleting from `earthquakes` alone would
+ * strand the matching R-Tree rows, and a stale spatial index is worse than none:
+ * `findCandidateMatches` would return ids that no longer join to anything, so
+ * dedup would silently stop recognising duplicates. The R-Tree goes first so a
+ * failure mid-way leaves orphaned *index* rows — which the join discards —
+ * rather than orphaned events, which it would not.
+ */
+export function pruneEarthquakesBefore(db: DatabaseSync, beforeUtc: string): number {
+  const doomed = db
+    .prepare('SELECT row_id FROM earthquakes WHERE time_utc < ?')
+    .all(beforeUtc)
+    .map((row) => row['row_id'] as number);
+
+  if (doomed.length === 0) return 0;
+
+  const dropIndexRow = db.prepare('DELETE FROM earthquakes_rtree WHERE id = ?');
+  const dropEvent = db.prepare('DELETE FROM earthquakes WHERE row_id = ?');
+
+  db.exec('BEGIN');
+  try {
+    for (const rowId of doomed) {
+      dropIndexRow.run(rowId);
+      dropEvent.run(rowId);
+    }
+    db.exec('COMMIT');
+  } catch (error: unknown) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+
+  return doomed.length;
+}
+
 export function queryEarthquakes(
   db: DatabaseSync,
   query: EarthquakeQuery = {},

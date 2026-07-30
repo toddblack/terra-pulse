@@ -1,12 +1,13 @@
 import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
-import { useVisibleEarthquakes } from '../globe/useVisibleEarthquakes';
+import { useEarthquakesUpToPlayhead } from '../globe/useVisibleEarthquakes';
 import {
   KINEMATIC_GROUPS,
   KINEMATIC_LABELS,
   kinematicColorHex,
 } from '../layers/plate-kinematics';
 import { faultColorHex } from '../layers/fault-encoding';
+import { formatRange } from './RangeControls';
 import { OVERLAY_REGISTRATIONS, isOverlayVisible } from '../layers/registry';
 import {
   DEPTH_BINS,
@@ -55,8 +56,11 @@ export function DepthLegend() {
   const lastSyncedAt = useEarthquakeStore((state) => state.lastSyncedAt);
   const refresh = useEarthquakeStore((state) => state.refresh);
   const minMagnitude = useEarthquakeStore((state) => state.minMagnitude);
+  const isolateBand = useEarthquakeStore((state) => state.isolateBand);
   const windowHours = useEarthquakeStore((state) => state.windowHours);
-  const visibleCount = useVisibleEarthquakes().length;
+  // Counts what's on screen, which during playback is fewer than the window
+  // holds — a footnote claiming 900 events while 40 are drawn would be wrong.
+  const visibleCount = useEarthquakesUpToPlayhead().length;
   const colors = depthLegendColors(backdropTone);
 
   // The boundary key only earns its space while that layer is actually on.
@@ -202,7 +206,7 @@ export function DepthLegend() {
           ? 'Loading…'
           : status === 'error'
             ? 'Failed to load'
-            : `${visibleCount} events · ${formatWindow(windowHours)} · M${minMagnitude}+`}
+            : `${visibleCount} events · ${formatWindow(windowHours)} · ${formatRange(minMagnitude, isolateBand)}`}
         {status !== 'loading' && (
           <span className={styles.freshness}>
             updated {formatFreshness(lastSyncedAt)}

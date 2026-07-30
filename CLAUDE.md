@@ -32,24 +32,33 @@ Two modes, deliberately separate:
 
 ## Current phase
 
-**Phase 1 — Foundation. Complete.** Milestone met: the globe shows the last
-72 hours of earthquakes, clickable, on two basemaps.
+**Phase 1 — Foundation. Complete.**
+**Phase 2 — Layers & Time. Substantially complete.**
 
-- [x] Monorepo scaffold (`apps/desktop`, `packages/*`)
-- [x] Electron + React + Vite + TS, hardened main/preload
-- [x] Cesium viewer mounted, camera controls
-- [x] Basemap switching (OSM / GIBS relief / GEBCO seafloor)
-- [x] SQLite + R-Tree schema and migration runner
-- [x] USGS ingest adapter → normalized schema
-- [x] Earthquake event layer (size = magnitude, colour = depth)
-- [x] Click-to-inspect panel
+Shipped in Phase 2:
+
+- [x] Layer registry + toggle panel, all layers declarative entries
+- [x] Basemaps: OSM / GIBS relief / GEBCO seafloor *(plain Blue Marble dropped —
+      relief is the same imagery with the ocean floor visible)*
+- [x] Plate boundaries — Bird PB2002, three kinematic groups, cased lines
+- [x] Subduction zones — USGS Slab2, sawteeth pointing down-dip
+- [x] Active faults — GEM, 13,696 features, revealed by zoom tier
+- [x] Earthquake encoding: depth = colour, magnitude = size, M5.5+ = ring,
+      last 24h = red stroke
+- [x] Time scrubber with playback; recency measured from the playhead
+- [x] Coverage tiers (24h–30d), magnitude floors, band isolation, pruning
+
+**Remaining in Phase 2:** antipode chord visualisation.
+
+**Next big piece:** the historical archive — see the "Part 2" section of the
+plan file and `PROJECT_PLAN` §Storage. **Migration safety is a hard
+prerequisite**: migration 2 currently drops the earthquakes table, which is
+only safe while everything is refetchable.
 
 `engine/` is not scaffolded — nothing needs it until Phase 4, and an empty
 Python package would just be scaffolding ahead of need.
 
-**Next: Phase 2 — Layers & Time.** See `PROJECT_PLAN.md` §9.
-
-### Conventions this phase established
+### Conventions these phases established
 
 - Every globe layer is a factory returning `GlobeLayer`, holding its Cesium
   objects in closure. See `layers/osm-basemap.ts` for the smallest example.
@@ -58,10 +67,26 @@ Python package would just be scaffolding ahead of need.
   caused a real crash before the guard existed.
 - Visual encoding lives in pure, Cesium-free modules (`earthquake-encoding.ts`)
   so it can be unit-tested without a WebGL context.
-- Colour choices are validated with the `dataviz` skill's script against the
-  actual basemap colours, not eyeballed.
 - The renderer never reaches the network directly. Ingest runs in main; the
   renderer sees normalised data over IPC.
+- **Measure, don't assume.** Nearly every correction this project has needed
+  came from measuring something that looked obvious. Colours are validated with
+  the `dataviz` script against the *actual backdrop* — not a generic surface,
+  and not the wrong one: boundary colours passed against near-black and failed
+  at 1.01:1 over blue water.
+- **Pick the right metric.** WCAG contrast measures luminance only. For a mark
+  whose job is carried by hue — a red stroke on a blue dot — use OKLab ΔE.
+  A 3:1 contrast bar rejected a perfectly good colour once; even white scores
+  2.50:1 against the palest depth step.
+- **Fake viewers in tests must really destroy.** A mock `remove()` that only
+  recorded the call let a crash-on-unmount ship: Cesium's real `remove()`
+  destroys, and destroying exposed a shared-material bug.
+- **Never read `Date.now()` during render** — use `useNow`. It's impure, and
+  nothing re-renders when a clock ticks, so the value silently goes stale.
+- Layers declare `consumesEvents`; those that don't are not rebuilt when the
+  poll lands. Geology doesn't change every five minutes.
+- `COVERAGE_TIERS` in `packages/schema` is read by **both** main and renderer,
+  so what the UI offers and what ingest fetches cannot drift apart.
 
 ---
 
@@ -127,10 +152,27 @@ interface GlobeLayer {
 
 ## Caching strategy
 
-- **Tier 1:** one-time backfill, M4.5+ global, 1970–present. ~110k rows. This
-  is the analysis engine's working catalog.
+- **Rolling cache (shipped):** driven by `COVERAGE_TIERS` in
+  `packages/schema` — a single definition read by *both* main (what to ingest)
+  and the renderer (what the selectors may offer), so the two can't drift.
+  Currently 7d at M1+ and 30d at M2.5+. Pruned to the longest tier on every
+  backfill; nothing else ever deletes.
+- **Tier 1 (not built):** one-time backfill, M4.5+ global, 1970–present.
+  **294,647 rows, ~62 MB** — measured. An earlier ~110k estimate here was wrong
+  by 2.7×.
 - **Tier 2:** on-demand cache keyed by (time window, magnitude, bbox), with TTL
   and a size cap. Do not pre-fetch the world.
+
+**Magnitude floors are `[1, 2.5, 4.5, 5.5]`** and every value is load-bearing:
+M2.5 is USGS's own small-event threshold, M4.5 is where global completeness
+begins, M5.5 is the only floor flat since 1970. Round numbers were replaced
+because they sat *beside* the real thresholds rather than on them.
+
+**Analysis must use M5.5+, not M4.5+.** Measured global counts per decade:
+M4.5+ rose 24× since the 1950s and 3× since 1970 — that is seismometer
+deployment, not seismicity. M5.5+ varies 12% per decade. Running a
+decade-scale correlation on M4.5+ would find a strong spurious signal against
+any slow-varying driver, the solar cycle above all.
 
 ---
 

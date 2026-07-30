@@ -19,6 +19,14 @@ interface UseGlobeLayersOptions {
   layerVisibility: Record<string, boolean>;
   events: readonly EarthquakeEvent[];
   /**
+   * The window layers should currently display, or `null` for "everything".
+   *
+   * Passed as a window rather than a playhead because `GlobeLayer.setTimeWindow`
+   * is the contract every layer already implements — playback is a moving upper
+   * bound on that window, not a new concept.
+   */
+  timeWindow: { startMs: number; endMs: number } | null;
+  /**
    * Changes once the viewer has been created. Effects here read the viewer
    * through a ref, which doesn't trigger re-renders, so this is what tells
    * them the viewer now exists.
@@ -73,22 +81,36 @@ function useFirstPaintReady(
   return ready;
 }
 
-/** Mounts a set of overlays and returns the matching teardown. */
+/**
+ * Mounts a set of overlays and returns the matching teardown.
+ *
+ * `track` receives the mounted layers so the caller can keep pushing time
+ * windows at them after mount, and drops them again on teardown.
+ */
 function mountOverlays(
   viewer: Cesium.Viewer,
   registrations: readonly OverlayRegistration[],
   context: { events: readonly EarthquakeEvent[]; backdropTone: ReturnType<typeof backdropToneFor> },
+  window: { startMs: number; endMs: number } | null,
+  track: Set<GlobeLayer>,
 ): () => void {
   const mounted: GlobeLayer[] = [];
 
   for (const registration of registrations) {
     const layer = registration.create(context);
     layer.mount(viewer);
+    // Apply the current window immediately: a layer mounted mid-playback must
+    // not flash its full event set before the next tick corrects it.
+    if (window) layer.setTimeWindow(new Date(window.startMs), new Date(window.endMs));
     mounted.push(layer);
+    track.add(layer);
   }
 
   return () => {
-    for (const layer of mounted) layer.unmount();
+    for (const layer of mounted) {
+      track.delete(layer);
+      layer.unmount();
+    }
   };
 }
 
@@ -111,6 +133,7 @@ export function useGlobeLayers({
   activeBasemapId,
   layerVisibility,
   events,
+  timeWindow,
   viewerReadyToken,
 }: UseGlobeLayersOptions): void {
   // --- Basemap: exclusive, mounts immediately (it *is* the planet) ---------
@@ -149,6 +172,23 @@ export function useGlobeLayers({
     eventsRef.current = events;
   }, [events]);
 
+  /**
+   * Every currently-mounted overlay, so the playhead can be pushed to them
+   * without remounting anything.
+   *
+   * Playback updates the window up to twenty times a second. Rebuilding layers
+   * at that rate is out of the question, which is why `setTimeWindow` exists on
+   * the contract — it's the cheap channel. A Set rather than an array because
+   * two independent effects add and remove from it.
+   */
+  const mountedLayersRef = useRef<Set<GlobeLayer>>(new Set());
+
+  /** Read by the mount effects without making them depend on the playhead. */
+  const timeWindowRef = useRef(timeWindow);
+  useEffect(() => {
+    timeWindowRef.current = timeWindow;
+  }, [timeWindow]);
+
   // --- Static overlays: geology. Rebuilt only on tone or toggle changes ----
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -160,6 +200,8 @@ export function useGlobeLayers({
         (entry) => isOverlayVisible(entry, layerVisibility) && entry.consumesEvents !== true,
       ),
       { events: eventsRef.current, backdropTone },
+      timeWindowRef.current,
+      mountedLayersRef.current,
     );
     // `layerVisibility` keeps a stable identity across unrelated store writes
     // (Zustand merges shallowly), so it only changes when a layer is toggled.
@@ -176,6 +218,22 @@ export function useGlobeLayers({
         (entry) => isOverlayVisible(entry, layerVisibility) && entry.consumesEvents === true,
       ),
       { events, backdropTone },
+      timeWindowRef.current,
+      mountedLayersRef.current,
     );
   }, [viewerRef, events, backdropTone, layerVisibility, firstPaintReady, viewerReadyToken]);
+
+  // --- Playhead: pushed to whatever is mounted, no rebuild ----------------
+  //
+  // Declared last so it runs after the mount effects in any commit that does
+  // both — a layer mounted this tick has already had the window applied by
+  // `mountOverlays`, and this then keeps it current.
+  useEffect(() => {
+    if (!timeWindow) return;
+    const start = new Date(timeWindow.startMs);
+    const end = new Date(timeWindow.endMs);
+    for (const layer of mountedLayersRef.current) {
+      layer.setTimeWindow(start, end);
+    }
+  }, [timeWindow]);
 }

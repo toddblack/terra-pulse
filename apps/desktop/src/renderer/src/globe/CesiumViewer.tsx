@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import { useGlobeStore } from '../state/useGlobeStore';
-import { useEarthquakeStore } from '../state/useEarthquakeStore';
+import { useEarthquakeStore, windowStartMs } from '../state/useEarthquakeStore';
 import { eventIdFromEntityId } from '../layers/earthquake-layer';
 import { useGlobeLayers } from './useGlobeLayers';
+import { useNow } from './useNow';
+import { usePlayback } from './usePlayback';
 import { useVisibleEarthquakes } from './useVisibleEarthquakes';
 import styles from './CesiumViewer.module.css';
 
@@ -33,6 +35,26 @@ export function CesiumViewer() {
   // The filtered projection, not the canonical set — the layer, the camera
   // and the selection all operate on what's actually on screen.
   const events = useVisibleEarthquakes();
+  const windowHours = useEarthquakeStore((state) => state.windowHours);
+  const playheadMs = useEarthquakeStore((state) => state.playheadMs);
+
+  /**
+   * The window the layers should display.
+   *
+   * Always a window, never null — live mode is simply a window whose end sits
+   * slightly in the future, which keeps one code path instead of two. The
+   * margin exists so a freshly-polled event can't land after the end and be
+   * hidden; the earthquake layer clamps it back to now before measuring
+   * recency, so it doesn't drag the 24-hour boundary along with it.
+   */
+  const nowMs = useNow();
+  const timeWindow = useMemo(
+    () => ({
+      startMs: windowStartMs(windowHours, nowMs),
+      endMs: playheadMs ?? nowMs + 60 * 60 * 1000,
+    }),
+    [windowHours, playheadMs, nowMs],
+  );
   const select = useEarthquakeStore((state) => state.select);
   const selectedEventId = useEarthquakeStore((state) => state.selectedEventId);
   const focusRequest = useEarthquakeStore((state) => state.focusRequest);
@@ -69,8 +91,12 @@ export function CesiumViewer() {
     activeBasemapId,
     layerVisibility,
     events,
+    timeWindow,
     viewerReadyToken,
   });
+
+  // Drives the playhead forward while playback is running.
+  usePlayback();
 
   // Globe click → store.
   //

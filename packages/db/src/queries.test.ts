@@ -4,6 +4,7 @@ import { openDatabase } from './client';
 import {
   catalogSignature,
   insertEarthquakes,
+  pruneEarthquakesBefore,
   queryEarthquakes,
   queryEarthquakesInBoundingBox,
   signaturesMatch,
@@ -169,5 +170,76 @@ describe('catalogSignature', () => {
 
     expect(after.count).toBe(before.count);
     expect(signaturesMatch(before, after)).toBe(false);
+  });
+});
+
+describe('pruneEarthquakesBefore', () => {
+  function seed() {
+    const db = openDatabase(':memory:');
+    insertEarthquakes(db, [
+      makeEvent({ id: 'ancient', timeUtc: '2026-06-01T00:00:00.000Z' }),
+      makeEvent({ id: 'old', timeUtc: '2026-06-20T00:00:00.000Z' }),
+      makeEvent({ id: 'recent', timeUtc: '2026-07-20T00:00:00.000Z' }),
+    ]);
+    return db;
+  }
+
+  it('removes events before the cutoff and keeps the rest', () => {
+    const db = seed();
+
+    const removed = pruneEarthquakesBefore(db, '2026-07-01T00:00:00.000Z');
+
+    expect(removed).toBe(2);
+    expect(queryEarthquakes(db).map((event) => event.id)).toEqual(['recent']);
+  });
+
+  it('clears the spatial index too, leaving no orphaned rows', () => {
+    // The failure this guards is silent: a stranded R-Tree row still matches a
+    // bounding box, but joins to a deleted event. `findCandidateMatches` would
+    // quietly stop recognising duplicates rather than throwing.
+    const db = seed();
+
+    pruneEarthquakesBefore(db, '2026-07-01T00:00:00.000Z');
+
+    const indexRows = db.prepare('SELECT COUNT(*) AS n FROM earthquakes_rtree').get();
+    expect(Number(indexRows?.['n'])).toBe(1);
+
+    // And the surviving event is still reachable *through* the index.
+    const found = queryEarthquakesInBoundingBox(db, {
+      minLon: -113,
+      maxLon: -111,
+      minLat: 35,
+      maxLat: 37,
+    });
+    expect(found.map((event) => event.id)).toEqual(['recent']);
+  });
+
+  it('is a no-op when nothing is old enough', () => {
+    const db = seed();
+
+    expect(pruneEarthquakesBefore(db, '2020-01-01T00:00:00.000Z')).toBe(0);
+    expect(queryEarthquakes(db)).toHaveLength(3);
+  });
+
+  it('leaves an event exactly on the cutoff in place', () => {
+    // The cutoff is "older than", so the boundary event is still in window.
+    const db = seed();
+
+    pruneEarthquakesBefore(db, '2026-06-20T00:00:00.000Z');
+
+    expect(queryEarthquakes(db).map((event) => event.id)).toEqual(['recent', 'old']);
+  });
+
+  it('lets a pruned event be re-ingested cleanly', () => {
+    // Backfill re-fetches overlapping ranges every launch, so a pruned event
+    // reappearing must not collide on its unique id or double-index.
+    const db = seed();
+    pruneEarthquakesBefore(db, '2026-07-01T00:00:00.000Z');
+
+    insertEarthquakes(db, [makeEvent({ id: 'old', timeUtc: '2026-06-20T00:00:00.000Z' })]);
+
+    expect(queryEarthquakes(db)).toHaveLength(2);
+    const indexRows = db.prepare('SELECT COUNT(*) AS n FROM earthquakes_rtree').get();
+    expect(Number(indexRows?.['n'])).toBe(2);
   });
 });
