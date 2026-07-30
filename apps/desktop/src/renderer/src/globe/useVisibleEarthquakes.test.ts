@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { EarthquakeEvent } from '@terra-pulse/schema';
-import { filterEarthquakes } from './useVisibleEarthquakes';
+import { filterEarthquakes, narrowToPlayhead } from './useVisibleEarthquakes';
 
 const NOW = Date.parse('2026-07-28T12:00:00.000Z');
 
@@ -120,5 +120,99 @@ describe('filterEarthquakes — combined', () => {
     filterEarthquakes(events, 1, 72, NOW);
 
     expect(events.map((e) => e.id)).toEqual(before);
+  });
+});
+
+describe('narrowToPlayhead', () => {
+  const events = [
+    makeEvent({ id: 'oldest', timeUtc: hoursAgo(60) }),
+    makeEvent({ id: 'middle', timeUtc: hoursAgo(30) }),
+    makeEvent({ id: 'newest', timeUtc: hoursAgo(2) }),
+  ];
+
+  it('returns everything when live', () => {
+    expect(narrowToPlayhead(events, null)).toHaveLength(3);
+  });
+
+  it('drops events later than the playhead', () => {
+    const playhead = NOW - 20 * 60 * 60 * 1000;
+    const shown = narrowToPlayhead(events, playhead).map((event) => event.id);
+
+    // A replay at T-20h has not reached the event from 2 hours ago.
+    expect(shown).toEqual(['oldest', 'middle']);
+  });
+
+  it('includes an event landing exactly on the playhead', () => {
+    const playhead = Date.parse(hoursAgo(30));
+    expect(narrowToPlayhead(events, playhead).map((e) => e.id)).toEqual(['oldest', 'middle']);
+  });
+
+  it('shows nothing when the playhead precedes every event', () => {
+    expect(narrowToPlayhead(events, NOW - 100 * 60 * 60 * 1000)).toHaveLength(0);
+  });
+
+  it('excludes an unparseable timestamp rather than placing it arbitrarily', () => {
+    const broken = [makeEvent({ id: 'broken', timeUtc: 'not a date' })];
+    expect(narrowToPlayhead(broken, NOW)).toHaveLength(0);
+  });
+
+  it('leaves the window filter alone — the two compose', () => {
+    // narrowToPlayhead only trims the upper bound; the magnitude and window
+    // rules stay with filterEarthquakes.
+    const windowed = filterEarthquakes(events, 1, 48, NOW);
+    expect(windowed).toHaveLength(2);
+    expect(narrowToPlayhead(windowed, NOW)).toHaveLength(2);
+  });
+});
+
+describe('band isolation', () => {
+  const spread = [
+    makeEvent({ id: 'micro', magnitude: 1.4 }),
+    makeEvent({ id: 'edge-low', magnitude: 2.49 }),
+    makeEvent({ id: 'edge-on', magnitude: 2.5 }),
+    makeEvent({ id: 'moderate', magnitude: 4.8 }),
+    makeEvent({ id: 'major', magnitude: 7.1 }),
+  ];
+
+  it('takes everything above the floor when no ceiling is given', () => {
+    const shown = filterEarthquakes(spread, 1, 72, NOW).map((e) => e.id);
+    expect(shown).toHaveLength(5);
+  });
+
+  it('keeps only the band when a ceiling is given', () => {
+    const shown = filterEarthquakes(spread, 1, 72, NOW, 2.5).map((e) => e.id);
+    expect(shown).toEqual(['micro', 'edge-low']);
+  });
+
+  it('excludes an event sitting exactly on the ceiling', () => {
+    // Exclusive, so adjacent bands tile without double-counting: an M2.5
+    // belongs to M2.5-4.5 and never also to M1-2.5.
+    const shown = filterEarthquakes(spread, 1, 72, NOW, 2.5).map((e) => e.id);
+    expect(shown).not.toContain('edge-on');
+
+    const next = filterEarthquakes(spread, 2.5, 72, NOW, 4.5).map((e) => e.id);
+    expect(next).toContain('edge-on');
+  });
+
+  it('tiles bands with no gaps and no overlaps', () => {
+    // Every event lands in exactly one band, which is what makes the counts
+    // across bands add up to the unfiltered total.
+    const bands: [number, number | null][] = [
+      [1, 2.5],
+      [2.5, 4.5],
+      [4.5, 5.5],
+      [5.5, null],
+    ];
+    const seen = bands.flatMap(([floor, ceiling]) =>
+      filterEarthquakes(spread, floor, 72, NOW, ceiling).map((e) => e.id),
+    );
+
+    expect(seen).toHaveLength(spread.length);
+    expect(new Set(seen).size).toBe(spread.length);
+  });
+
+  it('hides the largest events, which is the whole point and the whole risk', () => {
+    const shown = filterEarthquakes(spread, 1, 72, NOW, 2.5).map((e) => e.id);
+    expect(shown).not.toContain('major');
   });
 });

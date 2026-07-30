@@ -39,18 +39,38 @@ export function createEarthquakeLayer(
   let visible = true;
   let timeWindow: { startMs: number; endMs: number } | null = null;
 
+  const halo = Cesium.Color.fromCssColorString(haloColorHex(tone));
+  const recentHalo = Cesium.Color.fromCssColorString(recentHaloColorHex(tone));
+
+  /**
+   * Entity handles per event, captured at build time.
+   *
+   * `applyVisibility` runs on every playhead tick — up to twenty times a second
+   * during playback — and two `getById` hash lookups per event per tick is work
+   * that never needed doing. Holding the references costs one map.
+   */
+  interface EventEntities {
+    event: EarthquakeEvent;
+    timeMs: number;
+    dot: Cesium.Entity;
+    ring: Cesium.Entity | null;
+    /** Last recency state written, so unchanged strokes aren't reassigned. */
+    strokedRecent: boolean;
+  }
+  let entityIndex: EventEntities[] = [];
+
   function buildEntities(target: Cesium.CustomDataSource): void {
-    const halo = Cesium.Color.fromCssColorString(haloColorHex(tone));
-    const recentHalo = Cesium.Color.fromCssColorString(recentHaloColorHex(tone));
     const ringColor = Cesium.Color.fromCssColorString(emphasisRingColorHex(tone));
     // One "now" for the whole build, so two events either side of the 24h
     // boundary can't disagree within a single render.
     const nowMs = Date.now();
+    entityIndex = [];
 
     for (const event of events) {
       // Ring first, so the dot draws over it rather than under.
+      let ring: Cesium.Entity | null = null;
       if (isEmphasized(event.magnitude)) {
-        target.entities.add({
+        ring = target.entities.add({
           id: ringEntityId(event.id),
           position: Cesium.Cartesian3.fromDegrees(event.longitude, event.latitude),
           point: {
@@ -64,7 +84,8 @@ export function createEarthquakeLayer(
         });
       }
 
-      target.entities.add({
+      const recent = isRecentEvent(event.timeUtc, nowMs);
+      const dot = target.entities.add({
         // The USGS id doubles as the Cesium entity id, so click-picking maps
         // straight back to the event without a side lookup table.
         id: event.id,
@@ -78,10 +99,45 @@ export function createEarthquakeLayer(
           // A red, slightly heavier stroke on anything from the last 24 hours.
           // Independent of the emphasis ring, so a recent large event shows
           // both: red stroke for "today", ring for "big".
-          outlineColor: isRecentEvent(event.timeUtc, nowMs) ? recentHalo : halo,
-          outlineWidth: isRecentEvent(event.timeUtc, nowMs) ? RECENT_HALO_WIDTH : HALO_WIDTH,
+          outlineColor: recent ? recentHalo : halo,
+          outlineWidth: recent ? RECENT_HALO_WIDTH : HALO_WIDTH,
         },
       });
+
+      entityIndex.push({
+        event,
+        timeMs: Date.parse(event.timeUtc),
+        dot,
+        ring,
+        strokedRecent: recent,
+      });
+    }
+  }
+
+  /**
+   * Repaints the recency stroke relative to an instant.
+   *
+   * During playback this is what makes an event flash red as it happens and
+   * settle to neutral a simulated day later — the encoding tracks the playhead
+   * rather than the wall clock, so "past 24 hours" stays true of whatever
+   * moment is on screen.
+   *
+   * Only writes when the state actually flips. Reassigning an unchanged colour
+   * on every entity twenty times a second is exactly the kind of work that
+   * turns smooth playback into a stutter.
+   */
+  function applyRecency(atMs: number): void {
+    for (const entry of entityIndex) {
+      const recent = isRecentEvent(entry.event.timeUtc, atMs);
+      if (recent === entry.strokedRecent) continue;
+      entry.strokedRecent = recent;
+
+      const point = entry.dot.point;
+      if (!point) continue;
+      point.outlineColor = new Cesium.ConstantProperty(recent ? recentHalo : halo);
+      point.outlineWidth = new Cesium.ConstantProperty(
+        recent ? RECENT_HALO_WIDTH : HALO_WIDTH,
+      );
     }
   }
 
@@ -91,23 +147,31 @@ export function createEarthquakeLayer(
     dataSource.show = visible;
 
     if (timeWindow === null) {
-      for (const entity of dataSource.entities.values) entity.show = true;
+      for (const entry of entityIndex) {
+        entry.dot.show = true;
+        if (entry.ring) entry.ring.show = true;
+      }
+      applyRecency(Date.now());
       return;
     }
 
-    for (const event of events) {
-      const timeMs = Date.parse(event.timeUtc);
+    for (const entry of entityIndex) {
       const inWindow =
-        Number.isFinite(timeMs) && timeMs >= timeWindow.startMs && timeMs <= timeWindow.endMs;
+        Number.isFinite(entry.timeMs) &&
+        entry.timeMs >= timeWindow.startMs &&
+        entry.timeMs <= timeWindow.endMs;
 
       // Dot and ring must move together, or a filtered-out event leaves an
       // orphaned ring floating on the globe.
-      const dot = dataSource.entities.getById(event.id);
-      if (dot) dot.show = inWindow;
-
-      const ring = dataSource.entities.getById(ringEntityId(event.id));
-      if (ring) ring.show = inWindow;
+      entry.dot.show = inWindow;
+      if (entry.ring) entry.ring.show = inWindow;
     }
+
+    // The window's end is the playhead, so recency is measured from there —
+    // clamped to now, because live mode passes an end slightly in the future so
+    // that a freshly-polled event can't fall outside the window. Without the
+    // clamp that margin would drag the 24-hour boundary forward with it.
+    applyRecency(Math.min(timeWindow.endMs, Date.now()));
   }
 
   return {

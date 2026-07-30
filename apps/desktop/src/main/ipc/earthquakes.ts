@@ -4,6 +4,7 @@ import {
   catalogSignature,
   findCandidateMatches,
   insertEarthquakes,
+  pruneEarthquakesBefore,
   queryEarthquakes,
   signaturesMatch,
   type EarthquakeQuery,
@@ -14,19 +15,32 @@ import {
   fetchRecentEarthquakes,
   isProbableDuplicate,
 } from '@terra-pulse/ingest';
-import type { EarthquakeEvent, EarthquakeSyncResult } from '@terra-pulse/schema';
+import {
+  ingestPasses,
+  longestCoverageHours,
+  type EarthquakeEvent,
+  type EarthquakeSyncResult,
+} from '@terra-pulse/schema';
 
 /**
- * The widest range the UI can ask for. Everything the user selects is a subset
- * of this, which is why changing the range never needs a fetch.
+ * What gets fetched is derived from `COVERAGE_TIERS`, not declared here.
  *
- * The floor is M1.0 rather than the display default because the low end is
- * where swarm and induced seismicity live. USGS alone is heavily US-biased
- * there (86% at M1+, 6% at M4+); EMSC fills the non-US gap. See PROJECT_PLAN
- * §10 for the measurements.
+ * The renderer's selectors read the same constant, so the set of views the UI
+ * offers and the set the database actually holds cannot drift apart. Six tiers
+ * collapse to two fetches — 7 days at M1+, 30 days at M2.5+ — because tiers
+ * nest and `ingestPasses` keeps only the longest window per floor.
+ *
+ * The low floor exists because that's where swarm and induced seismicity live.
+ * USGS alone is heavily US-biased there (86% at M1+, 6% at M4+); EMSC fills the
+ * non-US gap. See PROJECT_PLAN §10.
  */
-const INGEST_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
-const INGEST_MIN_MAGNITUDE = 1.0;
+const HOUR_MS = 60 * 60 * 1000;
+
+/** The oldest data worth keeping — anything past the longest tier is dead. */
+const RETENTION_MS = longestCoverageHours() * HOUR_MS;
+
+/** The floor of the densest pass, used by the poll and the feed filter. */
+const INGEST_MIN_MAGNITUDE = Math.min(...ingestPasses().map((pass) => pass.minMagnitude));
 
 /**
  * How often the background poll runs.
@@ -55,8 +69,11 @@ const POLL_INTERVAL_MS = 5 * 60_000;
  * rule rather than "M1+, mostly". Adapters stay faithful to their source
  * (non-negotiable #7); policy lives at the call site.
  */
-function atOrAboveFloor(events: EarthquakeEvent[]): EarthquakeEvent[] {
-  return events.filter((event) => event.magnitude >= INGEST_MIN_MAGNITUDE);
+function atOrAboveFloor(
+  events: EarthquakeEvent[],
+  floor: number = INGEST_MIN_MAGNITUDE,
+): EarthquakeEvent[] {
+  return events.filter((event) => event.magnitude >= floor);
 }
 
 /**
@@ -80,34 +97,53 @@ function insertEmscFillingGaps(db: DatabaseSync, emscEvents: EarthquakeEvent[]):
 }
 
 /**
- * Backfill the full display window. Runs on every launch — this is what closes
- * the gap from the app having been shut, and it's the only endpoint that takes
- * an arbitrary time range.
+ * Backfill every coverage tier. Runs on every launch — this is what closes the
+ * gap from the app having been shut, and FDSN's is the only endpoint taking an
+ * arbitrary time range.
+ *
+ * One pass per distinct magnitude floor, shortest window first so the dense
+ * recent data lands before the long sparse sweep. Passes overlap by design: the
+ * 30-day pass re-reads the last 7 days at its own floor, and the upsert absorbs
+ * that without duplicating rows.
  */
 async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]> {
   const endUtc = new Date();
-  const startUtc = new Date(endUtc.getTime() - INGEST_WINDOW_MS);
-  // USGS first and unconditionally — it is the authoritative source, so its
-  // records must already be present before EMSC is tested against them.
-  const usgsEvents = await fetchRecentEarthquakes({
-    startUtc,
-    endUtc,
-    minMagnitude: INGEST_MIN_MAGNITUDE,
-  });
-  insertEarthquakes(db, atOrAboveFloor(usgsEvents));
+  const collected: EarthquakeEvent[] = [];
 
-  // EMSC is supplementary: if it fails, the globe still works with USGS data.
-  try {
-    const emscEvents = await fetchEmscEarthquakes({
+  for (const pass of ingestPasses()) {
+    const startUtc = new Date(endUtc.getTime() - pass.windowHours * HOUR_MS);
+
+    // USGS first and unconditionally — it is the authoritative source, so its
+    // records must already be present before EMSC is tested against them.
+    const usgsEvents = await fetchRecentEarthquakes({
       startUtc,
-      minMagnitude: INGEST_MIN_MAGNITUDE,
+      endUtc,
+      minMagnitude: pass.minMagnitude,
     });
-    insertEmscFillingGaps(db, atOrAboveFloor(emscEvents));
-  } catch (error: unknown) {
-    console.error('EMSC backfill failed; continuing with USGS only', error);
+    insertEarthquakes(db, atOrAboveFloor(usgsEvents, pass.minMagnitude));
+    collected.push(...usgsEvents);
+
+    // EMSC is supplementary: if it fails, the globe still works with USGS data.
+    // Scoped per pass so a failure on the long sweep doesn't lose the short one.
+    try {
+      const emscEvents = await fetchEmscEarthquakes({
+        startUtc,
+        minMagnitude: pass.minMagnitude,
+      });
+      insertEmscFillingGaps(db, atOrAboveFloor(emscEvents, pass.minMagnitude));
+    } catch (error: unknown) {
+      console.error(
+        `EMSC backfill failed for the ${pass.label} pass; continuing with USGS only`,
+        error,
+      );
+    }
   }
 
-  return usgsEvents;
+  // Nothing here ever expires on its own — the upsert only ever adds. Without
+  // this the "rolling window" would grow for the lifetime of the install.
+  pruneEarthquakesBefore(db, new Date(endUtc.getTime() - RETENTION_MS).toISOString());
+
+  return collected;
 }
 
 /**
