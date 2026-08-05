@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import type {
+  AftershockSequence,
   ArchiveProgress,
   EarthquakeEvent,
   EarthquakeQuery,
@@ -23,6 +24,8 @@ declare global {
         onLargeEvent(callback: (event: EarthquakeEvent) => void): () => void;
         /** What arrived while the app was closed, or null. Fixed at launch. */
         missed(): Promise<MissedEvents | null>;
+        /** What actually followed an event. Null if the id isn't catalogued. */
+        sequence(eventId: string): Promise<AftershockSequence | null>;
       };
       archive: {
         status(): Promise<ArchiveProgress>;

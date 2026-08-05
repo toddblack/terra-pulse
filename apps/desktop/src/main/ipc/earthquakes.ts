@@ -3,8 +3,10 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   catalogSignature,
   findCandidateMatches,
+  getEarthquakeById,
   insertEarthquakes,
   pruneEarthquakesBefore,
+  queryAftershockSequence,
   queryEarthquakes,
   signaturesMatch,
   type EarthquakeQuery,
@@ -21,6 +23,7 @@ import { markSeenThrough } from './missed-events';
 import {
   ingestPasses,
   longestCoverageHours,
+  type AftershockSequence,
   type EarthquakeEvent,
   type EarthquakeSyncResult,
 } from '@terra-pulse/schema';
@@ -286,6 +289,32 @@ export function registerEarthquakeIpcHandlers(
     // other half of "only on a live update or a user refresh".
     return await pollOnce(db, alerter);
   });
+
+  /**
+   * The observed aftershock sequence for one event (PROJECT_PLAN §5.9).
+   *
+   * Takes an **id**, not an event. The renderer has the object already, but a
+   * spatial query built from renderer-supplied coordinates would be answering a
+   * question about a mainshock that need not exist; looking it up here means the
+   * window is always centred on a real catalogue row.
+   *
+   * `Date.now()` rather than the renderer's playhead, deliberately. What
+   * followed an earthquake is a historical fact — scrubbing the timeline changes
+   * which events are drawn, not whether the 2011 sequence happened.
+   *
+   * Measured against the real 307k-row catalogue: median 0.7 ms at M5, 9.6 ms at
+   * M7, and 51 ms median / 88 ms worst at M8+ (Tohoku's 1,134 aftershocks take
+   * 82 ms). It runs on a click rather than on a timer, so the handful of M8+
+   * events in the catalogue can afford to block main for a frame or two.
+   */
+  ipcMain.handle(
+    'earthquakes:sequence',
+    (_event, eventId: string): AftershockSequence | null => {
+      const mainshock = getEarthquakeById(db, eventId);
+      if (mainshock === null) return null;
+      return queryAftershockSequence(db, mainshock, Date.now());
+    },
+  );
 }
 
 export { backfillEarthquakes };

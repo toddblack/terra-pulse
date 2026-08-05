@@ -2,6 +2,8 @@ import { antipodeOf, formatLatLon } from '../layers/antipode';
 import { useEarthquakeStore, selectEventById } from '../state/useEarthquakeStore';
 import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { depthClass, depthColorHex } from '../layers/earthquake-encoding';
+import { AftershockSequenceSection } from './AftershockSequence';
+import { hasSequencePanel } from './useAftershockSequence';
 import styles from './EarthquakeInspector.module.css';
 
 function formatUtc(iso: string): string {
@@ -145,6 +147,12 @@ export function EarthquakeInspector() {
             </div>
           )}
         </dl>
+
+        {/* Observation, not forecast: what the catalogue actually recorded
+            after this event. Offered from M5 up (§5.9) — below that the
+            Gardner-Knopoff window is smaller than the catalogue's own floor can
+            usefully fill. */}
+        {hasSequencePanel(event) && <AftershockSequenceSection event={event} />}
 
         {/* The antipode is pure geometry — the point opposite on a sphere — so
             it is offered for any event and stated as a coordinate, not as a

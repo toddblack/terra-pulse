@@ -274,7 +274,7 @@ export const ALERT_MIN_MAGNITUDE = 5.8;
  * clears the slow tail while still excluding the 24-hour feed's older contents
  * on the first poll after launch.
  */
-export const ALERT_MAX_AGE_MS = 60 * 60 * 1000;
+export const ALERT_MAX_AGE_MS = 240 * 60 * 1000;
 
 /**
  * How many events the launch summary lists before trimming.
