@@ -8,7 +8,7 @@ import {
   isFaultZoomTier,
 } from './fault-encoding';
 import { kinematicColorHex, kinematicLineWidth } from './plate-kinematics';
-import faultData from '../data/active-faults.json';
+import { ACTIVE_FAULTS } from './fault-data';
 
 function createFakeViewer(options?: { destroyed?: boolean }): Cesium.Viewer {
   return {
@@ -33,19 +33,19 @@ function createFakeViewer(options?: { destroyed?: boolean }): Cesium.Viewer {
 
 describe('vendored fault data', () => {
   it('is a non-empty array', () => {
-    expect(Array.isArray(faultData)).toBe(true);
-    expect(faultData.length).toBeGreaterThan(0);
+    expect(Array.isArray(ACTIVE_FAULTS)).toBe(true);
+    expect(ACTIVE_FAULTS.length).toBeGreaterThan(0);
   });
 
   it('gives every fault at least two points, as a polyline requires', () => {
-    for (const fault of faultData) {
+    for (const fault of ACTIVE_FAULTS) {
       expect(fault.p.length).toBeGreaterThanOrEqual(4); // 2 points x lon,lat
       expect(fault.p.length % 2).toBe(0);
     }
   });
 
   it('keeps every coordinate in valid geographic range', () => {
-    for (const fault of faultData) {
+    for (const fault of ACTIVE_FAULTS) {
       for (let i = 0; i < fault.p.length; i += 2) {
         expect(Math.abs(fault.p[i]!)).toBeLessThanOrEqual(180);
         expect(Math.abs(fault.p[i + 1]!)).toBeLessThanOrEqual(90);
@@ -54,13 +54,13 @@ describe('vendored fault data', () => {
   });
 
   it('tags every fault with a recognised zoom tier', () => {
-    for (const fault of faultData) {
+    for (const fault of ACTIVE_FAULTS) {
       expect(isFaultZoomTier(fault.z)).toBe(true);
     }
   });
 
   it('uses all three tiers, so zoom filtering actually does something', () => {
-    const tiers = new Set(faultData.map((f) => f.z));
+    const tiers = new Set(ACTIVE_FAULTS.map((f) => f.z));
     expect(tiers.size).toBe(3);
   });
 
@@ -73,7 +73,7 @@ describe('vendored fault data', () => {
     const toRad = Math.PI / 180;
     let longest = 0;
 
-    for (const fault of faultData) {
+    for (const fault of ACTIVE_FAULTS) {
       for (let i = 2; i < fault.p.length; i += 2) {
         const [lon1, lat1, lon2, lat2] = [
           fault.p[i - 2]!,
@@ -156,7 +156,7 @@ describe('active faults layer', () => {
     expect(viewer.scene.primitives.add).toHaveBeenCalledTimes(1);
     const collection = vi.mocked(viewer.scene.primitives.add).mock
       .calls[0]![0] as Cesium.PolylineCollection;
-    expect(collection.length).toBe(faultData.length);
+    expect(collection.length).toBe(ACTIVE_FAULTS.length);
   });
 
   it('gives shorter faults a nearer cutoff than long ones', () => {
@@ -168,8 +168,8 @@ describe('active faults layer', () => {
 
     // Compare a known long fault against a known short one rather than
     // trusting index order.
-    const longIndex = faultData.findIndex((f) => f.z === 0);
-    const shortIndex = faultData.findIndex((f) => f.z === 2);
+    const longIndex = ACTIVE_FAULTS.findIndex((f) => f.z === 0);
+    const shortIndex = ACTIVE_FAULTS.findIndex((f) => f.z === 2);
     const longFar = collection.get(longIndex).distanceDisplayCondition.far;
     const shortFar = collection.get(shortIndex).distanceDisplayCondition.far;
 

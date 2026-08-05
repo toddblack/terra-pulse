@@ -1,6 +1,6 @@
 import * as Cesium from 'cesium';
 import type { BackdropTone, GlobeLayer } from '@terra-pulse/schema';
-import faultData from '../data/active-faults.json';
+import { ACTIVE_FAULTS } from './fault-data';
 import {
   FAULT_LINE_WIDTH,
   faultColorHex,
@@ -25,14 +25,12 @@ import {
  * The cost of that trade, handled in the vendor script rather than here:
  * `PolylineCollection` has no `ArcType.GEODESIC`, so geometry is pre-densified
  * upstream to a 50 km maximum chord.
+ *
+ * **This layer reads only `z` and `p`.** The record shape is declared in
+ * `fault-association.ts` and applied once in `fault-data.ts`; the name and
+ * slip-rate columns exist for the nearest-fault panel. Nothing here should start
+ * depending on them without re-measuring the build cost of 13,696 polylines.
  */
-interface Fault {
-  /** Zoom tier, 0 = long. */
-  z: number;
-  /** Flat [lon, lat, lon, lat, …]. */
-  p: number[];
-}
-
 export function createActiveFaultsLayer(tone: BackdropTone): GlobeLayer {
   let viewer: Cesium.Viewer | null = null;
   let collection: Cesium.PolylineCollection | null = null;
@@ -41,7 +39,7 @@ export function createActiveFaultsLayer(tone: BackdropTone): GlobeLayer {
     const built = new Cesium.PolylineCollection();
     const color = Cesium.Color.fromCssColorString(faultColorHex(tone));
 
-    for (const fault of faultData as Fault[]) {
+    for (const fault of ACTIVE_FAULTS) {
       built.add({
         positions: Cesium.Cartesian3.fromDegreesArray(fault.p),
         width: FAULT_LINE_WIDTH,
