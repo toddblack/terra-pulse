@@ -1,13 +1,17 @@
 import { create } from 'zustand';
-import { minMagnitudeForWindow, type EarthquakeEvent } from '@terra-pulse/schema';
+import {
+  minMagnitudeForWindow,
+  type EarthquakeEvent,
+  type MissedEvents,
+} from '@terra-pulse/schema';
 
 type LoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 /**
- * The widest range main ingests. Every UI selection is a subset of this, so
- * changing the range filters in memory rather than refetching.
+ * A little slack on the queried window, so an event arriving between the query
+ * and the next render isn't clipped at the edge.
  */
-const INGEST_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
+const QUERY_MARGIN_MS = 60 * 60 * 1000;
 
 /**
  * M4.5 rather than the old M4: it's where global completeness begins, so the
@@ -40,7 +44,13 @@ interface EarthquakeState {
   /** When main last successfully reached USGS — drives the freshness label. */
   lastSyncedAt: string | null;
 
-  /** Display filters. Applied in memory over `events`, never refetched. */
+  /**
+   * Display filters.
+   *
+   * These now drive the *query*, not just an in-memory projection — the loaded
+   * set is exactly this window at this floor. Narrowing further (band isolation,
+   * the playhead, the trailing window) still happens in memory over that set.
+   */
   minMagnitude: number;
   windowHours: number;
 
@@ -53,6 +63,35 @@ interface EarthquakeState {
    * live, which is otherwise visually dominated by the events above it.
    */
   isolateBand: boolean;
+
+  /**
+   * Shows only a trailing slice of the window before the playhead, instead of
+   * everything from the window's start.
+   *
+   * The time analogue of `isolateBand`, and it exists for the same reason: over
+   * 57 years "everything up to here" ends with the whole archive on screen and
+   * no way to look at just the 1990s. Off by default — a view that silently
+   * hides most of the span should never be one you're in without asking.
+   *
+   * The trail's length is `previousWindowHours` — one step down the ladder the
+   * selector already offers, so it's a decade inside the all-years view and a
+   * year inside the decade.
+   */
+  trailingWindow: boolean;
+
+  /**
+   * The live view to come back to when an archive span is switched off.
+   *
+   * Captured on the way *into* the archive and restored on the way out, so
+   * toggling a span off returns you exactly where you were rather than to a
+   * default you never chose. `null` while a live tier is active.
+   *
+   * It carries the floor and the trailing flag as well as the window, because
+   * entering the archive changes all three: the floor auto-raises to M5.5 and
+   * the trail is offered. Restoring only the window would drop you back on 7d
+   * stuck at M5.5, which is not where you were.
+   */
+  preArchiveView: { windowHours: number; minMagnitude: number; trailingWindow: boolean } | null;
 
   /**
    * Where the playhead sits, as epoch ms — or `null` for **live**.
@@ -71,6 +110,44 @@ interface EarthquakeState {
   playbackSpeed: number;
 
   /**
+   * The one large event currently being announced, or `null`.
+   *
+   * A single slot rather than a queue: a newer qualifying event replaces the
+   * one on screen. The most recent large earthquake is the fact worth having,
+   * and a backlog to click through would be worse than that.
+   */
+  activeAlert: EarthquakeEvent | null;
+
+  /**
+   * What arrived while the app was shut, shown once on launch.
+   *
+   * Separate from `activeAlert` because they are different promises: an alert
+   * says "this just happened" and is bounded to the last hour; this is a digest
+   * covering however long you were away, and both can legitimately be on screen
+   * at once after a long absence.
+   */
+  missedEvents: MissedEvents | null;
+
+  /**
+   * Whether the browsable event list is open.
+   *
+   * Open by default would put a 20rem panel over the globe on first run before
+   * anyone asked for it; the collapsed button carries the count, so the list is
+   * discoverable without being imposed.
+   */
+  eventListOpen: boolean;
+
+  /**
+   * The event whose antipode chord is on screen, or `null`.
+   *
+   * Its own id rather than a boolean over `selectedEventId`, because the two
+   * can legitimately diverge — and because a mode this visually loud should
+   * never be inferred from something as incidental as what happens to be
+   * selected.
+   */
+  antipodeEventId: string | null;
+
+  /**
    * A pending "fly the camera here" request. Carries a nonce so clicking the
    * same event twice still re-triggers — without it the second click would be
    * a no-op state write and the camera wouldn't move.
@@ -85,7 +162,17 @@ interface EarthquakeState {
   requestFocus: (eventId: string) => void;
   setMinMagnitude: (minMagnitude: number) => void;
   setWindowHours: (windowHours: number) => void;
+  /** Archive spans behave as toggles: picking the active one returns to live. */
+  toggleArchiveSpan: (spanHours: number) => void;
   setIsolateBand: (isolateBand: boolean) => void;
+  setTrailingWindow: (trailingWindow: boolean) => void;
+  announceLargeEvent: (event: EarthquakeEvent) => void;
+  dismissAlert: () => void;
+  showMissedEvents: (missed: MissedEvents) => void;
+  dismissMissedEvents: () => void;
+  setEventListOpen: (open: boolean) => void;
+  showAntipode: (eventId: string) => void;
+  hideAntipode: () => void;
 
   /** Starts playback from the window's beginning, or resumes where paused. */
   play: () => void;
@@ -102,6 +189,41 @@ export function windowStartMs(windowHours: number, now: number = Date.now()): nu
   return now - windowHours * 60 * 60 * 1000;
 }
 
+/**
+ * Loads exactly the window and floor currently selected.
+ *
+ * **Queries by span rather than loading everything and narrowing in memory.**
+ * The old design fetched a fixed widest range — a stale four days, while the UI
+ * offered thirty — and filtered client-side. That was already wrong (selecting
+ * 30d showed 4 days and looked like a quiet month) and it cannot survive the
+ * archive at all: "load the widest range" over 57 years is 294,648 rows, which
+ * is an out-of-memory crash rather than a slow render.
+ *
+ * The magnitude floor goes to SQL too. It is the difference between 26,746 rows
+ * and 294,648 on the same span, and the database can answer it with an index.
+ */
+async function loadForCurrentView(
+  set: (partial: Partial<EarthquakeState>) => void,
+  getState: () => EarthquakeState,
+  failureMessage: string,
+): Promise<void> {
+  const { windowHours, minMagnitude } = getState();
+  set({ status: 'loading', error: null });
+
+  try {
+    const events = await window.terraPulse.earthquakes.query({
+      startUtc: new Date(windowStartMs(windowHours) - QUERY_MARGIN_MS).toISOString(),
+      minMagnitude,
+    });
+    set({ events, status: 'ready', lastSyncedAt: new Date().toISOString() });
+  } catch (error: unknown) {
+    set({
+      status: 'error',
+      error: error instanceof Error ? error.message : failureMessage,
+    });
+  }
+}
+
 export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   events: [],
   status: 'idle',
@@ -111,28 +233,19 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   minMagnitude: DEFAULT_MIN_MAGNITUDE,
   windowHours: DEFAULT_WINDOW_HOURS,
   isolateBand: false,
+  trailingWindow: false,
+  preArchiveView: null,
+  activeAlert: null,
+  missedEvents: null,
+  eventListOpen: false,
+  antipodeEventId: null,
   playheadMs: null,
   isPlaying: false,
   playbackSpeed: DEFAULT_PLAYBACK_SPEED,
   focusRequest: null,
 
   load: async () => {
-    set({ status: 'loading', error: null });
-    try {
-      // Loads the *widest* range the UI can ask for, not the current
-      // selection — narrowing happens in memory (PROJECT_PLAN §7.5: one
-      // canonical copy, all views derived). An unbounded query would instead
-      // drift ever wider as polling accumulates rows.
-      const events = await window.terraPulse.earthquakes.query({
-        startUtc: new Date(Date.now() - INGEST_WINDOW_MS).toISOString(),
-      });
-      set({ events, status: 'ready', lastSyncedAt: new Date().toISOString() });
-    } catch (error: unknown) {
-      set({
-        status: 'error',
-        error: error instanceof Error ? error.message : 'Failed to load earthquakes',
-      });
-    }
+    await loadForCurrentView(set, useEarthquakeStore.getState, 'Failed to load earthquakes');
   },
 
   // Re-fetches from USGS in the main process, then replaces the canonical set.
@@ -140,19 +253,37 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
     set({ status: 'loading', error: null });
     try {
       await window.terraPulse.earthquakes.refresh();
-      const events = await window.terraPulse.earthquakes.query({
-        startUtc: new Date(Date.now() - INGEST_WINDOW_MS).toISOString(),
-      });
-      set({ events, status: 'ready', lastSyncedAt: new Date().toISOString() });
     } catch (error: unknown) {
       set({
         status: 'error',
         error: error instanceof Error ? error.message : 'Failed to refresh earthquakes',
       });
+      return;
     }
+    await loadForCurrentView(set, useEarthquakeStore.getState, 'Failed to refresh earthquakes');
   },
 
   noteSynced: (syncedAt) => set({ lastSyncedAt: syncedAt }),
+
+  announceLargeEvent: (event) => set({ activeAlert: event }),
+
+  dismissAlert: () => set({ activeAlert: null }),
+
+  showMissedEvents: (missed) => set({ missedEvents: missed }),
+
+  dismissMissedEvents: () => set({ missedEvents: null }),
+
+  setEventListOpen: (eventListOpen) => set({ eventListOpen }),
+
+  // Also selects, so the inspector holding the exit control stays open.
+  showAntipode: (eventId) =>
+    set((state) => ({
+      antipodeEventId: eventId,
+      selectedEventId: eventId,
+      focusRequest: { eventId, nonce: (state.focusRequest?.nonce ?? 0) + 1 },
+    })),
+
+  hideAntipode: () => set({ antipodeEventId: null }),
 
   // Changing a display filter clears the selection.
   //
@@ -165,9 +296,17 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   //
   // Note this sets `selectedEventId` directly rather than calling `select`,
   // because `select` also parks a focus request. There is nothing to fly to.
-  setMinMagnitude: (minMagnitude) => set({ minMagnitude, selectedEventId: null }),
+  // Refetches, because the floor is part of the query now. An M5.5 view holds
+  // 26,746 rows where M4.5 holds 294,648 on the same span, so lowering the
+  // floor genuinely needs rows the store does not have.
+  setMinMagnitude: (minMagnitude) => {
+    set({ minMagnitude, selectedEventId: null, antipodeEventId: null });
+    void useEarthquakeStore.getState().load();
+  },
 
   setIsolateBand: (isolateBand) => set({ isolateBand, selectedEventId: null }),
+
+  setTrailingWindow: (trailingWindow) => set({ trailingWindow, selectedEventId: null }),
   // Also drops out of playback: the playhead is an absolute instant, and
   // resizing the window can leave it outside the range entirely.
   //
@@ -175,14 +314,66 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   // deep. Silently keeping M1 on a 30-day view would empty the globe, and an
   // empty globe reads as a quiet month rather than as data we never fetched.
   // Never lowered — that would undo a deliberate choice on the way back down.
-  setWindowHours: (windowHours) =>
+  setWindowHours: (windowHours) => {
     set((state) => ({
       windowHours,
       minMagnitude: Math.max(state.minMagnitude, minMagnitudeForWindow(windowHours)),
       selectedEventId: null,
+      antipodeEventId: null,
       playheadMs: null,
       isPlaying: false,
-    })),
+    }));
+    // After the floor has been raised to match the span, so the query asks for
+    // what the span can actually answer.
+    void useEarthquakeStore.getState().load();
+  },
+
+  /**
+   * Archive spans toggle; live tiers do not.
+   *
+   * The asymmetry is real rather than an inconsistency. A live tier switched
+   * "off" has nothing to fall back to — the globe always shows *some* window —
+   * whereas the archive is a mode you step into and out of, and without this
+   * the History buttons were a one-way door.
+   *
+   * Switching one on remembers the live view; switching it off restores it.
+   * Moving between archive spans keeps the original memory, so 7d → 1y → 10y →
+   * off lands back on 7d rather than on 1y.
+   */
+  toggleArchiveSpan: (spanHours) => {
+    const state = useEarthquakeStore.getState();
+
+    if (state.windowHours === spanHours) {
+      const restored = state.preArchiveView ?? {
+        windowHours: DEFAULT_WINDOW_HOURS,
+        minMagnitude: DEFAULT_MIN_MAGNITUDE,
+        trailingWindow: false,
+      };
+      set({
+        ...restored,
+        preArchiveView: null,
+        selectedEventId: null,
+        playheadMs: null,
+        isPlaying: false,
+      });
+      void useEarthquakeStore.getState().load();
+      return;
+    }
+
+    set((current) => ({
+      // Only captured on the way in. Hopping between archive spans must not
+      // overwrite the live view with another archive one, or "off" would land
+      // on a span instead of leaving the archive.
+      preArchiveView:
+        current.preArchiveView ??
+        ({
+          windowHours: current.windowHours,
+          minMagnitude: current.minMagnitude,
+          trailingWindow: current.trailingWindow,
+        } satisfies NonNullable<EarthquakeState['preArchiveView']>),
+    }));
+    useEarthquakeStore.getState().setWindowHours(spanHours);
+  },
 
   play: () =>
     set((state) => ({

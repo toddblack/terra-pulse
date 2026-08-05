@@ -1,0 +1,113 @@
+/*
+ * Sits under the alert banner in the same top-centre column. Both can be on
+ * screen at once after a long absence — one says "this just happened", the
+ * other "here is what you were away for" — so they stack rather than overlap.
+ */
+.panel {
+  position: absolute;
+  top: 4.25rem;
+  left: 50%;
+  width: 22rem;
+  max-height: 60vh;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 88%);
+  box-shadow: 0 4px 12px -2px rgb(0 0 0 / 45%);
+  color: rgb(203 213 225);
+  transform: translateX(-50%);
+  overflow-y: auto;
+  user-select: none;
+}
+
+.header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.title {
+  margin: 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.closeButton {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: -0.25rem -0.25rem 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: rgb(148 163 184);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background-color: rgb(51 65 85);
+  color: rgb(226 232 240);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  width: 100%;
+  padding: 0.3125rem 0.375rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background-color: rgb(51 65 85);
+}
+
+.magnitude {
+  flex: none;
+  width: 2.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.place {
+  flex: 1;
+  font-size: 0.75rem;
+  color: rgb(203 213 225);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.when {
+  flex: none;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  margin: 0.5rem 0 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-style: italic;
+}

@@ -10,11 +10,14 @@ import {
   type EarthquakeQuery,
 } from '@terra-pulse/db';
 import {
+  DEDUPE_MAX_TIME_SECONDS,
   fetchEarthquakeFeed,
   fetchEmscEarthquakes,
   fetchRecentEarthquakes,
   isProbableDuplicate,
 } from '@terra-pulse/ingest';
+import type { LargeEventAlerter } from './large-event-alerts';
+import { markSeenThrough } from './missed-events';
 import {
   ingestPasses,
   longestCoverageHours,
@@ -38,6 +41,18 @@ const HOUR_MS = 60 * 60 * 1000;
 
 /** The oldest data worth keeping — anything past the longest tier is dead. */
 const RETENTION_MS = longestCoverageHours() * HOUR_MS;
+
+/**
+ * The horizon the poll's change-detection looks at.
+ *
+ * Same span as retention, because that is exactly the range ingest writes to.
+ * Anything older is archive: immutable once downloaded, and not something a
+ * poll can have changed. Passing this keeps `catalogSignature` off a full-table
+ * scan of ~300k rows twice every five minutes.
+ */
+function liveWindowStart(): string {
+  return new Date(Date.now() - RETENTION_MS).toISOString();
+}
 
 /** The floor of the densest pass, used by the poll and the feed filter. */
 const INGEST_MIN_MAGNITUDE = Math.min(...ingestPasses().map((pass) => pass.minMagnitude));
@@ -89,7 +104,11 @@ function atOrAboveFloor(
  */
 function insertEmscFillingGaps(db: DatabaseSync, emscEvents: EarthquakeEvent[]): void {
   const novel = emscEvents.filter((candidate) => {
-    const nearbyUsgs = findCandidateMatches(db, candidate, 'usgs');
+    // The same threshold the predicate uses, passed explicitly so the SQL
+    // window and `isProbableDuplicate` cannot disagree. A narrower window here
+    // than the predicate's would make dedup silently miss duplicates; a wider
+    // one only costs rows that get rejected anyway.
+    const nearbyUsgs = findCandidateMatches(db, candidate, 'usgs', DEDUPE_MAX_TIME_SECONDS);
     return !nearbyUsgs.some((known) => isProbableDuplicate(candidate, known));
   });
 
@@ -106,9 +125,9 @@ function insertEmscFillingGaps(db: DatabaseSync, emscEvents: EarthquakeEvent[]):
  * 30-day pass re-reads the last 7 days at its own floor, and the upsert absorbs
  * that without duplicating rows.
  */
-async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]> {
+async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeSyncResult> {
   const endUtc = new Date();
-  const collected: EarthquakeEvent[] = [];
+  const before = catalogSignature(db, liveWindowStart());
 
   for (const pass of ingestPasses()) {
     const startUtc = new Date(endUtc.getTime() - pass.windowHours * HOUR_MS);
@@ -121,7 +140,6 @@ async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]>
       minMagnitude: pass.minMagnitude,
     });
     insertEarthquakes(db, atOrAboveFloor(usgsEvents, pass.minMagnitude));
-    collected.push(...usgsEvents);
 
     // EMSC is supplementary: if it fails, the globe still works with USGS data.
     // Scoped per pass so a failure on the long sweep doesn't lose the short one.
@@ -141,9 +159,18 @@ async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]>
 
   // Nothing here ever expires on its own — the upsert only ever adds. Without
   // this the "rolling window" would grow for the lifetime of the install.
+  // Events at or above the archive floor are exempt; see pruneEarthquakesBefore.
   pruneEarthquakesBefore(db, new Date(endUtc.getTime() - RETENTION_MS).toISOString());
 
-  return collected;
+  // Returns a sync result rather than the events themselves. Main no longer
+  // waits for this before showing the window, so what it needs to know is
+  // whether the renderer should re-query — not what was fetched. A `changed:
+  // false` result leaves the globe alone, which matters because replacing the
+  // event set rebuilds the layer and drops the user's selection.
+  return {
+    changed: !signaturesMatch(before, catalogSignature(db, liveWindowStart())),
+    syncedAt: new Date().toISOString(),
+  };
 }
 
 /**
@@ -152,11 +179,18 @@ async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeEvent[]>
  * An empty response is a normal quiet period, not an error and not a signal to
  * clear anything — the upsert simply has nothing to do.
  */
-async function pollOnce(db: DatabaseSync): Promise<EarthquakeSyncResult> {
-  const before = catalogSignature(db);
+async function pollOnce(db: DatabaseSync, alerter?: LargeEventAlerter): Promise<EarthquakeSyncResult> {
+  const before = catalogSignature(db, liveWindowStart());
 
   const usgsEvents = await fetchEarthquakeFeed('1.0_day');
   insertEarthquakes(db, atOrAboveFloor(usgsEvents));
+
+  // Alerts are raised from what this poll *fetched*, never from a query over
+  // stored events (PROJECT_PLAN §5.8). That is what makes the launch backfill
+  // structurally incapable of firing them, rather than something that has to be
+  // defended against. USGS only — EMSC carries no PAGER alert or significance,
+  // and at M6+ USGS reports everything anyway.
+  alerter?.consider(usgsEvents);
 
   try {
     const emscEvents = await fetchEmscEarthquakes({
@@ -168,7 +202,12 @@ async function pollOnce(db: DatabaseSync): Promise<EarthquakeSyncResult> {
     console.error('EMSC poll failed; continuing with USGS only', error);
   }
 
-  const after = catalogSignature(db);
+  const after = catalogSignature(db, liveWindowStart());
+
+  // The watermark the launch digest reads. Advanced here rather than on quit
+  // so a crash costs one interval instead of replaying a whole session as
+  // "missed" — and the digest is for people who weren't there to quit tidily.
+  markSeenThrough(db);
 
   return {
     changed: !signaturesMatch(before, after),
@@ -186,11 +225,12 @@ async function pollOnce(db: DatabaseSync): Promise<EarthquakeSyncResult> {
 export function startEarthquakePolling(
   db: DatabaseSync,
   onResult: (result: EarthquakeSyncResult) => void,
+  alerter?: LargeEventAlerter,
 ): () => void {
   let stopped = false;
 
   const tick = () => {
-    pollOnce(db).then(
+    pollOnce(db, alerter).then(
       (result) => {
         if (!stopped) onResult(result);
       },
@@ -200,6 +240,19 @@ export function startEarthquakePolling(
     );
   };
 
+  // Polls once immediately rather than waiting out the first interval.
+  //
+  // `setInterval` alone meant the first poll landed five minutes after launch,
+  // and the poll is the only thing that can raise an alert — so an M6 from
+  // twenty minutes ago sat in the database, drawn on the globe, with the banner
+  // that exists to announce it arriving five minutes later. Backfill doesn't
+  // close that gap and shouldn't: keeping it out of alerting is what makes a
+  // month of old news structurally unannounceable (PROJECT_PLAN §5.8).
+  //
+  // The extra request is one CDN-cached feed fetch against a `max-age=60`
+  // endpoint, alongside a backfill already in flight.
+  tick();
+
   const interval = setInterval(tick, POLL_INTERVAL_MS);
 
   return () => {
@@ -208,14 +261,30 @@ export function startEarthquakePolling(
   };
 }
 
-export function registerEarthquakeIpcHandlers(db: DatabaseSync): void {
+export function registerEarthquakeIpcHandlers(
+  db: DatabaseSync,
+  alerter?: LargeEventAlerter,
+): void {
   ipcMain.handle('earthquakes:query', (_event, query: EarthquakeQuery = {}): EarthquakeEvent[] => {
     return queryEarthquakes(db, query);
   });
 
-  ipcMain.handle('earthquakes:refresh', async (): Promise<EarthquakeEvent[]> => {
-    await pollOnce(db);
-    return queryEarthquakes(db, {});
+  /**
+   * Polls USGS now, and returns only the sync result.
+   *
+   * It used to return `queryEarthquakes(db, {})` — the *entire* catalogue —
+   * which the renderer then threw away, because the store issues its own
+   * windowed query straight afterwards. Harmless at 30 days; with the archive
+   * in the same table that became 306k rows, measured at 1.25 s to assemble
+   * plus a ~100 MB structured-clone across the IPC boundary, every time anyone
+   * pressed Refresh.
+   *
+   * The renderer asks for the window it actually wants. Main does not guess.
+   */
+  ipcMain.handle('earthquakes:refresh', async (): Promise<EarthquakeSyncResult> => {
+    // A manual refresh is a poll, so it can raise an alert too — that is the
+    // other half of "only on a live update or a user refresh".
+    return await pollOnce(db, alerter);
   });
 }
 

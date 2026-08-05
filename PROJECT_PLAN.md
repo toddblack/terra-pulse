@@ -54,6 +54,8 @@ between global seismicity and solar/astronomical events.*
 |---|---|---|
 | Event catalog cache | **SQLite** | Three layers: (0) **rolling cache, shipped** — `COVERAGE_TIERS` in `packages/schema`, currently 7d at M1+ and 30d at M2.5+, pruned to the longest tier on each backfill; (1) one-time backfill of **M4.5+ global, 1970–present** — **294,647 rows, ~62 MB measured** (an earlier ≈110k estimate here was wrong by 2.7×), the stats engine's browsing catalog, with **analysis restricted to the M5.5+ subset**; (2) on-demand cache for narrower/lower-magnitude queries, keyed by (window, magnitude, bbox) with TTL and size cap. |
 | Spatial queries | SQLite's built-in **R-Tree** module | Fault-proximity and antipode-radius (bbox) queries without a Postgres server. Tried SpatiaLite first; the only available Windows binary is unmaintained and fails its own DLL init on a modern system (2016-era GEOS build) even after fixing the Windows DLL search-path issue. R-Tree ships inside SQLite core — no extension/binary to load at all — and covers what's actually needed. See Rejected Alternatives. |
+| Tier 1 backfill (shipped, download only) | **Year chunks, resumable, user-triggered** | Chunked by calendar year and recorded in `archive_chunks`; fixed boundaries are what makes resume line up with a previous run. Measured: busiest year at M4.5+ is 2011 at 9,584 events against FDSN's 20,000 cap, so one request per year and the paging loop is defensive only. The current year is never recorded complete — it is still accruing — so it refetches each run and covers Jan 1 → the rolling window. Verified live: per-year counts match the FDSN `count` endpoint exactly for 1970–1975. **The archive shares the `earthquakes` table**, so the globe layer, R-Tree and dedup need no union queries; the price is that every existing query inherits it — pruning had to become magnitude-aware, dedup and the poll signature had to gain bounds. Browsable via `ARCHIVE_SPANS` (§5.1). |
+| Schema migrations | **Numbered SQL steps, one transaction each** | Each migration commits with its own `schema_migrations` row or not at all — a partly-applied schema with no record of it would be re-run from the top on the next launch. `openDatabase` takes a `VACUUM INTO` snapshot to one rolling `<db>.backup` before any pending migration, and refuses to migrate if that snapshot fails. From migration 3 onward, schema changes to `earthquakes` use create-copy-drop-rename and carry `row_id` across explicitly, because reassigning it silently unlinks every row from the R-Tree. Migration 2's drop-and-recreate is history, not a template — see the note at the top of `migrations.ts`. |
 | User preferences | **SQLite table** or JSON config | Local only. |
 | Future cloud sync | *Supabase (deferred)* | Only if cross-device sync becomes a requirement. |
 
@@ -279,8 +281,91 @@ Two-stage model, deliberately not an infinite scrub:
 3. **Scrub within window** — playback controls, variable speed, events fade in
    at their timestamp and decay over a configurable trail duration.
 
-Historical analysis spanning years goes to the **engine**, not the scrubber.
-The scrubber is for perception; the engine is for measurement.
+Historical *analysis* spanning years goes to the **engine**, not the scrubber.
+The scrubber is for perception; the engine is for measurement. Browsing the
+archive visually is perception, and belongs here.
+
+#### Archive spans — the mark budget is the design
+
+Every view is sized to roughly the same number of marks. That budget already
+exists and is already shipped: the 30d/M2.5 view draws **~7,671** marks, so
+~8–10k is a demonstrated, not a guessed, ceiling.
+
+Measured counts (FDSN `count`, 2026-07):
+
+| span | floor | events |
+|---|---|---|
+| 1 year | M4.5 | 8,485 |
+| 10 years | M5.5 | 4,604 |
+| 20 years | M5.5 | 9,813 |
+| all (1970–) | M6.0 | 7,907 |
+
+For contrast, the combinations that do *not* fit: M4.5+ over 5 years is 38,538
+and over the full span 294,648.
+
+**The consequence, which inverts the obvious assumption:** "every large
+earthquake in recorded history" is the *cheapest* view here, not the most
+expensive. M7+ across 57 years is **781** marks — a tenth of the current live
+view. Marker clustering and progressive detail are therefore an optimisation
+for the dense M4.5+ spans, **not a prerequisite for browsing the archive**. An
+earlier revision of this plan had that backwards.
+
+**No new mental model.** `setWindowHours` already raises the magnitude floor to
+whatever the chosen span was ingested at, and never lowers it. Archive spans
+reuse that exact mechanism: pick a longer span, the floor rises to keep the
+count in budget, and the magnitude buttons then work as they always have —
+raising the floor only ever reduces the count, so M7+ over all years is free.
+That is why there is no year dropdown and no second range slider; the muddiness
+comes from adding controls, not from the span being long.
+
+**`MAGNITUDE_FLOORS` gains M6.0 and M7.0.** They earn their place by the same
+rule as the rest: they are USGS's own class boundaries (strong / major), not
+round numbers sitting beside a real threshold. M6.5 is deliberately not added —
+it is a round number, and nothing classifies at it.
+
+#### The emphasis ring stays absolute — decided, not defaulted
+
+Measuring the archive views raised an obvious-looking optimisation. The ring
+threshold is a fixed M5.5, and the archive spans *are* M5.5+, so every mark
+carries one: 26,746 events, 26,746 rings, each a second Cesium entity. Making
+the threshold relative to the active floor would roughly halve the entity count
+for exactly the heaviest view.
+
+**Rejected, deliberately.** M5.5 means the same thing on every screen. The ring
+answers "is this a big one?", and that question does not change because the
+surrounding view narrowed — a mark that gains or loses its ring depending on
+what else is displayed teaches the reader an encoding that isn't stable. The
+590 ms build for the all-years view is the price of that consistency, and it is
+a one-time cost per view switch rather than a per-frame one.
+
+If the entity count ever genuinely needs to come down, the honest fix is
+`PointPrimitiveCollection` instead of entities (§Phase 6), not a rule that makes
+the same earthquake look different in two views.
+
+#### Trailing window — isolating a period
+
+The scrubber already solves positioning: with a long span selected, the
+playhead walks 1970→now and playback animates decades. What it does not solve
+is *isolation*, because the model is cumulative — everything up to the playhead
+— which over 57 years ends with the whole archive on screen and no way to look
+at just the 1990s.
+
+The fix has a direct precedent in this codebase: **a trailing window is to time
+what `isolateBand` is to magnitude.** "Only events within N of the playhead"
+rather than "everything before it" — the same idea, the same one-checkbox UI
+pattern, and it makes decade-browsing fall out of controls that already exist.
+
+#### Two couplings that will bite if ignored
+
+- **Archive view spans must NOT live in `COVERAGE_TIERS`.** That constant is
+  deliberately shared between main (what to ingest) and the renderer (what to
+  offer) so the two cannot drift. A 57-year entry there would make the
+  launch-time backfill try to fetch 57 years on every start. View spans are a
+  separate constant that the renderer reads and ingest never does.
+- **`load()` must stop loading the widest range and narrowing in memory.** That
+  is the current design, and it is why `INGEST_WINDOW_MS` is a stale 4-day
+  constant while the UI offers 30d. It cannot survive 294k rows: archive views
+  have to query by the selected span and floor.
 
 ### 5.2 Click-to-Inspect
 
@@ -304,8 +389,14 @@ events as you zoom in.
 - **Math:** antipode of (lat, lon) is `(-lat, normalize(lon ± 180))`
 - **Render:** toggle globe translucency / wireframe, draw a chord through the
   Earth's interior from event to antipode
-- **Trigger threshold:** M6.0+ only. Below that, antipodal focusing energy is
-  negligible and the candidate pool becomes noise.
+- **Trigger threshold for *analysis*:** M6.0+ only. Below that, antipodal
+  focusing energy is negligible and the candidate pool becomes noise.
+- **The *visualisation* has no threshold**, and the distinction is deliberate.
+  Drawing the antipode states a coordinate; it makes no claim, so there is
+  nothing to gate. Restricting it would arguably imply more than showing it
+  always, because a restriction reads as "we surface this when it might
+  matter" — which is precisely the significance-by-implication Explore mode
+  exists to avoid.
 
 **Analysis method — no fixed radius.** Rather than picking a search radius
 (a free parameter, and therefore a p-hacking hazard), record the
@@ -401,6 +492,105 @@ particularly in subduction zones and on faults already near failure.
   wanted — but label them explicitly as decorative, not causal.
 - H6 (lunisolar tidal stress) is the project's most physically defensible
   hypothesis and deserves the most careful treatment.
+
+### 5.8 Large-Event Alerts
+
+Notification, not warning. It reports something that has already happened, so
+it belongs in Explore and makes no forward claim.
+
+**Why this is not, and cannot be, early warning.** Real EEW (ShakeAlert, Japan)
+races an alert ahead of the S-wave by detecting the P-wave at stations near the
+source. It buys seconds, and needs sub-second raw waveform streams. Measured on
+the USGS `all_hour` feed: first publication lags origin time by **78 s minimum,
+222 s median**, before this app's own poll interval is added. S-waves travel
+~3.5 km/s, so at 78 s the damaging wavefront has already covered ~270 km and at
+222 s ~780 km. By the time an event is in the feed, the shaking is over
+everywhere it mattered. See §11.
+
+**Behaviour:**
+- **One active alert at a time.** The most recent qualifying event holds the
+  slot; a newer one replaces it. Dismissible.
+- **Default threshold M6.0+** (~148/year, one per 2.5 days). M6.5+ (~50/year)
+  and M7+ (~15/year) are the other sensible settings. Rates measured, not
+  guessed — a threshold that fires daily gets ignored, and one that fires twice
+  a year gets forgotten.
+- **Click the banner to fly and select.** Not automatic. The camera invariant
+  in `CesiumViewer` is that a `focusRequest` nonce is the *only* thing that
+  moves it, and auto-panning would yank the view out from under someone
+  mid-investigation — the same reason dragging clears the selection. An opt-in
+  "follow new large events" toggle can exist for the leave-it-running-on-a-
+  screen case; it must be off by default.
+- OS-level notification (Electron `Notification`) when the window isn't
+  focused, since that is the case where an in-app banner is useless.
+
+**The firing rule — the source is the delta, not the catalogue.** An alert
+fires only for an event that arrived in a **live poll or a user refresh**, and
+only once. It is never raised by a scan of stored events.
+
+This is worth stating as a rule rather than an implementation detail, because
+it makes a whole class of bug structurally impossible instead of guarded
+against. The obvious alternative — "scan for large events we haven't alerted
+on" — has to defend against the launch backfill firing an alert for every large
+event of the past month. Sourcing from the poll delta means the backfill is
+simply not an alert source, and that defence is never needed.
+
+**The launch digest is a separate thing, and shipped alongside.** "What did I
+miss while away" carries no freshness bound, covers however long the app was
+shut, and is a list you choose to read rather than an interruption. Same
+magnitude threshold, so "notable" means one thing; ordered by magnitude rather
+than time so its cap can never hide the largest event.
+
+**What still needs care:**
+- **Once per event id.** USGS revises magnitudes, so the same event will
+  reappear in later polls and must not re-fire.
+- **Revisions cross the threshold upward.** An M5.8 becomes M6.1 an hour later.
+  The check therefore runs on every arrival of an event, not only the first —
+  which is compatible with once-per-id, since the id is what's remembered.
+- **The first poll after launch.** It pulls a 24-hour feed, so an M6 from
+  yesterday is new *to us* without being news. A modest origin-time bound
+  (within the last hour) handles it and stays stateless — no "have we launched
+  yet" flag to get wrong.
+- **A quiet period is not a failure.** Days pass with nothing at M6+; the UI
+  must not imply the feed is broken.
+
+### 5.9 Aftershock Forecasting
+
+The honest version of "early warning" that this project genuinely can do.
+Aftershock rates follow a well-characterised empirical decay, and USGS itself
+publishes these operationally.
+
+**Model:** Reasenberg & Jones (1989) — the rate of aftershocks of magnitude ≥ M
+at time *t* after a mainshock of magnitude *Mm*:
+
+    λ(t, M) = 10^(a + b(Mm − M)) / (t + c)^p
+
+Omori-Utsu decay in time, Gutenberg-Richter in magnitude. Generic parameters
+work immediately; fitted-to-this-sequence parameters are better and need the
+observed sequence.
+
+**This is a forecast, so it lives in Analyze**, with its parameters registered
+before use like everything else. It does not violate non-negotiable #1 — it is
+not a significance claim — but it is model output, and model output must never
+be presented with the same weight as an observation.
+
+**Display — in the inspector, on selection**, and the split matters:
+
+- **Live events:** the forecast. Expected count in the next 24 h and 7 d, with
+  an interval, not a point estimate. Labelled as generic parameters unless
+  actually fitted.
+- **Archive events:** what *actually followed*. For a 1985 mainshock a forecast
+  is meaningless, but the observed sequence is real data and is arguably the
+  more interesting panel. This is pure observation and is Explore-safe.
+
+Only shown for events large enough to have a sequence worth describing (M5+),
+and only inside a window where the decay is still meaningful. "Expected
+aftershocks: 0.02/day" on a 1974 M4.6 is noise wearing a number.
+
+**The one number people misread catastrophically:** Reasenberg-Jones also
+yields the probability that an aftershock *exceeds* the mainshock — i.e. that
+the mainshock was a foreshock. It is small (typically a few percent) and it is
+the figure most likely to be screenshotted without context. If it is shown at
+all, it is shown with its framing attached, never as a bare percentage.
 
 ---
 
@@ -516,9 +706,16 @@ server-side proxying of all third-party API calls.
 - ~~Terrain and satellite basemaps~~ — satellite shipped in Phase 1; terrain
   dropped, see §11
 - Time window selector + scrubber playback
-- Marker clustering / progressive detail
-- Antipode chord visualization
-- **Milestone:** full visual exploration tool.
+- ~~**Archive browsing (§5.1)**~~ — **shipped.** `ARCHIVE_SPANS` (1y/M4.5,
+  10y/M5.5, all/M5.5) in their own "History" group, M6/M7 floors, a trailing
+  window, floor-relative emphasis rings, and `load()` querying by span. Needed
+  no clustering: the views that matter are ~8k marks.
+- Marker clustering / progressive detail — for the dense M4.5+ multi-year
+  spans only. Not a prerequisite for the above.
+- ~~Antipode chord visualization~~ — **shipped.** Straight chord through the
+  interior (`ArcType.NONE`), globe translucency rather than wireframe (Cesium's
+  globe wireframe is a private debug flag), offered for any selected event.
+- **Milestone:** full visual exploration tool. **Reached.**
 
 ### Phase 3 — Solar & Geomagnetic Data
 - NOAA SWPC and NASA DONKI adapters
@@ -526,6 +723,9 @@ server-side proxying of all third-party API calls.
 - INTERMAGNET / SuperMAG station layer with disturbance amplitude
 - Multi-track timeline panel — **Explore mode** (§5.5)
 - Click-a-quake → center timeline on it
+- ~~Large-event alerts (§5.8)~~ — **shipped early.** Needed no new data source,
+  only the existing USGS poll, so it did not have to wait for the rest of this
+  phase. One active alert, click-to-fly, OS notification when unfocused.
 - **Milestone:** Explore mode complete. This is a genuinely useful app even if
   Phase 4 never ships.
 
@@ -538,6 +738,11 @@ server-side proxying of all third-party API calls.
 - Monte Carlo permutation testing
 - FDR correction
 - Results panel with null distribution plots, clearly separated from Explore
+- Aftershock forecasting (§5.9) — Reasenberg-Jones, generic parameters first,
+  fitted per-sequence after. Shares the declustering and Gutenberg-Richter
+  machinery built for the hypothesis tests, which is why it belongs here rather
+  than in Phase 3. The *observed* sequence panel for archive events needs none
+  of that and can land earlier.
 - **Milestone:** H1–H5 tested and honestly reported.
 
 ### Phase 5 — Astronomical Extension
@@ -689,4 +894,6 @@ server-side proxying of all third-party API calls.
 | Web app instead of desktop | Cesium in-browser is viable, but desktop enables local caching, offline analysis, and heavier computation without hosting costs. |
 | Infinite historical scrubber | Data volume makes it unusable; window-select is both faster and clearer. |
 | Cesium World Terrain as a basemap | Ion's free tier is non-commercial only. It also needs `enableLighting` (day/night shading) to be visible at all, which conflicts with wanting the whole globe uniformly lit for data visualization — half the quakes would sit on the "night" side. |
+| Earthquake early warning (EEW) | Structurally impossible from this data source, not merely hard. Real EEW detects the P-wave near the source and races the S-wave, buying seconds from sub-second raw waveform streams. Measured on the USGS `all_hour` feed: first publication lags origin by **78 s min / 222 s median**, before this app's poll interval. At ~3.5 km/s the S-wave has covered ~270 km by 78 s and ~780 km by 222 s — the shaking is over before the event exists in the feed. Recorded here so it doesn't get re-proposed. What *is* possible is §5.8 (alerts, after the fact) and §5.9 (aftershock forecasting). |
+| Earthquake prediction (where/when/magnitude in advance) | Not a solved problem, and not one this app is going to solve. Aftershock *forecasting* (§5.9) is a different and legitimate thing: it is a probabilistic rate for a sequence already underway, not a claim that an earthquake is coming. |
 | SpatiaLite (real attempt, not skipped) | `node:sqlite`'s extension loading genuinely works (verified). The blocker is the binary: the only real Windows build available (`spatialite-bin` on npm) is a single unmaintained release bundling GEOS 3.5 (~2016). Its DLL fails its own init routine on a modern system even once the Windows DLL search-path problem is fixed — confirmed with a direct `LoadLibraryEx` call outside of Node entirely, so it's not a Node/SQLite-specific issue. R-Tree (built into SQLite core) covers the bbox/radius queries actually needed; revisit real SpatiaLite if a maintained binary source turns up later. |

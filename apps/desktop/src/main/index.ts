@@ -1,7 +1,15 @@
-import { app, BrowserWindow, session } from 'electron';
+import { app, BrowserWindow, Notification, session } from 'electron';
 import { join } from 'node:path';
 import dotenv from 'dotenv';
 import { openDatabase } from '@terra-pulse/db';
+import {
+  ALERT_MAX_AGE_MS,
+  ALERT_MIN_MAGNITUDE,
+  type EarthquakeSyncResult,
+} from '@terra-pulse/schema';
+import { createArchiveController, registerArchiveIpcHandlers } from './ipc/archive';
+import { createLargeEventAlerter } from './ipc/large-event-alerts';
+import { collectMissedEvents, registerMissedEventsHandler } from './ipc/missed-events';
 import {
   backfillEarthquakes,
   registerEarthquakeIpcHandlers,
@@ -64,6 +72,11 @@ const CONTENT_SECURITY_POLICY = [
   // narrowly.
   "img-src 'self' data: blob: https://gibs.earthdata.nasa.gov https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://wms.gebco.net",
   `connect-src 'self' https://gibs.earthdata.nasa.gov https://tile.openstreetmap.org https://*.tile.openstreetmap.org https://wms.gebco.net${isDev ? ` ${devServerOrigin} ${devServerWsOrigin}` : ''}`,
+  // Was falling through to default-src. Stated explicitly because the alert
+  // sound is the first media this app loads, and a silent CSP fallback is a
+  // bad thing to depend on — 'self' covers both the packaged app and the dev
+  // server, since each is the renderer's own origin.
+  "media-src 'self'",
   "worker-src 'self' blob:",
 ].join('; ');
 
@@ -86,6 +99,11 @@ function createWindow(): BrowserWindow {
       // non-negotiable here is contextIsolation + nodeIntegration: false with
       // an explicit minimal preload bridge — all still true below.
       sandbox: false,
+      // Chromium blocks audio until the page has seen a user gesture. That
+      // rule exists to stop web pages ambushing people; here the whole point
+      // of the alert sound is that it reaches you when you are *not* looking
+      // at the app, so waiting for a click would defeat it entirely.
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 
@@ -129,29 +147,98 @@ function createWindow(): BrowserWindow {
   return mainWindow;
 }
 
+// No longer async: startup does no awaiting at all now. Everything it needs is
+// already on disk, and the backfill runs alongside the window rather than in
+// front of it.
 app
   .whenReady()
-  .then(async () => {
+  .then(() => {
     const db = openDatabase(join(app.getPath('userData'), 'terra-pulse.sqlite'));
-    registerEarthquakeIpcHandlers(db);
     registerExternalLinkIpcHandlers();
 
-    // Backfill the whole display window on every launch, not just when the
-    // database is empty. This is what closes the gap from the app having been
-    // shut — the 60s poll only covers the last 24h.
-    await backfillEarthquakes(db).catch((error: unknown) => {
-      console.error('Startup earthquake backfill failed', error);
-    });
-
-    let mainWindow = createWindow();
-
-    // Push updates to the renderer rather than having it poll the database.
-    const stopPolling = startEarthquakePolling(db, (result) => {
-      if (!mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('earthquakes:updated', result);
+    // Declared before the window exists so the handler is registered by the
+    // time the renderer's first status query lands; the send is guarded because
+    // progress can arrive while the window is being torn down.
+    let mainWindow: BrowserWindow | null = null;
+    const archive = createArchiveController(db, (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('archive:progress', progress);
       }
     });
+    registerArchiveIpcHandlers(archive);
+
+    // The window comes up first, before any network work.
+    //
+    // This used to `await backfillEarthquakes(db)` and only then create the
+    // window, which made the app's time-to-first-pixel the time of two live
+    // FDSN queries plus their inserts. That was a couple of seconds against a
+    // 30-day cache and minutes once the archive shared the table — and it fails
+    // worse than it sounds: if USGS is slow or unreachable, an app that could
+    // have shown the entire local catalogue instead shows nothing at all.
+    //
+    // The database already holds everything from last run, so there is nothing
+    // to wait for. Backfill is a refresh, not a prerequisite.
+    mainWindow = createWindow();
+
+    const notifyRenderer = (result: EarthquakeSyncResult) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('earthquakes:updated', result);
+      }
+    };
+
+    /**
+     * Large-event alerts (PROJECT_PLAN §5.8). Notification, not warning — the
+     * event has already happened, and early warning is impossible from this
+     * input (§11).
+     */
+    const alerter = createLargeEventAlerter({
+      minMagnitude: ALERT_MIN_MAGNITUDE,
+      maxAgeMs: ALERT_MAX_AGE_MS,
+      onAlert: (event) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('earthquakes:large-event', event);
+        }
+
+        // An in-app banner is useless when the app isn't what you're looking
+        // at, and this is the one case worth surfacing at OS level. Never
+        // while focused — that would duplicate the banner.
+        if (Notification.isSupported() && mainWindow && !mainWindow.isFocused()) {
+          new Notification({
+            title: `M${event.magnitude.toFixed(1)} earthquake`,
+            body: event.place,
+          }).show();
+        }
+      },
+    });
+
+    // Deliberately not awaited. Closes the gap from the app having been shut —
+    // the poll only covers the last 24h — and tells the renderer when it lands
+    // so the globe picks the new events up.
+    void backfillEarthquakes(db)
+      .then(notifyRenderer)
+      .catch((error: unknown) => {
+        console.error('Startup earthquake backfill failed', error);
+      });
+
+    // Push updates to the renderer rather than having it poll the database.
+    // Registered here rather than beside the other handlers because the
+    // alerter needs `mainWindow` to exist first.
+    registerEarthquakeIpcHandlers(db, alerter);
+
+    // Read *before* polling starts, and served on request rather than pushed.
+    // The first poll fires immediately and moves the seen-through watermark, so
+    // this cannot be recomputed later — and a push would race the renderer's
+    // subscription, which happens in a React effect after paint.
+    registerMissedEventsHandler(collectMissedEvents(db));
+
+    const stopPolling = startEarthquakePolling(db, notifyRenderer, alerter);
     app.on('will-quit', stopPolling);
+
+    // A backfill mid-flight would keep issuing requests and writing to a
+    // database that's about to close.
+    app.on('will-quit', () => {
+      archive.cancel();
+    });
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();

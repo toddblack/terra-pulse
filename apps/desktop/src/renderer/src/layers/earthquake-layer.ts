@@ -18,6 +18,9 @@ import {
 // clicks on it resolve back to the event via `eventIdFromEntityId`.
 const RING_ID_SUFFIX = '::ring';
 
+/** How far marks recede while another layer is being read over them. */
+const DIMMED_ALPHA = 0.22;
+
 export function ringEntityId(eventId: string): string {
   return `${eventId}${RING_ID_SUFFIX}`;
 }
@@ -37,9 +40,10 @@ export function createEarthquakeLayer(
   let dataSource: Cesium.CustomDataSource | null = null;
   let mounted = false;
   let visible = true;
+  let dimmed = false;
   let timeWindow: { startMs: number; endMs: number } | null = null;
 
-  const halo = Cesium.Color.fromCssColorString(haloColorHex(tone));
+  const neutralHalo = Cesium.Color.fromCssColorString(haloColorHex(tone));
   const recentHalo = Cesium.Color.fromCssColorString(recentHaloColorHex(tone));
 
   /**
@@ -99,7 +103,7 @@ export function createEarthquakeLayer(
           // A red, slightly heavier stroke on anything from the last 24 hours.
           // Independent of the emphasis ring, so a recent large event shows
           // both: red stroke for "today", ring for "big".
-          outlineColor: recent ? recentHalo : halo,
+          outlineColor: recent ? recentHalo : neutralHalo,
           outlineWidth: recent ? RECENT_HALO_WIDTH : HALO_WIDTH,
         },
       });
@@ -134,7 +138,7 @@ export function createEarthquakeLayer(
 
       const point = entry.dot.point;
       if (!point) continue;
-      point.outlineColor = new Cesium.ConstantProperty(recent ? recentHalo : halo);
+      point.outlineColor = new Cesium.ConstantProperty(recent ? recentHalo : neutralHalo);
       point.outlineWidth = new Cesium.ConstantProperty(
         recent ? RECENT_HALO_WIDTH : HALO_WIDTH,
       );
@@ -221,6 +225,44 @@ export function createEarthquakeLayer(
     setTimeWindow(start, end) {
       timeWindow = { startMs: start.getTime(), endMs: end.getTime() };
       applyVisibility();
+    },
+
+    /**
+     * Fades every mark so the antipode chord can be read over them.
+     *
+     * Writes one colour per entity, which is ~26,000 writes in the widest
+     * archive view — acceptable because it happens once per toggle, not per
+     * frame. Rebuilding the layer with dimmed colours instead would cost the
+     * full 590 ms build, which is the wrong trade for a fade.
+     *
+     * Guarded on the current state so re-entering the same mode is free.
+     */
+    setDimmed(next) {
+      if (next === dimmed) return;
+      dimmed = next;
+
+      for (const entry of entityIndex) {
+        const point = entry.dot.point;
+        if (!point) continue;
+
+        const base = Cesium.Color.fromCssColorString(depthColorHex(entry.event.depthKm, tone));
+        point.color = new Cesium.ConstantProperty(next ? base.withAlpha(DIMMED_ALPHA) : base);
+
+        const halo = entry.strokedRecent ? recentHalo : neutralHalo;
+        point.outlineColor = new Cesium.ConstantProperty(
+          next ? halo.withAlpha(DIMMED_ALPHA) : halo,
+        );
+
+        // The ring is emphasis; while something else is being emphasised it
+        // should recede further than the dot it surrounds.
+        const ring = entry.ring?.point;
+        if (ring) {
+          const ringColor = Cesium.Color.fromCssColorString(emphasisRingColorHex(tone));
+          ring.outlineColor = new Cesium.ConstantProperty(
+            next ? ringColor.withAlpha(DIMMED_ALPHA * 0.7) : ringColor,
+          );
+        }
+      }
     },
 
     setVisible(v) {

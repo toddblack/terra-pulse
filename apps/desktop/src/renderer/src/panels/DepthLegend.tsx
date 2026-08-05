@@ -1,11 +1,8 @@
+import { useState } from 'react';
 import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { useEarthquakesUpToPlayhead } from '../globe/useVisibleEarthquakes';
-import {
-  KINEMATIC_GROUPS,
-  KINEMATIC_LABELS,
-  kinematicColorHex,
-} from '../layers/plate-kinematics';
+import { KINEMATIC_GROUPS, KINEMATIC_LABELS, kinematicColorHex } from '../layers/plate-kinematics';
 import { faultColorHex } from '../layers/fault-encoding';
 import { formatRange } from './RangeControls';
 import { OVERLAY_REGISTRATIONS, isOverlayVisible } from '../layers/registry';
@@ -14,6 +11,7 @@ import {
   EMPHASIS_MAGNITUDE_THRESHOLD,
   RECENT_HALO_WIDTH,
   RECENT_WINDOW_HOURS,
+  UNKNOWN_DEPTH_COLOR,
   depthLegendColors,
   emphasisRingColorHex,
   magnitudePixelSize,
@@ -51,6 +49,14 @@ function formatFreshness(lastSyncedAt: string | null): string {
 }
 
 export function DepthLegend() {
+  /**
+   * Collapsed state is local rather than in the globe store.
+   *
+   * Nothing else needs to read it, and it isn't part of what the globe is
+   * showing — putting it in shared state would make every legend toggle a
+   * store write that other subscribers have to ignore.
+   */
+  const [collapsed, setCollapsed] = useState(false);
   const backdropTone = useGlobeStore(selectBackdropTone);
   const status = useEarthquakeStore((state) => state.status);
   const lastSyncedAt = useEarthquakeStore((state) => state.lastSyncedAt);
@@ -60,8 +66,14 @@ export function DepthLegend() {
   const windowHours = useEarthquakeStore((state) => state.windowHours);
   // Counts what's on screen, which during playback is fewer than the window
   // holds — a footnote claiming 900 events while 40 are drawn would be wrong.
-  const visibleCount = useEarthquakesUpToPlayhead().length;
+  const visible = useEarthquakesUpToPlayhead();
+  const visibleCount = visible.length;
   const colors = depthLegendColors(backdropTone);
+
+  // Only earns a row when one is actually on screen. Unknown depth is a
+  // handful of pre-1980 events in a 295k archive, so a permanent swatch would
+  // be clutter that implies the case is common.
+  const hasUnknownDepth = visible.some((event) => event.depthKm === null);
 
   // The boundary key only earns its space while that layer is actually on.
   const layerVisibility = useGlobeStore((state) => state.layerVisibility);
@@ -73,71 +85,131 @@ export function DepthLegend() {
   const subductionVisible = isLayerOn('subduction-zones');
   const faultsVisible = isLayerOn('active-faults');
 
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        id="depth-legend-open"
+        className={styles.collapsedButton}
+        aria-label="Show legend"
+        aria-expanded={false}
+        aria-controls="depth-legend"
+        onClick={() => setCollapsed(false)}
+      >
+        {/* The depth ramp in miniature, from the same colours the swatches use. */}
+        {colors.map((color, index) => (
+          <span
+            key={index}
+            className={styles.iconSwatch}
+            style={{ backgroundColor: color }}
+            aria-hidden="true"
+          />
+        ))}
+      </button>
+    );
+  }
+
   return (
     <div id="depth-legend" className={styles.legend}>
-      <div className={styles.section}>
-        <h2 className={styles.heading}>Depth</h2>
-        <ul className={styles.binList}>
-          {DEPTH_BINS.map((bin, index) => (
-            <li key={bin.label} className={styles.binRow}>
-              <span
-                className={styles.swatch}
-                style={{ backgroundColor: colors[index] }}
-                aria-hidden="true"
-              />
-              <span className={styles.binLabel}>{bin.label}</span>
-            </li>
-          ))}
-        </ul>
+      <div className={styles.legendHeader}>
+        <h2 className={styles.legendTitle}>Legend</h2>
+        <button
+          type="button"
+          id="depth-legend-close"
+          className={styles.closeButton}
+          aria-label="Hide legend"
+          aria-expanded
+          aria-controls="depth-legend"
+          onClick={() => setCollapsed(true)}
+        >
+          ×
+        </button>
       </div>
 
-      <div className={styles.section}>
-        <h2 className={styles.heading}>Magnitude</h2>
-        <ul className={styles.magnitudeList}>
-          {MAGNITUDE_SAMPLES.map((magnitude) => (
-            <li key={magnitude} className={styles.magnitudeRow}>
+      {/* Depth and Magnitude are both keys to the dot itself — colour and
+          size — so they pair as columns, and the taller of the two sets the
+          height instead of their sum. */}
+      <div className={styles.columns}>
+        <div className={styles.section}>
+          <h2 className={styles.heading}>Depth</h2>
+          <ul className={styles.binList}>
+            {DEPTH_BINS.map((bin, index) => (
+              <li key={bin.label} className={styles.binRow}>
+                <span
+                  className={styles.swatch}
+                  style={{ backgroundColor: colors[index] }}
+                  aria-hidden="true"
+                />
+                <span className={styles.binLabel}>{bin.label}</span>
+              </li>
+            ))}
+            {hasUnknownDepth && (
+              <li className={styles.binRow}>
+                <span
+                  className={styles.swatch}
+                  style={{ backgroundColor: UNKNOWN_DEPTH_COLOR }}
+                  aria-hidden="true"
+                />
+                <span className={styles.binLabel}>not reported</span>
+              </li>
+            )}
+          </ul>
+        </div>
+
+        <div className={styles.section}>
+          <h2 className={styles.heading}>Magnitude</h2>
+          <ul className={styles.magnitudeList}>
+            {MAGNITUDE_SAMPLES.map((magnitude) => (
+              <li key={magnitude} className={styles.magnitudeRow}>
+                <span className={styles.magnitudeDotCell} aria-hidden="true">
+                  <span
+                    className={styles.magnitudeDot}
+                    style={{
+                      width: `${magnitudePixelSize(magnitude)}px`,
+                      height: `${magnitudePixelSize(magnitude)}px`,
+                    }}
+                  />
+                </span>
+                <span className={styles.binLabel}>M{magnitude}</span>
+              </li>
+            ))}
+
+            {/*
+              The ring and the recency stroke live here rather than in a
+              section of their own. Both are marks *on the dot*, like the sizes
+              above them — floated off on their own they read as belonging to
+              nothing, which is exactly how they looked.
+
+              The separator is a hairline rather than a gap: these two are
+              modifiers of a mark, not another scale, and a full section break
+              would overstate the distance.
+            */}
+            <li className={`${styles.magnitudeRow} ${styles.rowGroupStart}`}>
+              <span className={styles.magnitudeDotCell} aria-hidden="true">
+                <span
+                  className={styles.emphasisRing}
+                  style={{ borderColor: emphasisRingColorHex(backdropTone) }}
+                />
+              </span>
+              <span className={styles.binLabel}>M{EMPHASIS_MAGNITUDE_THRESHOLD}+</span>
+            </li>
+            {/* The two are independent: a recent large event shows both. */}
+            <li className={styles.magnitudeRow}>
               <span className={styles.magnitudeDotCell} aria-hidden="true">
                 <span
                   className={styles.magnitudeDot}
                   style={{
-                    width: `${magnitudePixelSize(magnitude)}px`,
-                    height: `${magnitudePixelSize(magnitude)}px`,
+                    width: `${magnitudePixelSize(4)}px`,
+                    height: `${magnitudePixelSize(4)}px`,
+                    outline: `${RECENT_HALO_WIDTH}px solid ${recentHaloColorHex(backdropTone)}`,
+                    outlineOffset: '-1px',
                   }}
                 />
               </span>
-              <span className={styles.binLabel}>M{magnitude}</span>
+              <span className={styles.binLabel}>past {RECENT_WINDOW_HOURS}h</span>
             </li>
-          ))}
-        </ul>
-      </div>
-
-      <div className={styles.section}>
-        <ul className={styles.magnitudeList}>
-          <li className={styles.magnitudeRow}>
-            <span className={styles.magnitudeDotCell} aria-hidden="true">
-              <span
-                className={styles.emphasisRing}
-                style={{ borderColor: emphasisRingColorHex(backdropTone) }}
-              />
-            </span>
-            <span className={styles.binLabel}>M{EMPHASIS_MAGNITUDE_THRESHOLD}+</span>
-          </li>
-          {/* The two are independent: a recent large event shows both. */}
-          <li className={styles.magnitudeRow}>
-            <span className={styles.magnitudeDotCell} aria-hidden="true">
-              <span
-                className={styles.magnitudeDot}
-                style={{
-                  width: `${magnitudePixelSize(4)}px`,
-                  height: `${magnitudePixelSize(4)}px`,
-                  outline: `${RECENT_HALO_WIDTH}px solid ${recentHaloColorHex(backdropTone)}`,
-                  outlineOffset: '-1px',
-                }}
-              />
-            </span>
-            <span className={styles.binLabel}>past {RECENT_WINDOW_HOURS}h</span>
-          </li>
-        </ul>
+          </ul>
+        </div>
       </div>
 
       {boundariesVisible && (
@@ -231,9 +303,7 @@ export function DepthLegend() {
           </span>
         )}
         {subductionVisible && (
-          <span className={styles.attribution}>
-            Slabs: Hayes et al. (2018) · USGS Slab2 · CC0
-          </span>
+          <span className={styles.attribution}>Slabs: Hayes et al. (2018) · USGS Slab2 · CC0</span>
         )}
         {/* CC-BY-SA makes this credit mandatory, like the Bird one. */}
         {faultsVisible && (

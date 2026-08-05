@@ -77,6 +77,26 @@ describe('usgsFeatureToEarthquakeEvent', () => {
     expect(event.place).toBe('Unknown location');
   });
 
+  it('passes a null depth through instead of defaulting it to the surface', () => {
+    // Real case: ushis3097, "64 km ESE of Kingston, Nevada" (1970), has no
+    // depth. Defaulting to 0 would put a possibly-deep event at the surface in
+    // the shallowest colour band — a false claim, not a missing one. This is
+    // the row that failed the 1970 archive chunk with a NOT NULL constraint.
+    const event = usgsFeatureToEarthquakeEvent({
+      ...REAL_SAMPLE_FEATURE,
+      geometry: {
+        ...REAL_SAMPLE_FEATURE.geometry,
+        coordinates: [
+          REAL_SAMPLE_FEATURE.geometry.coordinates[0],
+          REAL_SAMPLE_FEATURE.geometry.coordinates[1],
+          null,
+        ],
+      },
+    });
+
+    expect(event.depthKm).toBeNull();
+  });
+
   it('preserves a real (non-null) alert level', () => {
     const event = usgsFeatureToEarthquakeEvent({
       ...REAL_SAMPLE_FEATURE,

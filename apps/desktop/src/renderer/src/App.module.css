@@ -3,3 +3,62 @@
   width: 100%;
   height: 100%;
 }
+
+/*
+ * The top-left stack: coverage controls, then the archive.
+ *
+ * One positioned column rather than each panel placing itself, because the
+ * range controls change height — floors drop out with the window, and the
+ * band/coverage notes come and go — so any fixed `top` on the panel below
+ * would drift or overlap.
+ *
+ * The archive panel used to sit top-right, where it covered Cesium's home
+ * button. It belongs here anyway: it is scoped by date and magnitude, like
+ * everything else in this column.
+ */
+.leftColumn {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  /* Sized by the widest panel, so the two line up rather than stepping. */
+  width: max-content;
+  /* The column's own gap sits over the globe — without this it would swallow
+     drags in the strip between the panels. Children take pointers back. */
+  pointer-events: none;
+}
+
+.leftColumn > * {
+  pointer-events: auto;
+}
+
+/*
+ * The top-right stack: the event list, and the legend pinned to the bottom.
+ *
+ * A column rather than two independently-positioned panels, because the legend
+ * changes height constantly — layers toggle, the unknown-depth row appears,
+ * attributions come and go — so any `max-height` on the list above it would be
+ * a guess that goes wrong on the next toggle or window resize. Here the list
+ * simply cannot reach the legend: it shrinks instead.
+ */
+.rightColumn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  /* Keeps each panel its own width instead of stretching both to the widest. */
+  align-items: flex-end;
+  /* List at the top, legend at the bottom — the positions they already had. */
+  justify-content: space-between;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.rightColumn > * {
+  pointer-events: auto;
+}

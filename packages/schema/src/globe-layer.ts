@@ -32,5 +32,14 @@ export interface GlobeLayer {
   mount(viewer: Viewer): void;
   unmount(): void;
   setTimeWindow(start: Date, end: Date): void;
+  /**
+   * Optional: recede so another layer can be read over the top.
+   *
+   * Added for the antipode view, which makes the globe translucent — at which
+   * point every event on the far side becomes visible too and competes with the
+   * one chord you asked for. Optional because most layers have nothing sensible
+   * to do with it, and a required no-op on every implementation is noise.
+   */
+  setDimmed?(dimmed: boolean): void;
   setVisible(v: boolean): void;
 }

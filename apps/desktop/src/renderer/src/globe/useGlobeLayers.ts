@@ -9,6 +9,8 @@ import {
   type BasemapId,
   type OverlayRegistration,
 } from '../layers/registry';
+import { INITIAL_FIRST_PAINT, observeTileQueue } from './first-paint';
+import { createAntipodeLayer } from '../layers/antipode-layer';
 
 /** Show data layers regardless if basemap tiles haven't settled by now. */
 const TILE_WAIT_FALLBACK_MS = 5_000;
@@ -18,6 +20,14 @@ interface UseGlobeLayersOptions {
   activeBasemapId: BasemapId;
   layerVisibility: Record<string, boolean>;
   events: readonly EarthquakeEvent[];
+  /**
+   * The event whose antipode chord is on screen, or `null`.
+   *
+   * Not a registered layer — it is a mode entered from one event rather than
+   * something toggled in the layer panel — so it is mounted here alongside
+   * them instead of through the registry.
+   */
+  antipodeEvent: EarthquakeEvent | null;
   /**
    * The window layers should currently display, or `null` for "everything".
    *
@@ -56,13 +66,16 @@ function useFirstPaintReady(
     const viewer = viewerRef.current;
     if (!viewer || ready) return;
 
-    if (viewer.scene.globe.tilesLoaded) {
-      setReady(true);
-      return;
-    }
+    // No `tilesLoaded` short-circuit. It reads `true` on a freshly created
+    // viewer — nothing is queued because nothing has been *requested* yet — so
+    // checking it here opened the gate immediately and put the dots back in
+    // front of the globe. `observeTileQueue` requires the queue to fill before
+    // an empty queue counts as painted.
+    let paintState = INITIAL_FIRST_PAINT;
 
     const onTileProgress = (queuedTileCount: number) => {
-      if (queuedTileCount === 0) setReady(true);
+      paintState = observeTileQueue(paintState, queuedTileCount);
+      if (paintState.ready) setReady(true);
     };
     viewer.scene.globe.tileLoadProgressEvent.addEventListener(onTileProgress);
 
@@ -133,6 +146,7 @@ export function useGlobeLayers({
   activeBasemapId,
   layerVisibility,
   events,
+  antipodeEvent,
   timeWindow,
   viewerReadyToken,
 }: UseGlobeLayersOptions): void {
@@ -222,6 +236,33 @@ export function useGlobeLayers({
       mountedLayersRef.current,
     );
   }, [viewerRef, events, backdropTone, layerVisibility, firstPaintReady, viewerReadyToken]);
+
+  // --- Antipode: a mode, not a registered layer ---------------------------
+  //
+  // Rebuilt only when the event changes. It owns globe translucency, so its
+  // unmount is what gives the planet back — an early return that skipped
+  // cleanup would leave the whole globe see-through.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !firstPaintReady || !antipodeEvent) return;
+
+    const layer = createAntipodeLayer(antipodeEvent, backdropTone);
+    layer.mount(viewer);
+
+    return () => {
+      layer.unmount();
+    };
+  }, [viewerRef, antipodeEvent, backdropTone, firstPaintReady, viewerReadyToken]);
+
+  // Fades the event marks while the chord is up, so 26,000 dots visible through
+  // a translucent globe don't drown the one line that was asked for. Pushed to
+  // mounted layers rather than rebuilding them — same channel as the playhead,
+  // and for the same reason.
+  useEffect(() => {
+    for (const layer of mountedLayersRef.current) {
+      layer.setDimmed?.(antipodeEvent !== null);
+    }
+  }, [antipodeEvent, events]);
 
   // --- Playhead: pushed to whatever is mounted, no rebuild ----------------
   //

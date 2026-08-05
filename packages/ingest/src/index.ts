@@ -1,5 +1,18 @@
-export { fetchRecentEarthquakes, fetchEarthquakeFeed } from './usgs-quakes';
-export type { FetchRecentEarthquakesOptions, EarthquakeFeedBucket } from './usgs-quakes';
+export {
+  fetchRecentEarthquakes,
+  fetchEarthquakeFeed,
+  fetchEarthquakePage,
+  countEarthquakes,
+} from './usgs-quakes';
+export type {
+  FetchRecentEarthquakesOptions,
+  FetchEarthquakePageOptions,
+  CountEarthquakesOptions,
+  EarthquakeFeedBucket,
+} from './usgs-quakes';
+
+export { fetchArchiveChunk, ArchiveCancelledError } from './archive-backfill';
+export type { FetchArchiveChunkOptions } from './archive-backfill';
 
 export { fetchEmscEarthquakes } from './emsc-quakes';
 export type { FetchEmscOptions } from './emsc-quakes';

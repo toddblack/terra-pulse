@@ -6,6 +6,8 @@
  * coverage gap below M4: the USGS global feed is ~69% US at M2+, because small
  * events live in national catalogues USGS doesn't aggregate.
  */
+import { ARCHIVE_SPANS, archiveSpanForHours, archiveSpanHours } from './archive';
+
 export type EarthquakeSource = 'usgs' | 'emsc';
 
 /**
@@ -26,7 +28,15 @@ export interface EarthquakeEvent {
   updatedUtc: string;
   longitude: number;
   latitude: number;
-  depthKm: number;
+  /**
+   * Null where the catalogue genuinely has no depth for the event.
+   *
+   * Rare and almost entirely historical — measured across ~48,500 archive
+   * events, 4 had no depth, all before 1980. Defaulting them to 0 would place a
+   * possibly-deep event at the surface and in the shallowest colour band, which
+   * is a false claim rather than a missing one.
+   */
+  depthKm: number | null;
   /** USGS review state ('automatic' | 'reviewed'). EMSC has no equivalent. */
   status: string | null;
   /**
@@ -66,11 +76,18 @@ export interface EarthquakeQuery {
  *   (12% spread per decade, against 3× for M4.5+). This is the floor any
  *   decade-scale analysis has to use.
  *
+ * - **M6.0** and **M7.0** — USGS's own class boundaries (*strong* and *major*).
+ *   They exist for the archive: across 57 years M6+ is 7,907 events and M7+ is
+ *   781, which is how "every great earthquake since 1970" becomes a view you
+ *   can actually draw. **M6.5 is deliberately absent** — it is a round number
+ *   with no class boundary on it, which is the exact mistake the rest of this
+ *   list was corrected to avoid.
+ *
  * An earlier version of this list was `[1, 2, 3, 4, 5]`. Round numbers read
  * tidier but sit beside the real thresholds rather than on them, and M5+ over a
  * long span would ship a 36% coverage drift looking like signal.
  */
-export const MAGNITUDE_FLOORS: readonly number[] = [1, 2.5, 4.5, 5.5];
+export const MAGNITUDE_FLOORS: readonly number[] = [1, 2.5, 4.5, 5.5, 6, 7];
 
 /**
  * How far back the catalogue is fetched, and to what magnitude floor.
@@ -140,6 +157,11 @@ export function coverageTierFor(windowHours: number): CoverageTier | undefined {
 /**
  * The lowest magnitude the catalogue actually holds for this span.
  *
+ * Consults the live tiers *and* the archive spans, because both are windows the
+ * selector can offer and they answer this question differently — 30 days holds
+ * M2.5+, a decade holds only M5.5+. Keeping one resolver means the store's
+ * floor-auto-raise works across the boundary with no special case.
+ *
  * An unrecognised window falls back to the strictest floor — showing less than
  * exists is recoverable; showing an empty globe as though it were a quiet month
  * is not.
@@ -147,7 +169,14 @@ export function coverageTierFor(windowHours: number): CoverageTier | undefined {
 export function minMagnitudeForWindow(windowHours: number): number {
   const tier = coverageTierFor(windowHours);
   if (tier) return tier.minMagnitude;
-  return Math.max(...COVERAGE_TIERS.map((entry) => entry.minMagnitude));
+
+  const span = archiveSpanForHours(windowHours);
+  if (span) return span.minMagnitude;
+
+  return Math.max(
+    ...COVERAGE_TIERS.map((entry) => entry.minMagnitude),
+    ...ARCHIVE_SPANS.map((entry) => entry.minMagnitude),
+  );
 }
 
 /** Floors meaningful for a span — anything at or above what was ingested. */
@@ -181,6 +210,29 @@ export function longestCoverageHours(): number {
   return Math.max(...COVERAGE_TIERS.map((tier) => tier.windowHours));
 }
 
+/** Every window length the UI offers, live and archive, shortest first. */
+export function offeredWindowHours(): number[] {
+  return [
+    ...COVERAGE_TIERS.map((tier) => tier.windowHours),
+    ...ARCHIVE_SPANS.map(archiveSpanHours),
+  ].sort((a, b) => a - b);
+}
+
+/**
+ * The next-shorter window the UI offers, or `null` at the shortest.
+ *
+ * This is the trailing window's length. Deriving it from the ladder rather than
+ * picking a constant means the trail is always "one step of history" — a decade
+ * inside the all-years view, a year inside the decade — and adding a span can't
+ * leave it stale. `null` at the bottom is what tells the UI to omit the control
+ * instead of offering a checkbox that would do nothing, exactly as
+ * `nextMagnitudeFloorAbove` does for the isolate-band control.
+ */
+export function previousWindowHours(windowHours: number): number | null {
+  const shorter = offeredWindowHours().filter((hours) => hours < windowHours);
+  return shorter.length > 0 ? Math.max(...shorter) : null;
+}
+
 /**
  * The result of one catalogue sync, pushed from main to the renderer.
  *
@@ -191,6 +243,61 @@ export function longestCoverageHours(): number {
 export interface EarthquakeSyncResult {
   changed: boolean;
   syncedAt: string;
+}
+
+/**
+ * The magnitude at which a newly-arrived event is worth interrupting for.
+ *
+ * Chosen by frequency, because that is what a threshold like this is actually
+ * for. Measured over the last 365 days: **M5.5 → 485/year (1.3 per day)**,
+ * **M5.8 → 233/year (one per 1.6 days)**, **M6 → 139/year (one per 2.6 days)**.
+ * One that fires daily gets ignored, and an alert people learn to dismiss
+ * without reading is worse than none — it trains you past the M7 as well.
+ *
+ * **Deliberately not a USGS class boundary, unlike every other threshold in
+ * this file — and that is fine here.** `MAGNITUDE_FLOORS` and `COVERAGE_TIERS`
+ * sit on real boundaries because they encode *detection completeness*: claims
+ * about what the catalogue does and doesn't contain. This encodes "how often do
+ * I want to be interrupted", which is a preference, not a fact about the Earth.
+ * A number between the boundaries is the right answer to a question about
+ * attention.
+ *
+ * Inclusive: an exact M5.8 alerts, an M5.79 does not.
+ */
+export const ALERT_MIN_MAGNITUDE = 5.8;
+
+/**
+ * How recent an arriving event must be to be announced.
+ *
+ * One hour, sized against the measured USGS publication lag: 78 s minimum, 222 s
+ * median, with revisions arriving for hours afterwards. An hour comfortably
+ * clears the slow tail while still excluding the 24-hour feed's older contents
+ * on the first poll after launch.
+ */
+export const ALERT_MAX_AGE_MS = 60 * 60 * 1000;
+
+/**
+ * How many events the launch summary lists before trimming.
+ *
+ * Ten fits on screen without becoming a wall. The list is ordered by magnitude
+ * rather than time precisely so this cap can only trim the least interesting
+ * end — a chronological cap could hide an M7.5 behind ten M5.9s.
+ */
+export const MISSED_EVENTS_LIMIT = 10;
+
+/**
+ * What arrived while the app was closed — shown once, on launch.
+ *
+ * Distinct from an alert, and deliberately so. An alert interrupts and claims
+ * "this just happened"; this is a digest you choose to read, so it carries no
+ * freshness bound and covers however long you were away.
+ */
+export interface MissedEvents {
+  events: EarthquakeEvent[];
+  /** Total qualifying, which can exceed `events.length` — see the limit. */
+  totalCount: number;
+  /** How far back the digest reaches: the last moment the app was running. */
+  sinceUtc: string;
 }
 
 export interface BoundingBox {
