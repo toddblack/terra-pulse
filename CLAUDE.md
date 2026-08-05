@@ -158,8 +158,52 @@ What went in:
   were a one-way door. The asymmetry is deliberate: a live tier switched "off"
   has nothing to fall back to, because the globe always shows *some* window.
 
-**Next: antipode chords**, then recurrence intervals on the archive (§5.9 has
-the observed-sequence panel, which needs no Python engine).
+**Observed aftershock sequences — shipped** (§5.9's Explore-safe half). In the
+inspector for any event M5.0+: what the catalogue actually recorded inside a
+Gardner-Knopoff window. The *forecast* half stays in Phase 4.
+
+- **Gardner-Knopoff windows are reused, not invented.** GK is already the
+  declustering standard (non-negotiable #2), so the events this panel calls
+  aftershocks are exactly the ones Phase 4 will remove as dependent. The fits
+  were checked against GK's published Table 1 before use — M6.0 → 53.2 km vs 54
+  tabulated, M7.0 → 918 d vs 915.
+- **The time window steps *down* 45.8 days at M6.5** and that is deliberate.
+  It's in the published piecewise form. The obvious fix — take the larger branch
+  — restores monotonicity and then gives **20,946 days at M9**, 57 years, which
+  would swallow the whole archive. Don't "fix" it without reading the note on
+  `gardnerKnopoffWindowDays`; there's a test pinning the step.
+- **The strip plots events/day, not counts, and this was a real correction
+  caught on real data.** Log-spaced bins are unequal — 1 day for the first,
+  ~890 for the last — so raw counts show bin width and run *backwards*. Tohoku's
+  counts are [182, 236, 204, 223, 289], which reads as aftershocks becoming more
+  frequent. As a rate: [182, 39.3, 8.9, 1.5, 0.32]/day, textbook Omori. Nothing
+  is fitted — a curve through those bars would be Analyze's job.
+- **Counted at M4.5+ whatever the view's floor is**, because that's the one level
+  uniform across the whole database, so 1985 and 2026 sequences are comparable.
+  It therefore disagrees with the globe on purpose; the floor is always printed
+  beside the count.
+- **A zero from an undownloaded archive is indistinguishable from a real zero**,
+  so the query returns the uncovered years and the panel says "lower bound".
+  Coverage counts the rolling cache and the always-refetched current year, so no
+  archive is needed for a recent event.
+- **Foreshocks are flagged, not folded in.** When something bigger followed, the
+  window was sized to the wrong magnitude and the panel's subject is wrong.
+  Verified on real data: the 2011-03-09 M7.3 correctly reports the M9.1 after it.
+- Stale IPC replies are made **unrenderable** rather than unlikely — results are
+  stored against the id they describe. Clicking through a cluster fires
+  overlapping requests with no ordering guarantee, and the failure mode is one
+  event's sequence under another's heading, looking entirely normal.
+- Costs, real catalogue: median 0.7 ms at M5, 9.6 ms at M7, 88 ms worst at M8+.
+
+**Next: recurrence intervals on the archive** — the original reason for building
+it. The Gardner-Knopoff module above is the missing prerequisite, now in place.
+Measured first: raw M6+ gaps near Tokyo have a 0.06 y median against 0.32 y
+declustered, so **declustering is not optional for a rate claim** (non-negotiable
+#2 says so anyway). The squeeze is real and needs designing around, not ignoring
+— at M7+ declustering barely matters but n collapses to 3–6 events per region
+(LA M7+ within 500 km: n=4; Kathmandu: n=3, mean 4.85 y vs median 9.66 y). Any
+interval must show n and the spread, and probably refuse to state one below some
+n.
 
 **Large-event alerts — shipped** (`PROJECT_PLAN` §5.8), out of Phase 3 order
 because they need no new data source, only the existing poll.
@@ -209,7 +253,8 @@ launch and clickable to fly to an event.
   against now and reports an empty absence on every launch. There is a test
   named for exactly this.
 
-**Planned, not built:** aftershock forecasting (§5.9, Phase 4).
+**Planned, not built:** aftershock *forecasting* (§5.9, Phase 4) — the model
+half. The observed-sequence half shipped; see below.
 
 **Event list — shipped.** A collapsible top-right panel listing exactly what the
 globe is drawing, click-to-fly, sortable by time or magnitude.
@@ -347,6 +392,18 @@ Python package would just be scaffolding ahead of need.
 - **Fake viewers in tests must really destroy.** A mock `remove()` that only
   recorded the call let a crash-on-unmount ship: Cesium's real `remove()`
   destroys, and destroying exposed a shared-material bug.
+- **`viewer.dataSources.add()` is asynchronous, and anything that *reads*
+  `viewer.dataSources` in the same commit will miss what was just added.** This
+  shipped as a real bug: on every poll and every manual Refresh, the selection
+  reticle vanished while the inspector stayed open. The layer rebuild removes
+  the old data source synchronously and attaches the new one a microtask later,
+  so the selection effect ran in the gap, found nothing, and cleared
+  `selectedEntity` — then never re-ran. The store was right the whole time;
+  only Cesium's view of the selection was lost, which is exactly why the panel
+  and the reticle disagreed. Fixed by subscribing to `dataSourceAdded` rather
+  than resolving once per commit (`selection-sync.ts`). Any future code that
+  looks up an entity by id needs the same treatment — a one-shot lookup is a
+  race, not a lookup.
 - **An idle queue is not a finished queue.** The data layers wait for the globe
   to paint, gated on Cesium's `tileLoadProgressEvent`. Both obvious readings of
   "done" are wrong at startup: `globe.tilesLoaded` is `true` on a fresh viewer

@@ -7,7 +7,12 @@ import type {
   BoundingBox,
 } from '@terra-pulse/schema';
 
-function rowToEvent(row: Record<string, unknown>): EarthquakeEvent {
+/**
+ * Exported so every query module builds an event the same way. A second copy of
+ * this mapping is how one caller ends up with `tsunami` as the raw 0/1 integer,
+ * or misses a column added later.
+ */
+export function rowToEvent(row: Record<string, unknown>): EarthquakeEvent {
   return {
     id: row['event_id'] as string,
     source: row['source'] as EarthquakeSource,
@@ -245,6 +250,19 @@ export function countMissedEarthquakes(
     .prepare('SELECT COUNT(*) AS count FROM earthquakes WHERE time_utc > ? AND magnitude >= ?')
     .get(sinceUtc, minMagnitude);
   return Number(row?.['count'] ?? 0);
+}
+
+/**
+ * One event by its catalogue id, or null.
+ *
+ * Exists so IPC callers can pass an id rather than a whole event. The renderer
+ * already holds the object, but sending it back would make main trust
+ * renderer-supplied coordinates for a spatial query — and a mainshock that
+ * isn't a real catalogue row is not a question worth answering.
+ */
+export function getEarthquakeById(db: DatabaseSync, eventId: string): EarthquakeEvent | null {
+  const row = db.prepare('SELECT * FROM earthquakes WHERE event_id = ?').get(eventId);
+  return row === undefined ? null : rowToEvent(row);
 }
 
 export function queryEarthquakesInBoundingBox(

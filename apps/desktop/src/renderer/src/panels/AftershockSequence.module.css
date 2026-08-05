@@ -1,0 +1,155 @@
+/* The observed-sequence section of the inspector (PROJECT_PLAN §5.9).
+   Colocated with its component, like every other panel's styles. */
+
+.section {
+  margin-top: 0.875rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+}
+
+.heading {
+  margin: 0;
+  color: rgb(148 163 184);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.note {
+  margin: 0.375rem 0 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+/* Stated above the count, because a count without its window is not a fact. */
+.window {
+  margin: 0.25rem 0 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.count {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+}
+
+.countNumber {
+  font-size: 1.125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* "at least" rides next to the number rather than living only in the caveat
+   below, so a truncated read of the panel still can't mistake a lower bound
+   for a total. */
+.qualifier {
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+.largest {
+  margin: 0.1875rem 0 0;
+  color: rgb(203 213 225);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.strip {
+  margin: 0.75rem 0 0;
+}
+
+.stripCaption {
+  margin-bottom: 0.25rem;
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+}
+
+.bars {
+  display: flex;
+  /* 3px, not the 2px minimum: at five bars across 19rem the slots are wide
+     enough that a tighter gap makes the strip read as one block. */
+  gap: 3px;
+  align-items: flex-end;
+  height: 3.25rem;
+}
+
+.barSlot {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.125rem;
+  align-items: center;
+  height: 100%;
+}
+
+.barTrack {
+  display: flex;
+  flex: 1;
+  align-items: flex-end;
+  width: 100%;
+  /* A visible baseline, so an empty bin reads as a measured zero rather than
+     as a gap where a bar failed to render. */
+  border-bottom: 1px solid rgb(255 255 255 / 14%);
+}
+
+/* Violet, chosen by measurement rather than taste: 6.56:1 against the panel's
+   own backdrop, and ΔE 13.3 from the nearest colour the inspector already uses.
+   It has to stay clear of three existing meanings — the blue depth ramp, the
+   red that means "recent"/antipode, and the reserved PAGER status colours.
+   Amber failed at ΔE 2.7 from PAGER yellow and slate at ΔE 0.0 from muted text.
+   One hue, because this is one series. */
+.bar {
+  width: 100%;
+  min-height: 0;
+  border-radius: 2px 2px 0 0;
+  background-color: #a78bfa;
+}
+
+/* A bin the sequence hasn't reached yet. Deliberately not a zero-height bar:
+   a flat slot on the baseline reads as a measured quiet period, and this is the
+   opposite claim — nothing has been measured here at all. */
+.barPending {
+  width: 100%;
+  height: 100%;
+  border-radius: 2px 2px 0 0;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgb(148 163 184 / 18%) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+.barCount {
+  height: 0.75rem;
+  color: rgb(203 213 225);
+  font-size: 0.5625rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.barLabel {
+  color: rgb(148 163 184);
+  font-size: 0.5625rem;
+  white-space: nowrap;
+}
+
+/* Louder than a caveat. This one says the panel's subject is not what the
+   reader thinks it is. */
+.foreshockFlag {
+  margin: 0.625rem 0 0;
+  padding: 0.375rem 0.5rem;
+  border-left: 2px solid rgb(251 146 60);
+  border-radius: 0 0.25rem 0.25rem 0;
+  background-color: rgb(251 146 60 / 12%);
+  color: rgb(254 215 170);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
+.caveat {
+  margin: 0.5rem 0 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}

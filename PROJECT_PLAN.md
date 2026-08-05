@@ -594,6 +594,76 @@ all, it is shown with its framing attached, never as a bare percentage.
 
 ---
 
+#### The observed-sequence panel — shipped
+
+The archive half of the split above. Pure observation, so it lives in Explore;
+the forecast half stays in Phase 4. It appears in the inspector for any event
+M5.0+ and reports what the catalogue actually recorded inside a Gardner-Knopoff
+window.
+
+**Gardner-Knopoff sets the window, and that is a reuse decision, not a
+convenience.** The window had to come from somewhere that wasn't "a number that
+looked right after seeing a sequence" (non-negotiable #3). GK is already this
+project's declustering standard (#2), so the events this panel calls aftershocks
+are exactly the ones Phase 4 will later remove as dependent. One definition, two
+consumers.
+
+The analytic fits were checked against GK's published Table 1 before use, not
+merely transcribed — M6.0 gives 53.2 km against 54 tabulated, M7.0 gives 918 days
+against 915. Two things that came out of doing that:
+
+- **The time window is discontinuous at M6.5**, stepping *down* 45.8 days (4.9%)
+  as magnitude crosses the branch point. That is in the published piecewise form,
+  not a transcription error, and it is left alone: taking the larger branch
+  everywhere restores monotonicity and then explodes to **20,946 days at M9** —
+  57 years, which would claim the whole archive as one sequence. Interpolating
+  the seam would mean inventing a coefficient no paper published. Pinned by a
+  test so it stays a known quantity.
+- Neither branch is good right at M6.5 anyway (table 790, branches give 931 and
+  885), so a 5% step sits inside the fit's own error.
+
+**The strip plots a rate, not a count — this was a real correction.** The bins
+are log-spaced, so they are wildly unequal: one day for the first, ~890 days for
+the last. Raw counts across them describe the bin widths and get the direction
+backwards. Measured on the real catalogue, Tohoku's counts are
+[182, 236, 204, 223, 289] and Sumatra's [5, 17, 19, 147, 139] — both read as
+"aftershocks become *more* frequent with time". As a rate Tohoku is
+[182, 39.3, 8.9, 1.5, 0.32]/day: Omori decay, plainly. Same observation, divided
+by the time it was observed over. Still description — nothing is fitted, no curve
+is drawn, no parameter estimated.
+
+**Counted at M4.5+ regardless of the view's floor.** M4.5 is the one level
+available uniformly across the whole database (the archive's floor from 1970, and
+below the rolling cache's M1/M2.5), so a 1985 sequence and a 2026 one are
+comparable — which is the entire question. The cost is that it disagrees with the
+globe: a recent M5.2 can show forty small dots and report three aftershocks. The
+panel therefore always prints the floor beside the count.
+
+**Three things it refuses to state silently:**
+
+- **A zero from an undownloaded archive looks exactly like a real zero.** The
+  query returns the years its window touches that the archive lacks, so the panel
+  says "no archive data for 1985–1988 — this is a lower bound" instead of a
+  confident nothing. Coverage counts the rolling cache and the always-refetched
+  current year too, so someone who has never downloaded the archive still gets a
+  correct answer for last week's earthquake.
+- **A running sequence is not a finished one.** An M9 window is ~1,070 days, so a
+  recent mainshock's count is a running total. The panel reports what fraction of
+  the window has elapsed, and bins that haven't happened are drawn as visibly
+  unmeasured rather than as zero-height bars.
+- **The mainshock may have been a foreshock.** GK calls the largest event of a
+  cluster the mainshock, so when something bigger followed, the window was sized
+  to the wrong magnitude and the panel is describing the wrong subject. Flagged
+  prominently, not folded into a count. Verified on the real catalogue: the
+  2011-03-09 M7.3 off Tohoku correctly reports a larger M9.1 following.
+
+Measured against the real 307k-row catalogue: `SEARCH ... USING INDEX
+idx_earthquakes_time_magnitude`, median 0.7 ms at M5, 9.6 ms at M7, 51 ms median
+/ 88 ms worst at M8+. Tohoku's 1,134 aftershocks take 82 ms. It runs on a click,
+not a timer.
+
+---
+
 ## 6. Pre-Registered Hypotheses
 
 Maintained in `docs/HYPOTHESES.md`. Every hypothesis is written down *before*
@@ -738,11 +808,13 @@ server-side proxying of all third-party API calls.
 - Monte Carlo permutation testing
 - FDR correction
 - Results panel with null distribution plots, clearly separated from Explore
-- Aftershock forecasting (§5.9) — Reasenberg-Jones, generic parameters first,
+- Aftershock *forecasting* (§5.9) — Reasenberg-Jones, generic parameters first,
   fitted per-sequence after. Shares the declustering and Gutenberg-Richter
   machinery built for the hypothesis tests, which is why it belongs here rather
-  than in Phase 3. The *observed* sequence panel for archive events needs none
-  of that and can land earlier.
+  than in Phase 3. ~~The *observed* sequence panel for archive events needs none
+  of that and can land earlier.~~ — **shipped**, see §5.9. It also delivered the
+  Gardner-Knopoff windows this phase's declustering needs, already checked
+  against the published table.
 - **Milestone:** H1–H5 tested and honestly reported.
 
 ### Phase 5 — Astronomical Extension

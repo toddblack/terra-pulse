@@ -5,6 +5,7 @@ import { previousWindowHours } from '@terra-pulse/schema';
 import { useEarthquakeStore, windowStartMs } from '../state/useEarthquakeStore';
 import { eventIdFromEntityId } from '../layers/earthquake-layer';
 import { focusAltitudeM } from './camera-focus';
+import { watchSelection } from './selection-sync';
 import { useGlobeLayers } from './useGlobeLayers';
 import { useNow } from './useNow';
 import { usePlayback } from './usePlayback';
@@ -204,29 +205,19 @@ export function CesiumViewer() {
   }, [select, viewerReadyToken]);
 
   // Store → Cesium selection, so the reticle follows the store and survives a
-  // layer rebuild. Entities live inside each layer's own data source, so this
-  // searches the mounted sources rather than `viewer.entities`.
+  // layer rebuild.
+  //
+  // Subscribed rather than applied once, because applying once doesn't survive
+  // the rebuild it claimed to: `dataSources.add()` is async, so on a refresh the
+  // old source is already gone and the new one has not attached when this runs.
+  // That cleared the reticle on every poll while the inspector stayed open —
+  // the store still held the selection, and only Cesium's view of it was lost.
+  // See `selection-sync.ts`.
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer) return;
 
-    if (selectedEventId === null) {
-      viewer.selectedEntity = undefined;
-      return;
-    }
-
-    for (let i = 0; i < viewer.dataSources.length; i++) {
-      const entity = viewer.dataSources.get(i).entities.getById(selectedEventId);
-      if (entity) {
-        viewer.selectedEntity = entity;
-        return;
-      }
-    }
-
-    // Selected but not on screen — the filters excluded it, or the layer was
-    // rebuilt without it. Clear rather than fall through: leaving the previous
-    // value would keep Cesium holding an entity that has since been destroyed.
-    viewer.selectedEntity = undefined;
+    return watchSelection(viewer, viewer.dataSources.dataSourceAdded, selectedEventId);
   }, [selectedEventId, events, viewerReadyToken]);
 
   /**

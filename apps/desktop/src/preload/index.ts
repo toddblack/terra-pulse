@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  AftershockSequence,
   ArchiveProgress,
   EarthquakeEvent,
   EarthquakeQuery,
@@ -57,6 +58,15 @@ contextBridge.exposeInMainWorld('terraPulse', {
      * arrive before anyone is listening.
      */
     missed: (): Promise<MissedEvents | null> => ipcRenderer.invoke('earthquakes:missed'),
+
+    /**
+     * What actually followed an event, as observed (PROJECT_PLAN §5.9).
+     *
+     * Null when the id isn't in the catalogue. Pure observation — no forecast
+     * crosses this bridge, which is what keeps it Explore-safe.
+     */
+    sequence: (eventId: string): Promise<AftershockSequence | null> =>
+      ipcRenderer.invoke('earthquakes:sequence', eventId),
   },
   archive: {
     status: (): Promise<ArchiveProgress> => ipcRenderer.invoke('archive:status'),
