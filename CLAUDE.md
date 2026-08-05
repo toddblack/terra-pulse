@@ -195,8 +195,42 @@ Gardner-Knopoff window. The *forecast* half stays in Phase 4.
   event's sequence under another's heading, looking entirely normal.
 - Costs, real catalogue: median 0.7 ms at M5, 9.6 ms at M7, 88 ms worst at M8+.
 
-**Next: recurrence intervals on the archive** — the original reason for building
-it. The Gardner-Knopoff module above is the missing prerequisite, now in place.
+**Fault association — shipped** (§5.10). Nearest mapped GEM fault, its name,
+slip rate and kinematics — in the inspector for a selected event, and via a
+**fault probe** mode that answers for any clicked point.
+
+- **The reason it exists: "recurrence interval" was two different quantities.**
+  "The southern San Andreas is overdue" is *paleoseismology* — trenching, ~10–14
+  ruptures over millennia. "M6+ here occurred 29 times since 1970" is the
+  *instrumental catalogue*. **The 57-year archive can never say whether anywhere
+  is overdue**; that's an §11-class limit, not a matter of effort. Recurrence is
+  also a property of a fault, not of a circle — hence association, not a radius.
+- **Slip rate is shown; recurrence is NOT derived from it.** Converting mm/yr to
+  years needs a characteristic slip per event, i.e. magnitude-scaling relations
+  — model output with assumptions, which belongs in Analyze, not beside
+  observations. Don't "finish the job" by dividing without reading §5.10.
+- **"No useful association" is the common case and the panel is built around
+  that.** Measured: the median M6+ event is **42.9 km** from any mapped trace,
+  only 20% are within 10 km, and only 21% of nearest traces are *named*. Deep
+  events are worse (median 78.1 km) because subduction geometry puts the surface
+  trace far inboard — they get an explicit caveat. Beyond 150 km it names
+  nothing. A panel written around the Parkfield example looks broken in the field.
+- **It never claims the event was on the fault** — reports trace and distance,
+  lets the reader judge. Epicentres carry location error; GEM maps surface
+  traces while ruptures happen at depth.
+- Vendor script keeps 4 of GEM's ~20 columns: +59 bytes/feature, 2.5→3.16 MB.
+  **263 `net_slip_rate` values are the literal string `"None"`** — Python's None
+  serialised, and truthy — so the parser rejects rather than coerces.
+- **The JSON grew past what TypeScript will infer.** Heterogeneous shapes at
+  3.16 MB make the imported literal type stop resolving: `tsc` still passes but
+  type-aware lint rules see an unresolvable type and every property read errors.
+  `data/active-faults.ts` asserts the shape once; nothing else imports the JSON
+  directly. Watch for this on any other vendored dataset that grows.
+- Brute force over 157,548 vertices at 1.1 ms — no spatial index, deliberately.
+
+**Next: instrumental recurrence on the archive** — the honest half of the
+original goal, now that §5.10 has drawn the line around what it can claim.
+The Gardner-Knopoff module is the missing prerequisite, in place.
 Measured first: raw M6+ gaps near Tokyo have a 0.06 y median against 0.32 y
 declustered, so **declustering is not optional for a rate claim** (non-negotiable
 #2 says so anyway). The squeeze is real and needs designing around, not ignoring

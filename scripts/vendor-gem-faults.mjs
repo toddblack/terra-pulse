@@ -149,6 +149,41 @@ function zoomTier(km) {
   return 2;
 }
 
+/**
+ * GEM encodes every measured quantity as a `"(preferred, min, max)"` string,
+ * where the bounds are frequently empty: `"(30.54,23.16,43.26)"` but also
+ * `"(8.0,,)"`. Returns null for anything that isn't that shape.
+ *
+ * **Two traps, both found by measuring rather than by reading the schema:**
+ *
+ * - 263 of the 10,405 populated `net_slip_rate` values are the literal string
+ *   `"None"` — Python's `None` serialised as text rather than as JSON null. It
+ *   is truthy, so a plain presence check treats it as a measurement.
+ * - Other rate columns carry free prose where a number was expected
+ *   (`shortening_rate` has "A huge range of rates from many studies; see
+ *   Mohadjer (2017) for details."). Nothing guarantees `net_slip_rate` is
+ *   exempt, so this rejects rather than coerces — `Number("None")` is NaN, and
+ *   a NaN slip rate would reach the panel as a blank where a number belongs.
+ */
+function parseMeasurement(raw) {
+  if (typeof raw !== 'string') return null;
+  const match = raw.trim().match(/^\(([^,]*),([^,]*),([^,]*)\)$/);
+  if (!match) return null;
+
+  const num = (text) => {
+    const trimmed = text.trim();
+    if (trimmed === '') return null;
+    const value = Number(trimmed);
+    return Number.isFinite(value) ? value : null;
+  };
+
+  const preferred = num(match[1]);
+  // The bounds are optional; the preferred value is the measurement. Without
+  // it there is nothing to report, whatever the bounds say.
+  if (preferred === null) return null;
+  return { preferred, min: num(match[2]), max: num(match[3]) };
+}
+
 async function main() {
   process.stdout.write('fetching GEM active faults (10 MB)… ');
   const response = await fetch(FAULTS_URL);
@@ -160,6 +195,8 @@ async function main() {
   const tierCounts = [0, 0, 0];
   let longestSegmentKm = 0;
   let skipped = 0;
+  let named = 0;
+  let withRate = 0;
 
   for (const feature of features) {
     if (feature.geometry?.type !== 'LineString') {
@@ -184,17 +221,48 @@ async function main() {
       if (segment > longestSegmentKm) longestSegmentKm = segment;
     }
 
-    faults.push({
+    const properties = feature.properties ?? {};
+    const slipRate = parseMeasurement(properties.net_slip_rate);
+    // `fs_name` is the fault-section name and is populated where `name` isn't;
+    // together they cover 6,105 of 13,696 faults against `name`'s 4,703.
+    const name = properties.name || properties.fs_name || null;
+
+    const fault = {
       z: tier,
       p: dense.flatMap((c) => [round(c[0]), round(c[1])]),
-    });
+    };
+
+    // Keys are omitted rather than set to null. Over 13,696 features the
+    // difference between an absent key and `"n":null` is real file size, and
+    // "absent" is what the reader has to handle anyway — most faults are
+    // genuinely unnamed.
+    if (name) fault.n = name;
+    if (slipRate) {
+      fault.s = Number(slipRate.preferred.toFixed(2));
+      if (slipRate.min !== null) fault.sl = Number(slipRate.min.toFixed(2));
+      if (slipRate.max !== null) fault.sh = Number(slipRate.max.toFixed(2));
+    }
+    if (properties.slip_type) fault.t = properties.slip_type;
+    if (properties.catalog_name) fault.c = properties.catalog_name;
+
+    faults.push(fault);
+    if (name) named += 1;
+    if (slipRate) withRate += 1;
   }
 
-  // Only geometry and a zoom tier. The 20-odd attribute columns (slip_type,
-  // slip rates, dip, names) are deliberately dropped: the layer renders every
-  // fault in one muted colour, so none of them affect a pixel, and carrying
-  // them would quadruple the file for nothing. Re-add a field here if a
-  // future layer actually reads it.
+  // Geometry, a zoom tier, and the four attribute columns something actually
+  // reads: name, net slip rate (with its bounds), slip type, and the source
+  // catalogue. The other ~16 columns (dip, rake, seismogenic depths, exposure
+  // quality, references) stay dropped — nothing displays them, and they are
+  // what would genuinely bloat the file.
+  //
+  // An earlier note here said carrying attributes would "quadruple" it. That
+  // was about carrying *all* of them; these four measure at +59 bytes per
+  // feature, ~792 KB on a 2.5 MB file (+32%). Measured, not estimated.
+  //
+  // They ride in the same file as the geometry rather than a side-car, because
+  // the only consumer — nearest-fault association — needs both together, and a
+  // second file would have to duplicate the geometry to be useful on its own.
   const path = join(OUT_DIR, 'active-faults.json');
   writeFileSync(path, JSON.stringify(faults));
 
@@ -204,6 +272,13 @@ async function main() {
   console.log(
     `tiers  : ${tierCounts[0]} long (>=${TIER_LONG_KM}km) · ` +
       `${tierCounts[1]} medium · ${tierCounts[2]} short (<${TIER_MEDIUM_KM}km)`,
+  );
+  // Printed because the *sparsity* is the thing a reader has to design around:
+  // most faults have no name, and a quarter have no measured slip rate. A panel
+  // written against the well-populated examples would look broken in the field.
+  console.log(
+    `attrs  : ${named.toLocaleString()} named (${((named / faults.length) * 100).toFixed(1)}%) · ` +
+      `${withRate.toLocaleString()} with slip rate (${((withRate / faults.length) * 100).toFixed(1)}%)`,
   );
   // Guards the densifier: if this ever exceeds the cap, chords are sagging
   // below the globe again and the fix silently stopped working.

@@ -664,6 +664,83 @@ not a timer.
 
 ---
 
+### 5.10 Fault Association — shipped
+
+"What fault is this near, and how fast does it move?" Available two ways: a
+section in the inspector for a selected event, and a **fault probe** mode where
+clicking anywhere on the globe answers for that point — because asking whether
+Seattle sits near a mapped fault shouldn't require an earthquake there to click.
+
+**Why this exists at all: recurrence intervals are two different quantities and
+they were being conflated.**
+
+- *"The southern San Andreas is overdue"* is **paleoseismology** — trenching the
+  fault, dating offset layers, reading off ~10–14 ruptures over a couple of
+  thousand years. Measured in millennia.
+- *"M6+ within 500 km of here occurred 29 times since 1970"* is the
+  **instrumental catalogue**. Measured in decades.
+
+The archive is 57 years long. **It can never establish whether anywhere is
+overdue** — you cannot measure a 200-year recurrence from 57 years of data. That
+is the same category of limit as early warning in §11, not a matter of trying
+harder. Recurrence is also a property of a *fault*, not of a circle drawn around
+a point, which is what makes fault association the right primitive rather than a
+radius search.
+
+**What the data supports, graded by how much it claims:**
+
+- **Sourced, no modelling** — fault name, net slip rate with GEM's own bounds,
+  kinematics, source catalogue. This is what shipped.
+- **Sourced but regional** — curated paleoseismic recurrence, e.g. USGS Qfaults.
+  Real trenching-derived intervals, but US-only and patchy even there. Not built.
+- **Modelled** — recurrence derived from slip rate, which needs a characteristic
+  slip per event and therefore magnitude-scaling relations. That is model output
+  with assumptions, so it belongs in Analyze with registered parameters, not
+  beside observations in Explore. Deliberately **not** derived.
+
+**The measurement that shaped the whole panel.** Against the real catalogue,
+distance from an event to the nearest mapped fault:
+
+| | median | within 10 km | nearest is *named* |
+|---|---|---|---|
+| M6+ | 42.9 km | 20% | 21% |
+| M5.5+ shallow (<70 km) | 39.2 km | 19% | 20% |
+| M5.5+ deep (≥70 km) | 78.1 km | 8% | 21% |
+
+So **"no useful association" is the common case**, and a panel written around the
+Parkfield example would look broken in the field. Consequences, all deliberate:
+
+- Beyond **150 km** it refuses to name anything — a mid-Pacific point is ~1,170 km
+  from the nearest trace, and printing a name beside four digits reads as an
+  association.
+- Unnamed faults say "unnamed fault" outright. Only 44.6% of GEM records carry a
+  name, and just 21% of the traces nearest to real M6+ events do.
+- Deep events get an explicit caveat: a surface trace says little about a rupture
+  200 km down, and the deep/shallow median gap above is that geometry, not a
+  different tectonic setting.
+- The panel **never claims the event was on the fault.** It reports the trace and
+  the distance and lets the reader judge. Epicentres carry real location error,
+  and GEM maps surface traces while ruptures happen at depth.
+
+**Data.** The vendor script now keeps four of GEM's ~20 attribute columns (name,
+`net_slip_rate` with bounds, `slip_type`, `catalog_name`): +59 bytes per feature,
+2.5 MB → 3.16 MB (+32%). An earlier note predicted carrying attributes would
+"quadruple" the file — that was about carrying *all* of them.
+
+Two traps found by measuring rather than reading the schema: 263 `net_slip_rate`
+values are the literal string `"None"` (Python's `None` serialised as text, and
+truthy), and other rate columns carry free prose where a number belongs. The
+parser rejects rather than coerces, because `Number("None")` is NaN and a NaN
+slip rate reaches the panel as a blank where a figure should be.
+
+Association is brute force over 157,548 vertices at **1.1 ms per query** — no
+spatial index, which would be a second structure to keep in step for no
+perceptible gain. Validated against known ground truth: Parkfield → San Andreas
+(Parkfield) at 1.6 km, 30.54 mm/yr dextral; Reykjavik → a spreading ridge at
+18.8 mm/yr.
+
+---
+
 ## 6. Pre-Registered Hypotheses
 
 Maintained in `docs/HYPOTHESES.md`. Every hypothesis is written down *before*

@@ -6,6 +6,7 @@ import { EventListPanel } from './panels/EventListPanel';
 import { MissedEventsPanel } from './panels/MissedEventsPanel';
 import { LayerPanel } from './panels/LayerPanel';
 import { RangeControls } from './panels/RangeControls';
+import { FaultProbePanel } from './panels/FaultProbePanel';
 import { DepthLegend } from './panels/DepthLegend';
 import { TimeScrubber } from './panels/TimeScrubber';
 import { EarthquakeInspector } from './panels/EarthquakeInspector';
@@ -70,6 +71,7 @@ export default function App() {
       <div className={styles.leftColumn}>
         <RangeControls />
         <ArchivePanel />
+        <FaultProbePanel />
       </div>
       <LargeEventBanner />
       <MissedEventsPanel />

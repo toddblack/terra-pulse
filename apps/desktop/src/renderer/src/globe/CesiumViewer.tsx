@@ -64,6 +64,8 @@ export function CesiumViewer() {
   const focusRequest = useEarthquakeStore((state) => state.focusRequest);
   const antipodeEventId = useEarthquakeStore((state) => state.antipodeEventId);
   const hideAntipode = useEarthquakeStore((state) => state.hideAntipode);
+  const faultProbeActive = useGlobeStore((state) => state.faultProbeActive);
+  const setProbePoint = useGlobeStore((state) => state.setProbePoint);
 
   // Resolved from the loaded set rather than held in the store, so the chord
   // follows revisions to the event like every other view does.
@@ -77,6 +79,18 @@ export function CesiumViewer() {
   useEffect(() => {
     antipodeActiveRef.current = antipodeEventId !== null;
   }, [antipodeEventId]);
+
+  /**
+   * Same treatment for the fault probe.
+   *
+   * Through a ref rather than a dependency so toggling the mode doesn't tear
+   * down and rebuild the whole `ScreenSpaceEventHandler` — which would drop the
+   * in-flight drag state along with it.
+   */
+  const faultProbeActiveRef = useRef(faultProbeActive);
+  useEffect(() => {
+    faultProbeActiveRef.current = faultProbeActive;
+  }, [faultProbeActive]);
 
   // Escape leaves the antipode view. The mode covers the globe in translucency
   // and a chord, so it needs an exit that doesn't depend on finding a button.
@@ -157,6 +171,29 @@ export function CesiumViewer() {
     const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
     handler.setInputAction((movement: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
+      // Fault probe intercepts the click entirely, and reads the *globe*
+      // surface rather than any entity under the cursor. Asking "what's mapped
+      // here" about a spot that happens to have a dot on it is still a question
+      // about the spot — and picking the entity would silently answer for its
+      // epicentre instead of where the user pointed.
+      if (faultProbeActiveRef.current) {
+        const cartesian = viewer.scene.camera.pickEllipsoid(
+          movement.position,
+          viewer.scene.globe.ellipsoid,
+        );
+        // Undefined when the click missed the globe — space around the limb.
+        // Left alone rather than cleared, so a stray click doesn't wipe a
+        // reading the user is still looking at.
+        if (cartesian) {
+          const carto = Cesium.Cartographic.fromCartesian(cartesian);
+          setProbePoint({
+            latitude: Cesium.Math.toDegrees(carto.latitude),
+            longitude: Cesium.Math.toDegrees(carto.longitude),
+          });
+        }
+        return;
+      }
+
       const picked: unknown = viewer.scene.pick(movement.position);
       const entityId: unknown =
         picked && typeof picked === 'object' && 'id' in picked
@@ -189,7 +226,11 @@ export function CesiumViewer() {
       // deselecting would take the chord *and* the inspector holding its exit
       // control away on the first drag. Read through a ref so this handler
       // isn't torn down and rebuilt every time the mode changes.
-      if (!antipodeActiveRef.current) select(null);
+      //
+      // Also suppressed under the fault probe, for the same reason: rotating to
+      // find a coastline to click on would otherwise clear the selection you
+      // still have open beside it.
+      if (!antipodeActiveRef.current && !faultProbeActiveRef.current) select(null);
       // Cleared so a single drag deselects once rather than on every frame.
       dragOrigin = undefined;
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
@@ -202,7 +243,10 @@ export function CesiumViewer() {
       // Non-negotiable #5 applies to handlers too.
       handler.destroy();
     };
-  }, [select, viewerReadyToken]);
+    // `setProbePoint` is a stable Zustand action, and the probe mode itself is
+    // read through a ref — so this handler is built once per viewer rather than
+    // rebuilt every time the mode toggles.
+  }, [select, setProbePoint, viewerReadyToken]);
 
   // Store → Cesium selection, so the reticle follows the store and survives a
   // layer rebuild.
