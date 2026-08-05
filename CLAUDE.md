@@ -211,6 +211,48 @@ launch and clickable to fly to an event.
 
 **Planned, not built:** aftershock forecasting (§5.9, Phase 4).
 
+**Event list — shipped.** A collapsible top-right panel listing exactly what the
+globe is drawing, click-to-fly, sortable by time or magnitude.
+
+- Reads `useEarthquakesUpToPlayhead()` — the same projection the legend's count
+  uses — so the list, the count and the marks **cannot** disagree. It follows
+  the floor, window, band isolation, playhead and trailing window without
+  knowing any of them exist.
+- **Windowed, not capped.** Only the ~26 visible rows exist as DOM nodes, with a
+  full-height spacer so the scrollbar still describes the whole list. 30d/M2.5
+  is 7,900 rows and the all-years archive view is 26,746 — a cap would hide most
+  of the catalogue and make the scrollbar lie. `event-list-window.ts` is pure
+  and tested.
+- Two bugs it produced, both worth remembering:
+  - A shrinking list left the slice start past its end, so `slice` returned
+    nothing — a blank panel with a working scrollbar. Clamp `first` at **both**
+    ends.
+  - The `ResizeObserver` was bound in an effect keyed on `open`, so when the
+    scroller unmounted for an empty list and came back, the observer was still
+    watching a detached node and the measured height stayed 0 — blank again,
+    healed only by closing and reopening. **Bind observers with a ref callback,
+    not an effect**, and don't conditionally unmount a measured element.
+    `visibleRange` also now falls back to a screenful when height is 0: the
+    failure mode should be "too many rows", never "none".
+
+### Panel placement
+
+**Panels describe themselves; a column positions them.** `App.module.css` owns
+`.leftColumn` (range controls + archive) and `.rightColumn` (event list +
+legend); the panels carry no `position: absolute`.
+
+This is not tidiness. Both columns hold a panel whose height changes at runtime
+— the range controls gain and lose floors and notes, the legend gains and loses
+whole sections as layers toggle — so any `top` offset or `max-height` on a
+neighbour is a guess that goes wrong on the next toggle or resize. In a column,
+overlap is unreachable: `min-height: 0` lets the flexible panel shrink instead.
+The wrapper takes `pointer-events: none` and gives it back on children, or its
+gap swallows globe drags.
+
+Cesium's `homeButton` is off, like every other default widget. It was the only
+camera reset — if that becomes annoying, add one to our own chrome where we
+control placement rather than turning it back on.
+
 ### Known gaps
 
 - ~~`INGEST_WINDOW_MS` is 4 days while the UI offers 30d~~ — fixed by archive
