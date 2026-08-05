@@ -1,5 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { EarthquakeEvent, EarthquakeQuery, EarthquakeSyncResult } from '@terra-pulse/schema';
+import type {
+  ArchiveProgress,
+  EarthquakeEvent,
+  EarthquakeQuery,
+  EarthquakeSyncResult,
+  MissedEvents,
+} from '@terra-pulse/schema';
 
 // Narrow, specific functions — never a raw ipcRenderer passthrough
 // (non-negotiable #6/§8: all IPC through an explicit minimal bridge).
@@ -7,7 +13,10 @@ contextBridge.exposeInMainWorld('terraPulse', {
   earthquakes: {
     query: (query: EarthquakeQuery = {}): Promise<EarthquakeEvent[]> =>
       ipcRenderer.invoke('earthquakes:query', query),
-    refresh: (): Promise<EarthquakeEvent[]> => ipcRenderer.invoke('earthquakes:refresh'),
+    // Returns the sync result, not the catalogue — the caller follows up with
+    // its own windowed `query`, which is the only thing that knows what window
+    // is on screen.
+    refresh: (): Promise<EarthquakeSyncResult> => ipcRenderer.invoke('earthquakes:refresh'),
 
     /**
      * Subscribes to main's poll results. Returns an unsubscribe function.
@@ -23,6 +32,46 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.on('earthquakes:updated', listener);
       return () => {
         ipcRenderer.removeListener('earthquakes:updated', listener);
+      };
+    },
+
+    /**
+     * Fires when a poll or refresh brings in a large event worth announcing.
+     * Never fires for the launch backfill — see PROJECT_PLAN §5.8.
+     */
+    onLargeEvent: (callback: (event: EarthquakeEvent) => void): (() => void) => {
+      const listener = (_ipcEvent: unknown, quake: EarthquakeEvent) => {
+        callback(quake);
+      };
+      ipcRenderer.on('earthquakes:large-event', listener);
+      return () => {
+        ipcRenderer.removeListener('earthquakes:large-event', listener);
+      };
+    },
+
+    /**
+     * What arrived while the app was shut, or null if nothing did.
+     *
+     * Pulled rather than pushed: main captures this once at startup and the
+     * renderer asks when it is ready, so there is no window in which a send can
+     * arrive before anyone is listening.
+     */
+    missed: (): Promise<MissedEvents | null> => ipcRenderer.invoke('earthquakes:missed'),
+  },
+  archive: {
+    status: (): Promise<ArchiveProgress> => ipcRenderer.invoke('archive:status'),
+    // Resolves when the whole backfill settles — minutes, not milliseconds.
+    // The UI follows `onProgress` and doesn't await this.
+    start: (): Promise<ArchiveProgress> => ipcRenderer.invoke('archive:start'),
+    cancel: (): Promise<ArchiveProgress> => ipcRenderer.invoke('archive:cancel'),
+
+    onProgress: (callback: (progress: ArchiveProgress) => void): (() => void) => {
+      const listener = (_event: unknown, progress: ArchiveProgress) => {
+        callback(progress);
+      };
+      ipcRenderer.on('archive:progress', listener);
+      return () => {
+        ipcRenderer.removeListener('archive:progress', listener);
       };
     },
   },

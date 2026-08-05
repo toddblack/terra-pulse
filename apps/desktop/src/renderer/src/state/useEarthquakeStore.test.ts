@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { MAGNITUDE_FLOORS, minMagnitudeForWindow } from '@terra-pulse/schema';
+import {
+  ARCHIVE_SPANS,
+  MAGNITUDE_FLOORS,
+  archiveSpanHours,
+  minMagnitudeForWindow,
+} from '@terra-pulse/schema';
 import {
   DEFAULT_MIN_MAGNITUDE,
   DEFAULT_PLAYBACK_SPEED,
@@ -17,6 +22,194 @@ beforeEach(() => {
     playheadMs: null,
     isPlaying: false,
     playbackSpeed: DEFAULT_PLAYBACK_SPEED,
+    trailingWindow: false,
+    preArchiveView: null,
+    activeAlert: null,
+    antipodeEventId: null,
+  });
+});
+
+describe('antipode mode', () => {
+  it('selects the event too, so the exit control stays reachable', () => {
+    // The toggle lives in the inspector, and the inspector only renders for a
+    // selected event. Entering the mode without selecting would hide the only
+    // button that leaves it.
+    useEarthquakeStore.getState().showAntipode('quake-1');
+
+    const state = useEarthquakeStore.getState();
+    expect(state.antipodeEventId).toBe('quake-1');
+    expect(state.selectedEventId).toBe('quake-1');
+  });
+
+  it('flies to the event when entering', () => {
+    useEarthquakeStore.getState().showAntipode('quake-1');
+
+    expect(useEarthquakeStore.getState().focusRequest?.eventId).toBe('quake-1');
+  });
+
+  it('leaves the selection alone when exiting', () => {
+    // Exiting the mode is not the same as dismissing the event — you may well
+    // want to keep reading the inspector.
+    useEarthquakeStore.getState().showAntipode('quake-1');
+    useEarthquakeStore.getState().hideAntipode();
+
+    const state = useEarthquakeStore.getState();
+    expect(state.antipodeEventId).toBeNull();
+    expect(state.selectedEventId).toBe('quake-1');
+  });
+
+  it('clears when the magnitude floor changes', () => {
+    // The chord's event can drop out of the view entirely, and a line pointing
+    // at a mark that is no longer drawn is worse than no line.
+    useEarthquakeStore.getState().showAntipode('quake-1');
+    useEarthquakeStore.getState().setMinMagnitude(5.5);
+
+    expect(useEarthquakeStore.getState().antipodeEventId).toBeNull();
+  });
+
+  it('clears when the window changes', () => {
+    useEarthquakeStore.getState().showAntipode('quake-1');
+    useEarthquakeStore.getState().setWindowHours(720);
+
+    expect(useEarthquakeStore.getState().antipodeEventId).toBeNull();
+  });
+
+  it('survives selecting a different event', () => {
+    // Deliberate: the chord is keyed to its own event id, not to whatever is
+    // selected, so clicking around does not silently tear the mode down.
+    useEarthquakeStore.getState().showAntipode('quake-1');
+    useEarthquakeStore.getState().select('quake-2');
+
+    expect(useEarthquakeStore.getState().antipodeEventId).toBe('quake-1');
+  });
+});
+
+describe('large-event alerts', () => {
+  const quake = {
+    id: 'us7000big',
+    source: 'usgs',
+    magnitude: 6.8,
+    magnitudeType: 'mww',
+    place: 'Somewhere',
+    timeUtc: '2026-07-29T11:55:00.000Z',
+    updatedUtc: '2026-07-29T11:58:00.000Z',
+    longitude: 140.1,
+    latitude: 35.7,
+    depthKm: 30,
+    status: 'reviewed',
+    tsunami: false,
+    alertLevel: null,
+    significance: 800,
+    url: 'https://example.test',
+  } as const;
+
+  it('holds one alert at a time, newest wins', () => {
+    // A queue of alerts to click through would be worse than the most recent
+    // fact; the newer event is the one still unfolding.
+    useEarthquakeStore.getState().announceLargeEvent(quake);
+    useEarthquakeStore.getState().announceLargeEvent({ ...quake, id: 'newer', magnitude: 7.1 });
+
+    expect(useEarthquakeStore.getState().activeAlert?.id).toBe('newer');
+  });
+
+  it('clears on dismiss', () => {
+    useEarthquakeStore.getState().announceLargeEvent(quake);
+    useEarthquakeStore.getState().dismissAlert();
+
+    expect(useEarthquakeStore.getState().activeAlert).toBeNull();
+  });
+
+  it('does not move the camera on its own', () => {
+    // The banner is click-to-fly. An alert that flew the camera by itself would
+    // yank the view out from under someone mid-investigation, and the
+    // focusRequest nonce is meant to be the only thing that moves it.
+    const before = useEarthquakeStore.getState().focusRequest;
+
+    useEarthquakeStore.getState().announceLargeEvent(quake);
+
+    expect(useEarthquakeStore.getState().focusRequest).toBe(before);
+  });
+
+  it('flies and selects only when the banner is clicked', () => {
+    useEarthquakeStore.getState().announceLargeEvent(quake);
+    useEarthquakeStore.getState().select(quake.id);
+
+    const state = useEarthquakeStore.getState();
+    expect(state.selectedEventId).toBe(quake.id);
+    expect(state.focusRequest?.eventId).toBe(quake.id);
+  });
+});
+
+describe('archive spans toggle', () => {
+  const oneYear = archiveSpanHours(ARCHIVE_SPANS[0]!);
+  const allYears = archiveSpanHours(ARCHIVE_SPANS.at(-1)!);
+
+  it('returns to the live view it came from', () => {
+    // Without this the History buttons are a one-way door — every span stays
+    // selected and there is no way back to the live globe.
+    useEarthquakeStore.getState().setWindowHours(168); // 7d
+    useEarthquakeStore.getState().setMinMagnitude(2.5);
+
+    useEarthquakeStore.getState().toggleArchiveSpan(allYears);
+    expect(useEarthquakeStore.getState().windowHours).toBe(allYears);
+
+    useEarthquakeStore.getState().toggleArchiveSpan(allYears);
+
+    expect(useEarthquakeStore.getState().windowHours).toBe(168);
+  });
+
+  it('restores the magnitude floor too, not just the window', () => {
+    // Entering the archive auto-raises the floor to M5.5. Restoring only the
+    // window would drop you back on 7d stuck at M5.5 — not where you were.
+    useEarthquakeStore.getState().setWindowHours(168);
+    useEarthquakeStore.getState().setMinMagnitude(2.5);
+
+    useEarthquakeStore.getState().toggleArchiveSpan(allYears);
+    expect(useEarthquakeStore.getState().minMagnitude).toBe(5.5);
+
+    useEarthquakeStore.getState().toggleArchiveSpan(allYears);
+
+    expect(useEarthquakeStore.getState().minMagnitude).toBe(2.5);
+  });
+
+  it('remembers the live view across a hop between archive spans', () => {
+    // 7d → 1y → all → off must land on 7d, not on 1y. The memory is captured
+    // on the way in and not overwritten while inside.
+    useEarthquakeStore.getState().setWindowHours(168);
+
+    useEarthquakeStore.getState().toggleArchiveSpan(oneYear);
+    useEarthquakeStore.getState().toggleArchiveSpan(allYears);
+    useEarthquakeStore.getState().toggleArchiveSpan(allYears);
+
+    expect(useEarthquakeStore.getState().windowHours).toBe(168);
+  });
+
+  it('clears the trailing window on the way out', () => {
+    useEarthquakeStore.getState().toggleArchiveSpan(allYears);
+    useEarthquakeStore.getState().setTrailingWindow(true);
+
+    useEarthquakeStore.getState().toggleArchiveSpan(allYears);
+
+    expect(useEarthquakeStore.getState().trailingWindow).toBe(false);
+  });
+
+  it('drops out of playback, since the playhead is an absolute instant', () => {
+    useEarthquakeStore.getState().toggleArchiveSpan(allYears);
+    useEarthquakeStore.getState().play();
+
+    useEarthquakeStore.getState().toggleArchiveSpan(allYears);
+
+    expect(useEarthquakeStore.getState().isPlaying).toBe(false);
+    expect(useEarthquakeStore.getState().playheadMs).toBeNull();
+  });
+
+  it('falls back to the defaults if somehow toggled off with no memory', () => {
+    useEarthquakeStore.setState({ windowHours: allYears, preArchiveView: null });
+
+    useEarthquakeStore.getState().toggleArchiveSpan(allYears);
+
+    expect(useEarthquakeStore.getState().windowHours).toBe(DEFAULT_WINDOW_HOURS);
+    expect(useEarthquakeStore.getState().minMagnitude).toBe(DEFAULT_MIN_MAGNITUDE);
   });
 });
 

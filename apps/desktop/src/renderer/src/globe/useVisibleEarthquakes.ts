@@ -1,5 +1,9 @@
 import { useMemo } from 'react';
-import { nextMagnitudeFloorAbove, type EarthquakeEvent } from '@terra-pulse/schema';
+import {
+  nextMagnitudeFloorAbove,
+  previousWindowHours,
+  type EarthquakeEvent,
+} from '@terra-pulse/schema';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { useNow } from './useNow';
 
@@ -63,19 +67,27 @@ export function useVisibleEarthquakes(): EarthquakeEvent[] {
 }
 
 /**
- * Drops events later than the playhead. `null` means live — nothing is dropped.
+ * Drops events later than the playhead, and — when a trailing window is in
+ * effect — earlier than the trail's start.
+ *
+ * `playheadMs` of `null` means live, so nothing is dropped from the top.
+ * `trailStartMs` of `null` means the window runs from its own beginning.
  */
 export function narrowToPlayhead(
   events: readonly EarthquakeEvent[],
   playheadMs: number | null,
+  trailStartMs: number | null = null,
 ): EarthquakeEvent[] {
-  if (playheadMs === null) return events as EarthquakeEvent[];
+  if (playheadMs === null && trailStartMs === null) return events as EarthquakeEvent[];
 
   return events.filter((event) => {
     const timeMs = Date.parse(event.timeUtc);
     // Same rule as the window filter: an unplaceable timestamp is excluded
     // rather than shown at an instant it can't be pinned to.
-    return Number.isFinite(timeMs) && timeMs <= playheadMs;
+    if (!Number.isFinite(timeMs)) return false;
+    if (playheadMs !== null && timeMs > playheadMs) return false;
+    if (trailStartMs !== null && timeMs < trailStartMs) return false;
+    return true;
   });
 }
 
@@ -90,6 +102,18 @@ export function narrowToPlayhead(
 export function useEarthquakesUpToPlayhead(): EarthquakeEvent[] {
   const windowEvents = useVisibleEarthquakes();
   const playheadMs = useEarthquakeStore((state) => state.playheadMs);
+  const windowHours = useEarthquakeStore((state) => state.windowHours);
+  const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
+  const nowMs = useNow();
 
-  return useMemo(() => narrowToPlayhead(windowEvents, playheadMs), [windowEvents, playheadMs]);
+  return useMemo(() => {
+    // Mirrors the window the layer is given, so the footnote's count matches
+    // what is actually drawn. A count claiming 26,746 while a decade's worth is
+    // on screen would be worse than no count.
+    const trailHours = trailingWindow ? previousWindowHours(windowHours) : null;
+    const endMs = playheadMs ?? nowMs;
+    const trailStartMs = trailHours === null ? null : endMs - trailHours * 3_600_000;
+
+    return narrowToPlayhead(windowEvents, playheadMs, trailStartMs);
+  }, [windowEvents, playheadMs, windowHours, trailingWindow, nowMs]);
 }

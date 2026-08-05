@@ -111,6 +111,7 @@ import {
   HALO_WIDTH,
   RECENT_HALO_WIDTH,
   RECENT_WINDOW_HOURS,
+  UNKNOWN_DEPTH_COLOR,
   depthBinIndex,
   depthClass,
   depthColorHex,
@@ -181,6 +182,32 @@ describe('depthClass', () => {
     expect(depthBinIndex(299.9)).toBe(2);
     expect(depthBinIndex(300)).toBe(3);
   });
+
+  it('returns null for an unknown depth rather than inventing a fourth class', () => {
+    // "Unknown" is the absence of a classification. A string here would let it
+    // be formatted as though the catalogue had made a call it never made.
+    expect(depthClass(null)).toBeNull();
+  });
+});
+
+describe('isEmphasized', () => {
+  it('rings everything at or above M5.5, on every view', () => {
+    // Fixed rather than relative to the current floor. A floor-relative
+    // version was tried and reverted: M5.5 means the same thing on every
+    // screen, and "is this a big one?" does not change because the view
+    // narrowed. See the note on EMPHASIS_MAGNITUDE_THRESHOLD.
+    expect(isEmphasized(EMPHASIS_MAGNITUDE_THRESHOLD)).toBe(true);
+    expect(isEmphasized(7.1)).toBe(true);
+  });
+
+  it('leaves anything below it unringed', () => {
+    expect(isEmphasized(5.4)).toBe(false);
+    expect(isEmphasized(1)).toBe(false);
+  });
+
+  it('does not ring an unparseable magnitude', () => {
+    expect(isEmphasized(Number.NaN)).toBe(false);
+  });
 });
 
 describe('depthColorHex', () => {
@@ -191,6 +218,23 @@ describe('depthColorHex', () => {
 
   it('uses a different ramp per backdrop tone so marks stay readable on both', () => {
     expect(depthColorHex(10, 'light')).not.toBe(depthColorHex(10, 'dark'));
+  });
+
+  describe('unknown depth', () => {
+    it('never binned as a depth — least of all as shallow', () => {
+      // The failure this guards is quiet and wrong: a null falling through to
+      // bin 0 would paint a possibly-deep 1970s event as a surface event.
+      for (const tone of ['light', 'dark'] as const) {
+        expect(depthColorHex(null, tone)).toBe(UNKNOWN_DEPTH_COLOR);
+        expect(depthLegendColors(tone)).not.toContain(UNKNOWN_DEPTH_COLOR);
+      }
+    });
+
+    it('keeps the same colour on both backdrops, unlike the ordinal ramp', () => {
+      // The ramp flips direction per basemap so shallow stays loudest. This
+      // value isn't on the ramp, so flipping it would imply an order it lacks.
+      expect(depthColorHex(null, 'light')).toBe(depthColorHex(null, 'dark'));
+    });
   });
 
   it('keeps shallow events the most prominent on both backdrop tones', () => {

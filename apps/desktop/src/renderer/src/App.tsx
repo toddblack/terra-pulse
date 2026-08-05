@@ -1,16 +1,23 @@
 import { useEffect } from 'react';
 import { CesiumViewer } from './globe/CesiumViewer';
+import { ArchivePanel } from './panels/ArchivePanel';
+import { LargeEventBanner } from './panels/LargeEventBanner';
+import { EventListPanel } from './panels/EventListPanel';
+import { MissedEventsPanel } from './panels/MissedEventsPanel';
 import { LayerPanel } from './panels/LayerPanel';
 import { RangeControls } from './panels/RangeControls';
 import { DepthLegend } from './panels/DepthLegend';
 import { TimeScrubber } from './panels/TimeScrubber';
 import { EarthquakeInspector } from './panels/EarthquakeInspector';
 import { useEarthquakeStore } from './state/useEarthquakeStore';
+import { playAlertSound } from './audio/alert-sound';
 import styles from './App.module.css';
 
 export default function App() {
   const load = useEarthquakeStore((state) => state.load);
   const noteSynced = useEarthquakeStore((state) => state.noteSynced);
+  const announceLargeEvent = useEarthquakeStore((state) => state.announceLargeEvent);
+  const showMissedEvents = useEarthquakeStore((state) => state.showMissedEvents);
 
   useEffect(() => {
     void load();
@@ -30,13 +37,48 @@ export default function App() {
     });
   }, [load, noteSynced]);
 
+  // Large events arrive on their own channel rather than being derived from the
+  // event set — main decides what qualifies, from what a poll actually fetched,
+  // so the launch backfill can't announce a month of old news (PROJECT_PLAN §5.8).
+  useEffect(() => {
+    return window.terraPulse.earthquakes.onLargeEvent((event) => {
+      announceLargeEvent(event);
+      // Only on a live arrival. The launch digest is deliberately silent — it
+      // reports things that already happened, and a chime for old news on
+      // every startup would be noise.
+      playAlertSound();
+    });
+  }, [announceLargeEvent]);
+
+  // Asked for once on mount. Main fixed this value at startup, before the
+  // first poll moved the seen-through watermark, so it is safe to request
+  // whenever the renderer happens to be ready.
+  useEffect(() => {
+    window.terraPulse.earthquakes
+      .missed()
+      .then((missed) => {
+        if (missed) showMissedEvents(missed);
+      })
+      .catch((error: unknown) => {
+        console.error('Could not read the launch digest', error);
+      });
+  }, [showMissedEvents]);
+
   return (
     <div id="app-shell" className={styles.appShell}>
       <CesiumViewer />
-      <RangeControls />
+      <div className={styles.leftColumn}>
+        <RangeControls />
+        <ArchivePanel />
+      </div>
+      <LargeEventBanner />
+      <MissedEventsPanel />
       <LayerPanel />
       <TimeScrubber />
-      <DepthLegend />
+      <div className={styles.rightColumn}>
+        <EventListPanel />
+        <DepthLegend />
+      </div>
       <EarthquakeInspector />
     </div>
   );

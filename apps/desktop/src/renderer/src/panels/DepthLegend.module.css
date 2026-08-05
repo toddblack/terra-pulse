@@ -1,7 +1,9 @@
+/* Placement belongs to App's .rightColumn. `flex: none` so the event list
+   above absorbs every height change instead of this being squeezed. */
 .legend {
-  position: absolute;
-  bottom: 1rem;
-  right: 1rem;
+  flex: none;
+  max-height: 70vh;
+  overflow-y: auto;
   min-width: 9rem;
   padding: 0.75rem;
   border-radius: 0.5rem;
@@ -12,7 +14,107 @@
   user-select: none;
 }
 
+/* Anchored to the same corner as the open panel, so it collapses and expands
+   in place rather than appearing somewhere else. */
+.collapsedButton {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 80%);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 30%);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.collapsedButton:hover {
+  background-color: rgb(30 41 59 / 90%);
+}
+
+/* The icon is a miniature of the depth ramp itself, drawn from the live
+   colours — so it says what it opens, and follows the basemap like the real
+   swatches do. A generic glyph would have to be kept in sync by hand. */
+.iconSwatch {
+  width: 1rem;
+  height: 3px;
+  border-radius: 1px;
+}
+
+.legendHeader {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.legendTitle {
+  margin: 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Matches the inspector's close button — same affordance, same corner, so the
+   two panels dismiss the same way. */
+.closeButton {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: -0.25rem -0.25rem 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: rgb(148 163 184);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background-color: rgb(51 65 85);
+  color: rgb(226 232 240);
+}
+
 .section + .section {
+  margin-top: 0.75rem;
+}
+
+/*
+ * Depth and Magnitude side by side.
+ *
+ * Stacked, they were the two tallest sections and between them most of the
+ * legend's height — five or six depth rows above three magnitude rows, in a
+ * panel that has to share a column with the event list. Side by side they cost
+ * the height of the taller one.
+ *
+ * They pair naturally: both are keys to the *dot itself* (its colour, its
+ * size), where everything below describes something else — rings, strokes,
+ * lines. The split is along a real seam rather than wherever the fold landed.
+ */
+.columns {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+}
+
+/* Inside the row the sections are siblings, so the stacked-spacing rule above
+   would push the second one down. */
+.columns > .section + .section {
+  margin-top: 0;
+}
+
+/* Restores the gap the `.section + .section` rule used to provide. Wrapping the
+   first two sections in `.columns` broke that adjacency, so everything below —
+   plate boundaries, subduction, faults — ended up flush against the columns
+   with no air. */
+.columns + .section {
   margin-top: 0.75rem;
 }
 
@@ -84,6 +186,15 @@
   background-color: rgb(148 163 184);
   content: '';
   transform: translate(-50%, -50%);
+}
+
+/* Separates the dot *modifiers* (ring, recency stroke) from the size scale
+   above them, inside the same column. A hairline rather than a section gap:
+   they qualify the same mark, they are not a different key. */
+.rowGroupStart {
+  margin-top: 0.375rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
 }
 
 .binLabel {

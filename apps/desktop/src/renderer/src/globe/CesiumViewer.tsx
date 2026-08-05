@@ -1,20 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import { useGlobeStore } from '../state/useGlobeStore';
+import { previousWindowHours } from '@terra-pulse/schema';
 import { useEarthquakeStore, windowStartMs } from '../state/useEarthquakeStore';
 import { eventIdFromEntityId } from '../layers/earthquake-layer';
+import { focusAltitudeM } from './camera-focus';
 import { useGlobeLayers } from './useGlobeLayers';
 import { useNow } from './useNow';
 import { usePlayback } from './usePlayback';
 import { useVisibleEarthquakes } from './useVisibleEarthquakes';
 import styles from './CesiumViewer.module.css';
-
-/**
- * Floor for the camera height used when centring on an event. The current
- * height is preserved otherwise — snapping to a fixed altitude would tear away
- * the user's global view every time they clicked something.
- */
-const MIN_FOCUS_ALTITUDE_M = 250_000;
 
 /**
  * How far the pointer must travel with the button held before it counts as a
@@ -48,16 +43,53 @@ export function CesiumViewer() {
    * recency, so it doesn't drag the 24-hour boundary along with it.
    */
   const nowMs = useNow();
-  const timeWindow = useMemo(
-    () => ({
-      startMs: windowStartMs(windowHours, nowMs),
-      endMs: playheadMs ?? nowMs + 60 * 60 * 1000,
-    }),
-    [windowHours, playheadMs, nowMs],
-  );
+  const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
+  const timeWindow = useMemo(() => {
+    const endMs = playheadMs ?? nowMs + 60 * 60 * 1000;
+    const trailHours = trailingWindow ? previousWindowHours(windowHours) : null;
+
+    return {
+      // A trailing window moves the *start* with the playhead instead of
+      // pinning it to the span's beginning. It goes through `setTimeWindow`
+      // rather than narrowing the built event set, because that is the cheap
+      // channel — narrowing the set would rebuild every entity on every tick.
+      startMs:
+        trailHours === null ? windowStartMs(windowHours, nowMs) : endMs - trailHours * 3_600_000,
+      endMs,
+    };
+  }, [windowHours, playheadMs, nowMs, trailingWindow]);
   const select = useEarthquakeStore((state) => state.select);
   const selectedEventId = useEarthquakeStore((state) => state.selectedEventId);
   const focusRequest = useEarthquakeStore((state) => state.focusRequest);
+  const antipodeEventId = useEarthquakeStore((state) => state.antipodeEventId);
+  const hideAntipode = useEarthquakeStore((state) => state.hideAntipode);
+
+  // Resolved from the loaded set rather than held in the store, so the chord
+  // follows revisions to the event like every other view does.
+  const antipodeEvent = useMemo(
+    () => events.find((candidate) => candidate.id === antipodeEventId) ?? null,
+    [events, antipodeEventId],
+  );
+
+  /** Read by the drag handler without making it depend on the mode. */
+  const antipodeActiveRef = useRef(antipodeEventId !== null);
+  useEffect(() => {
+    antipodeActiveRef.current = antipodeEventId !== null;
+  }, [antipodeEventId]);
+
+  // Escape leaves the antipode view. The mode covers the globe in translucency
+  // and a chord, so it needs an exit that doesn't depend on finding a button.
+  useEffect(() => {
+    if (antipodeEventId === null) return;
+
+    const onKeyDown = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key === 'Escape') hideAntipode();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [antipodeEventId, hideAntipode]);
 
   // Viewer lifecycle: created once on mount, destroyed once on unmount.
   useEffect(() => {
@@ -68,6 +100,16 @@ export function CesiumViewer() {
       animation: false,
       timeline: false,
       baseLayerPicker: false, // replaced by our own LayerPanel
+      // The last default widget still on, and it sat under the event list.
+      // Every other Cesium control here is already replaced by our own chrome,
+      // so this was the odd one out visually as well as in the way.
+      //
+      // Worth knowing what goes with it: it was the only "reset the camera"
+      // affordance, and preserving zoom across selections made staying zoomed
+      // in stickier than it used to be. If getting back to a global view by
+      // hand becomes annoying, the answer is a reset control in our own UI
+      // where we choose the position — not this one back.
+      homeButton: false,
       geocoder: false,
       sceneModePicker: false,
       navigationHelpButton: false,
@@ -91,6 +133,7 @@ export function CesiumViewer() {
     activeBasemapId,
     layerVisibility,
     events,
+    antipodeEvent,
     timeWindow,
     viewerReadyToken,
   });
@@ -140,7 +183,12 @@ export function CesiumViewer() {
       if (!dragOrigin) return;
       if (Cesium.Cartesian2.distance(dragOrigin, event.endPosition) < DRAG_THRESHOLD_PX) return;
 
-      select(null);
+      // Suppressed while the antipode chord is up. Spinning the globe to see
+      // where the chord comes out is the entire point of that mode, and
+      // deselecting would take the chord *and* the inspector holding its exit
+      // control away on the first drag. Read through a ref so this handler
+      // isn't torn down and rebuilt every time the mode changes.
+      if (!antipodeActiveRef.current) select(null);
       // Cleared so a single drag deselects once rather than on every frame.
       dragOrigin = undefined;
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
@@ -210,8 +258,9 @@ export function CesiumViewer() {
     if (!event) return;
 
     // Rotate to the event at the height the camera is already at, so the
-    // user's zoom level survives the click.
-    const height = Math.max(viewer.camera.positionCartographic.height, MIN_FOCUS_ALTITUDE_M);
+    // user's zoom level survives the click — including when zoomed in close,
+    // which is when it matters and is exactly what the old floor broke.
+    const height = focusAltitudeM(viewer.camera.positionCartographic.height);
 
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(event.longitude, event.latitude, height),

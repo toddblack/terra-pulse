@@ -1,0 +1,200 @@
+/*
+ * Placement belongs to App's .rightColumn, which stacks this above the legend.
+ * `min-height: 0` is what lets it shrink rather than push the legend off the
+ * bottom — a flex item's default `min-height: auto` refuses to go below its
+ * content, which is exactly the overlap this arrangement exists to prevent.
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 20rem;
+  min-height: 0;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 85%);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 30%);
+  color: rgb(203 213 225);
+  user-select: none;
+}
+
+/* Same corner as the open panel, so it collapses and expands in place. */
+.collapsedButton {
+  display: flex;
+  flex: none;
+  gap: 0.375rem;
+  align-items: center;
+  padding: 0.4375rem 0.625rem;
+  border: none;
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 80%);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 30%);
+  color: rgb(203 213 225);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.collapsedButton:hover {
+  background-color: rgb(30 41 59 / 90%);
+}
+
+.icon {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.iconBar {
+  width: 0.75rem;
+  height: 2px;
+  border-radius: 1px;
+  background-color: rgb(148 163 184);
+}
+
+.header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0.375rem;
+}
+
+.title {
+  margin: 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.closeButton {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: -0.25rem -0.25rem 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: rgb(148 163 184);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background-color: rgb(51 65 85);
+  color: rgb(226 232 240);
+}
+
+.sortRow {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.375rem;
+}
+
+.sortButton {
+  padding: 0.1875rem 0.4375rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+
+.sortButton:hover {
+  background-color: rgb(51 65 85);
+}
+
+.sortButtonActive,
+.sortButtonActive:hover {
+  background-color: rgb(14 165 233);
+  color: white;
+}
+
+/* The scroll container. Fixed height is what makes windowing possible — the
+   visible row count has to be knowable. */
+.scroller {
+  flex: 1;
+  min-height: 6rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Stands in for the full list so the scrollbar reflects every row, not just
+   the rendered slice. */
+.spacer {
+  position: relative;
+  width: 100%;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  /* Height is mirrored by ROW_HEIGHT_PX in event-list-window.ts. If these two
+     disagree, the rendered slice drifts away from the scroll position. */
+  box-sizing: border-box;
+  height: 26px;
+  width: 100%;
+  padding: 0 0.375rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background-color: rgb(51 65 85);
+}
+
+.rowSelected,
+.rowSelected:hover {
+  background-color: rgb(14 165 233 / 30%);
+}
+
+.magnitude {
+  flex: none;
+  width: 2.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.place {
+  flex: 1;
+  font-size: 0.6875rem;
+  color: rgb(203 213 225);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.when {
+  flex: none;
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  margin: 0.5rem 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-style: italic;
+}
+
+.footnote {
+  margin: 0.375rem 0 0;
+  padding-top: 0.375rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}

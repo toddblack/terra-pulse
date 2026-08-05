@@ -111,10 +111,7 @@ describe('filterEarthquakes — combined', () => {
   });
 
   it('does not mutate or reorder the source array', () => {
-    const events = [
-      makeEvent({ id: 'a', magnitude: 5 }),
-      makeEvent({ id: 'b', magnitude: 6 }),
-    ];
+    const events = [makeEvent({ id: 'a', magnitude: 5 }), makeEvent({ id: 'b', magnitude: 6 })];
     const before = events.map((e) => e.id);
 
     filterEarthquakes(events, 1, 72, NOW);
@@ -132,6 +129,39 @@ describe('narrowToPlayhead', () => {
 
   it('returns everything when live', () => {
     expect(narrowToPlayhead(events, null)).toHaveLength(3);
+  });
+
+  describe('trailing window', () => {
+    // The time analogue of isolateBand. Over 57 years "everything up to here"
+    // ends with the whole archive on screen and no way to see just the 1990s.
+    it('drops events earlier than the trail start', () => {
+      const trailStart = NOW - 40 * 60 * 60 * 1000;
+      const shown = narrowToPlayhead(events, null, trailStart).map((e) => e.id);
+
+      expect(shown).toEqual(['middle', 'newest']);
+    });
+
+    it('applies both bounds together', () => {
+      const playhead = NOW - 10 * 60 * 60 * 1000;
+      const trailStart = NOW - 40 * 60 * 60 * 1000;
+
+      const shown = narrowToPlayhead(events, playhead, trailStart).map((e) => e.id);
+
+      expect(shown).toEqual(['middle']);
+    });
+
+    it('includes an event exactly on the trail start', () => {
+      // Inclusive at both ends, so the label "only last 10y" is literally true
+      // rather than off by whatever sits on the boundary.
+      const trailStart = NOW - 30 * 60 * 60 * 1000;
+      const shown = narrowToPlayhead(events, null, trailStart).map((e) => e.id);
+
+      expect(shown).toContain('middle');
+    });
+
+    it('is inert when no trail is set', () => {
+      expect(narrowToPlayhead(events, null, null)).toHaveLength(3);
+    });
   });
 
   it('drops events later than the playhead', () => {

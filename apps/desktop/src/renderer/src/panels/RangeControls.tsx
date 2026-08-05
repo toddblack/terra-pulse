@@ -1,8 +1,11 @@
 import {
+  ARCHIVE_SPANS,
   COVERAGE_TIERS,
+  archiveSpanHours,
   magnitudeFloorsForWindow,
   minMagnitudeForWindow,
   nextMagnitudeFloorAbove,
+  previousWindowHours,
 } from '@terra-pulse/schema';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import styles from './RangeControls.module.css';
@@ -29,7 +32,24 @@ const COVERAGE_NOTES: Record<number, string> = {
   2.5: 'instrumented regions only',
   4.5: 'globally complete',
   5.5: 'globally complete · steady since 1970',
+  // The two archive floors. Named by USGS's own classes rather than described
+  // as "complete" again — above M5.5 completeness stopped being the
+  // interesting property, and the class is what a reader is actually picking.
+  6: 'strong · 7,907 since 1970',
+  7: 'major · 781 since 1970',
 };
+
+/**
+ * Human label for a window length in hours, matching the selector's own labels
+ * so the trailing-window text can't disagree with the button that set it.
+ */
+function formatWindowLabel(hours: number): string {
+  const tier = COVERAGE_TIERS.find((entry) => entry.windowHours === hours);
+  if (tier) return tier.label;
+  const span = ARCHIVE_SPANS.find((entry) => archiveSpanHours(entry) === hours);
+  if (span) return span.label;
+  return `${String(Math.round(hours))}h`;
+}
 
 /** "M4.5" rather than "M4.5000000001" — floors include half steps. */
 function formatMagnitude(magnitude: number): string {
@@ -48,9 +68,13 @@ export function RangeControls() {
   const setMinMagnitude = useEarthquakeStore((state) => state.setMinMagnitude);
   const windowHours = useEarthquakeStore((state) => state.windowHours);
   const setWindowHours = useEarthquakeStore((state) => state.setWindowHours);
+  const toggleArchiveSpan = useEarthquakeStore((state) => state.toggleArchiveSpan);
 
   const isolateBand = useEarthquakeStore((state) => state.isolateBand);
   const setIsolateBand = useEarthquakeStore((state) => state.setIsolateBand);
+  const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
+  const setTrailingWindow = useEarthquakeStore((state) => state.setTrailingWindow);
+  const trailHours = previousWindowHours(windowHours);
 
   const activeNote = COVERAGE_NOTES[minMagnitude];
   const bandCeiling = nextMagnitudeFloorAbove(minMagnitude);
@@ -136,6 +160,55 @@ export function RangeControls() {
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Its own group rather than more buttons in the row above. Crossing from
+          a live tier to an archive span silently raises the magnitude floor and
+          changes what the data means — that boundary should be visible. */}
+      <div className={styles.group}>
+        <h2 className={styles.heading}>History</h2>
+        <div className={styles.buttonRow} role="group" aria-label="Archive span">
+          {ARCHIVE_SPANS.map((span) => {
+            const spanHours = archiveSpanHours(span);
+            return (
+              <button
+                key={span.label}
+                id={`archive-span-${span.label}`}
+                type="button"
+                aria-pressed={windowHours === spanHours}
+                // Toggles: clicking the active span returns to the live view
+                // you came from, rather than being a one-way door.
+                onClick={() => toggleArchiveSpan(spanHours)}
+                className={
+                  windowHours === spanHours
+                    ? `${styles.button} ${styles.buttonActive}`
+                    : styles.button
+                }
+              >
+                {span.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Only where there's a shorter span to trail by. At the bottom of the
+            ladder this would be a checkbox that does nothing — the same reason
+            the isolate-band control disappears at the top floor. */}
+        {trailHours !== null && (
+          <label className={styles.toggle}>
+            <input
+              id="trailing-window"
+              type="checkbox"
+              className={styles.checkbox}
+              checked={trailingWindow}
+              onChange={(event) => setTrailingWindow(event.target.checked)}
+            />
+            <span>only last {formatWindowLabel(trailHours)} before playhead</span>
+          </label>
+        )}
+        {trailingWindow && trailHours !== null && (
+          <p className={styles.warning}>showing {formatWindowLabel(trailHours)} of the span</p>
+        )}
       </div>
     </div>
   );

@@ -1,0 +1,86 @@
+/* Placement belongs to App's .leftColumn. The min-width keeps the column wide
+   enough for "1970–present · 294,648 events" to stay on one line; the column
+   is sized by whichever panel is widest, so this quietly sets that floor. */
+.panel {
+  min-width: 14rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 80%);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 30%);
+  color: rgb(203 213 225);
+  user-select: none;
+}
+
+.heading {
+  margin: 0 0 0.375rem;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.status {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.note {
+  margin: 0.375rem 0 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-style: italic;
+}
+
+/* Louder than .note — a failed backfill left a hole, and that shouldn't be
+   something you have to go looking for. */
+.error {
+  margin: 0.375rem 0 0;
+  color: rgb(248 160 100);
+  font-size: 0.6875rem;
+}
+
+.track {
+  height: 0.25rem;
+  margin-top: 0.5rem;
+  border-radius: 0.125rem;
+  background-color: rgb(51 65 85);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  background-color: rgb(14 165 233);
+  transition: width 0.2s ease;
+}
+
+.actions {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.button {
+  padding: 0.3125rem 0.5rem;
+  border: none;
+  border-radius: 0.375rem;
+  background-color: rgb(51 65 85);
+  color: rgb(203 213 225);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.button:hover {
+  background-color: rgb(71 85 105);
+}
+
+.buttonPrimary {
+  background-color: rgb(14 165 233);
+  color: white;
+}
+
+.buttonPrimary:hover {
+  background-color: rgb(56 189 248);
+}

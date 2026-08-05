@@ -1,7 +1,6 @@
+/* Placement belongs to App's .leftColumn, which stacks this above the archive
+   panel — this one only describes itself. */
 .panel {
-  position: absolute;
-  top: 1rem;
-  left: 1rem;
   padding: 0.625rem 0.75rem;
   border-radius: 0.5rem;
   background-color: rgb(15 23 42 / 80%);

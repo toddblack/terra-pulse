@@ -59,6 +59,29 @@ const DEPTH_COLORS_DARK_BASEMAP = [
   '#256abf',
 ] as const;
 
+/**
+ * Depth genuinely unknown — a handful of pre-1980 archive events.
+ *
+ * **The same colour on both basemaps, unlike every other mark here.** The
+ * ordinal ramp flips direction per basemap so shallow always reads loudest;
+ * this value isn't *on* that ramp, so flipping it would imply an ordering it
+ * doesn't have.
+ *
+ * A warm grey, chosen by measurement rather than convention. Neutral is the
+ * standard "no data" treatment, but the obvious light greys fail on the dark
+ * basemap: that ramp runs pale, so its top step (#cde2fb) is already in the
+ * light-neutral region — #d6d3d1 lands at ΔE 5.8 from it. The free perceptual
+ * room on both basemaps turned out to be *below* the ramp, not above.
+ *
+ * Measured OKLab ΔE against the nearest ramp step: 16.3 on the light basemap,
+ * 16.3 on the dark, against this project's floor of 15. Also ≥20 from every
+ * halo, ring and recency stroke it can appear beside.
+ *
+ * Contrast against the basemap itself is deliberately not the bar — the halo
+ * does figure-ground separation here, as it does for every other fill.
+ */
+export const UNKNOWN_DEPTH_COLOR = '#78716c';
+
 // The halo is what makes a mark readable over an arbitrary photograph. It
 // contrasts with the *fill*, not the basemap — that decouples figure-ground
 // separation from the fill's job of carrying depth, so the ramp doesn't also
@@ -148,7 +171,10 @@ export function depthBinIndex(depthKm: number): number {
   return 0;
 }
 
-export function depthColorHex(depthKm: number, tone: BackdropTone): string {
+export function depthColorHex(depthKm: number | null, tone: BackdropTone): string {
+  // Null is "the catalogue doesn't know", which is not a depth and must not be
+  // binned as one — binning it would paint it as shallow.
+  if (depthKm === null) return UNKNOWN_DEPTH_COLOR;
   return depthLegendColors(tone)[depthBinIndex(depthKm)]!;
 }
 
@@ -172,6 +198,14 @@ export function haloColorHex(tone: BackdropTone): string {
  * while a shallow M5.5 under a city is not. USGS's own modelled impact
  * estimate is the `alertLevel` (PAGER) field, which is a separate thing and
  * deliberately not what this encodes.
+ *
+ * **Fixed, not relative to the view's floor.** A floor-relative version was
+ * tried: in an archive view that is already M5.5+ it meant every mark carried a
+ * ring, which is a second Cesium entity each and most of why that view costs
+ * 590 ms to build against 110 ms without. It was reverted anyway, because M5.5
+ * means the same thing on every screen — the ring answers "is this a big one?",
+ * and that question does not change because the surrounding view narrowed.
+ * The entity cost is the price of a consistent encoding.
  */
 export const EMPHASIS_MAGNITUDE_THRESHOLD = 5.5;
 
@@ -196,8 +230,15 @@ export function emphasisRingPixelSize(magnitude: number): number {
   return magnitudePixelSize(magnitude) + EMPHASIS_RING_GAP_PX * 2;
 }
 
-/** The conventional three-way class, for display alongside a raw depth. */
-export function depthClass(depthKm: number): 'shallow' | 'intermediate' | 'deep' {
+/**
+ * The conventional three-way class, for display alongside a raw depth.
+ *
+ * Null in, null out. There is no fourth class here on purpose — "unknown" is
+ * the absence of a classification, not another one, and returning a string
+ * would let it be formatted as though the catalogue had made a call.
+ */
+export function depthClass(depthKm: number | null): 'shallow' | 'intermediate' | 'deep' | null {
+  if (depthKm === null) return null;
   if (depthKm < 70) return 'shallow';
   if (depthKm < 300) return 'intermediate';
   return 'deep';

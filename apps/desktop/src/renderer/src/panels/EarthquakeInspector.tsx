@@ -1,3 +1,4 @@
+import { antipodeOf, formatLatLon } from '../layers/antipode';
 import { useEarthquakeStore, selectEventById } from '../state/useEarthquakeStore';
 import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { depthClass, depthColorHex } from '../layers/earthquake-encoding';
@@ -25,6 +26,10 @@ export function EarthquakeInspector() {
   const event = useEarthquakeStore((state) => selectEventById(state, state.selectedEventId));
   const select = useEarthquakeStore((state) => state.select);
   const requestFocus = useEarthquakeStore((state) => state.requestFocus);
+  const showAntipode = useEarthquakeStore((state) => state.showAntipode);
+  const hideAntipode = useEarthquakeStore((state) => state.hideAntipode);
+  const antipodeEventId = useEarthquakeStore((state) => state.antipodeEventId);
+  const antipodeActive = event !== null && antipodeEventId === event.id;
 
   if (selectedEventId === null || event === null) return null;
 
@@ -71,9 +76,21 @@ export function EarthquakeInspector() {
 
           <div className={styles.field}>
             <dt className={styles.term}>Depth</dt>
+            {/* Said outright rather than shown as a blank or a zero. This is
+                the one place the reader can find out *why* a mark is grey, and
+                "0.0 km" would be a claim the catalogue never made. */}
             <dd className={styles.value}>
-              {event.depthKm.toFixed(1)} km
-              <span className={styles.subValue}>{depthClass(event.depthKm)}</span>
+              {event.depthKm === null ? (
+                <>
+                  not reported
+                  <span className={styles.subValue}>depth unknown for this event</span>
+                </>
+              ) : (
+                <>
+                  {event.depthKm.toFixed(1)} km
+                  <span className={styles.subValue}>{depthClass(event.depthKm)}</span>
+                </>
+              )}
             </dd>
           </div>
 
@@ -129,7 +146,34 @@ export function EarthquakeInspector() {
           )}
         </dl>
 
+        {/* The antipode is pure geometry — the point opposite on a sphere — so
+            it is offered for any event and stated as a coordinate, not as a
+            finding. Whether antipodal focusing does anything is a Phase 4
+            question that needs a completeness map (PROJECT_PLAN §5.3). */}
+        {antipodeActive && (
+          <p className={styles.antipodeNote}>
+            antipode:{' '}
+            {formatLatLon(antipodeOf({ latitude: event.latitude, longitude: event.longitude }))}
+          </p>
+        )}
+
         <div className={styles.actions}>
+          <button
+            id="inspector-antipode"
+            type="button"
+            aria-pressed={antipodeActive}
+            className={
+              antipodeActive
+                ? `${styles.actionButton} ${styles.actionButtonActive}`
+                : styles.actionButton
+            }
+            onClick={() => {
+              if (antipodeActive) hideAntipode();
+              else showAntipode(event.id);
+            }}
+          >
+            {antipodeActive ? 'Exit antipode' : 'Antipode'}
+          </button>
           <button
             id="inspector-recenter"
             type="button"

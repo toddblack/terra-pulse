@@ -173,3 +173,21 @@
   background-color: rgb(51 65 85);
   color: white;
 }
+
+/* Matches the chord's red, so the active control and the line on the globe
+   read as the same thing. */
+.actionButtonActive,
+.actionButtonActive:hover {
+  border-color: rgb(255 59 48 / 60%);
+  background-color: rgb(255 59 48 / 22%);
+  color: rgb(254 226 226);
+}
+
+/* A coordinate, stated plainly. Deliberately not framed as a finding — see the
+   note at the call site. */
+.antipodeNote {
+  margin: 0.875rem 0 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
