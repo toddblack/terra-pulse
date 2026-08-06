@@ -16,6 +16,7 @@ import {
   startEarthquakePolling,
 } from './ipc/earthquakes';
 import { registerExternalLinkIpcHandlers } from './ipc/external-links';
+import { applyTileIdentity } from './tile-identity';
 
 // dotenv.config() with no options resolves relative to process.cwd(), but
 // pnpm runs this package's scripts with apps/desktop as cwd, not the repo
@@ -124,6 +125,12 @@ function createWindow(): BrowserWindow {
     event.preventDefault();
     console.warn('Blocked in-app navigation to:', url);
   });
+
+  // Identifies the app to the tile servers. Without this, OSM answers 403 with
+  // "not following the tile usage policy" once you zoom in — their policy
+  // requires a User-Agent naming the app and rejects a library's generic
+  // default, which is exactly what stock Electron sends. See tile-identity.ts.
+  applyTileIdentity(session.defaultSession, app.getVersion());
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({

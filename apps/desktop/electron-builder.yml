@@ -1,0 +1,62 @@
+# Packaging config — turns the compiled `out/` into an installable app.
+#
+# `pnpm build` only compiles. This is the step that copies Electron's runtime
+# alongside that output, names it, gives it an icon, and wraps the result in an
+# installer.
+
+appId: dev.terrapulse.desktop
+productName: Terra Pulse
+copyright: Terra Pulse
+
+directories:
+  # Where the icon lives. electron-builder generates the Windows .ico from
+  # build/icon.png automatically, so only the one PNG is checked in.
+  buildResources: build
+  output: release
+
+# `out/` is the whole application.
+#
+# No node_modules entry, and that is deliberate rather than an omission: the
+# build inlines every dependency main touches (see externalizeDeps in
+# electron.vite.config.ts), so the only things left are Node built-ins that
+# Electron itself provides. Without this, electron-builder walks `dependencies`
+# and tries to copy cesium, react and the `workspace:^` links — hundreds of MB
+# of packages already compiled into the bundle, and pnpm's symlinked layout
+# makes that resolution fragile on top.
+files:
+  - out/**
+  - package.json
+  # The negation is required, not redundant. electron-builder implicitly adds
+  # everything in `dependencies` on top of whatever `files` lists, so the two
+  # entries above did not exclude anything — the first build produced a 146 MB
+  # asar containing 3,863 files of `node_modules/@cesium`, every one of them
+  # already compiled into out/renderer.
+  - '!node_modules/**'
+
+# asar keeps the app as a single archive. `node:sqlite` opens its database under
+# app.getPath('userData'), which is outside the archive, so nothing here needs
+# unpacking — this is the usual reason asar has to be disabled, and it does not
+# apply.
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.png
+
+nsis:
+  # Not one-click: a first-party installer that silently drops the app in
+  # AppData and launches it is the pattern malware uses, and it gives no chance
+  # to pick a location.
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Terra Pulse
+
+# Unsigned. Windows SmartScreen will warn on first run ("Windows protected your
+# PC" → More info → Run anyway), which is expected for a build without a code
+# signing certificate. Signing needs a paid certificate and is a distribution
+# concern, not a build one.
