@@ -10,7 +10,9 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "pnpm run typecheck:node && pnpm run typecheck:web",
-    "test": "vitest run"
+    "test": "vitest run",
+    "package": "electron-vite build && electron-builder",
+    "package:dir": "electron-vite build && electron-builder --dir"
   },
   "dependencies": {
     "@terra-pulse/db": "workspace:^",
@@ -28,10 +30,12 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "typescript": "6.0.3",
     "vite": "^7.3.6",
-    "vite-plugin-cesium": "^1.2.23",
     "vitest": "^4.1.10"
-  }
+  },
+  "description": "Local-first desktop app for exploring global seismicity alongside solar, geomagnetic and astronomical data.",
+  "author": "Todd Black"
 }

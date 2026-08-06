@@ -15,7 +15,27 @@ out/
 *.db-journal
 *.db-wal
 *.db-shm
-data/
+
+# Vendored datasets — every file is derived by a scripts/vendor-*.mjs run, so
+# they are regenerable, large (~3.4 MB), and kept out of history.
+#
+# Two deliberate details:
+#
+#   - `**/data/*` ignores the directory's *contents*, not the directory. Git
+#     cannot re-include anything beneath an excluded directory, so the plain
+#     `data/` this replaces made the negation below impossible — and silently
+#     swallowed `data/README.md`, which documents provenance and the CC-BY-SA
+#     share-alike obligations, along with any source file that landed there.
+#   - The `**/` prefix is required. A pattern containing a slash is anchored to
+#     this file's directory, so a bare `data/*` would only match `/data/` at the
+#     repo root and would stop ignoring the datasets entirely.
+**/data/*
+!**/data/README.md
+
+# Cesium's runtime assets, staged into the renderer's public/ by the
+# cesiumAssets plugin in electron.vite.config.ts. Copied out of node_modules on
+# every dev/build start, so committing them would just duplicate a dependency.
+apps/desktop/src/renderer/public/cesium/
 
 # Ephemeris kernel — JPL DE440 is a ~114MB download, not something to commit
 *.bsp
