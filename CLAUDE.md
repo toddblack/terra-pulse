@@ -228,9 +228,150 @@ slip rate and kinematics — in the inspector for a selected event, and via a
   directly. Watch for this on any other vendored dataset that grows.
 - Brute force over 157,548 vertices at 1.1 ms — no spatial index, deliberately.
 
-**Next: instrumental recurrence on the archive** — the honest half of the
-original goal, now that §5.10 has drawn the line around what it can claim.
-The Gardner-Knopoff module is the missing prerequisite, in place.
+**Hover identification + one location panel — shipped.** Hovering a quake, fault
+or plate boundary shows a tooltip and a pointer cursor; clicking a fault or
+boundary opens the location panel.
+
+- **`setInputAction` stores ONE action per event type.** Hover and drag-deselect
+  both want `MOUSE_MOVE`; registering separately left only the last one, with no
+  error — one feature simply never fires. They are a single handler now.
+- **The fault probe and the geology inspector were merged.** They repeated each
+  other's fault section and answered the same underlying question from two entry
+  points. One `LocationSelection` slot now carries a coordinate plus what was
+  clicked (`fault` | `boundary` | `point`), and one panel renders all three.
+- **Probe mode survived the merge on purpose.** It is the only way to ask about a
+  point with no drawn line or earthquake under it — "how often do M6+ happen near
+  Seattle". Deleting it would have quietly removed the original archive goal. It
+  stays a *mode* because a bare-globe click already means "deselect".
+- **A selected fault/boundary/probe point gets the *same* bracket reticle as a
+  quake, in a different colour** — amber GEM, violet PB2002, near-white for a
+  bare probed point. A selection should look like a selection; only the *kind*
+  differs, so only the colour does. Drawn as a billboard in
+  `location-highlight.ts` rather than reusing Cesium's indicator, because
+  `viewer.selectedEntity` already carries the earthquake selection and a fault is
+  a batched `Polyline` with no entity to assign — and because both can then be
+  marked at once. Clicking geology also clears `viewer.selectedEntity`, since
+  Cesium's own left-click handler sets it for any entity it picks.
+  - **Two versions were rejected before this one, both by the user:** a glow
+    along the feature's whole trace (reads as restyling the line, and a long
+    boundary lights up half the globe) and a cased ring (legible, but not the
+    established selection language). The ask was "the same selector, another
+    colour" — take that literally.
+
+- **The reticle used to vanish ~30 s after selecting a boundary, and the cause
+  was a stale dependency.** `useNow` ticks every 30 s → `nowMs` changes →
+  `useVisibleEarthquakes` returns a new array identity → the selection-sync
+  effect re-ran (it listed `events`) → it re-applied the *store's* selection over
+  whatever Cesium had set, clearing the boundary. `events` was only ever there to
+  survive layer rebuilds, which the `dataSourceAdded` subscription already
+  handles properly. **Anything keyed on `events` re-runs on a 30 s timer** — that
+  is the tell for this whole class of bug.
+- **The coordinate is always where the pointer was, never the feature's
+  centroid** — recurrence for the middle of a 500 km trace answers for somewhere
+  the user never clicked.
+- Leaving probe mode clears a probed *point* but keeps a clicked feature: a point
+  can't be refreshed with the mode off, a clicked fault doesn't need to be.
+
+**The deep tier needs a view, not just a download.** Two follow-ups were needed
+before the 1900-1969 events were reachable at all:
+
+- **`ARCHIVE_SPANS`' widest view was 100 years**, sized when the archive started
+  at 1970. From 2026 that reaches 1926, so the 1906 San Francisco M7.9 sat in the
+  database with no view able to draw it. A `1900+` span at **M7.5** fixes it — at
+  the deep tier's own floor, because showing 1900-1970 under an M5.5 label would
+  render seven decades that look quiet beside a dense post-1970 record, which is
+  the instrumental artefact this project warns about everywhere else, manufactured
+  by the view itself.
+- **`MAGNITUDE_FLOORS` gained M7.5**, the one entry that is not a USGS class
+  boundary. `ARCHIVE_SPANS` may only offer floors the selector can render, and a
+  test enforces that. Precedent for a non-class threshold with a stated job is
+  `ALERT_MIN_MAGNITUDE` at M5.8.
+- **The archive panel's copy was hardcoded to 1970** and reported "1970–present"
+  over a fully-downloaded deep tier, which read as the download having failed.
+  It names `DEEP_ARCHIVE_START_YEAR` now.
+
+**Observed recurrence intervals — shipped** (§5.11). "How often do independent
+earthquakes happen here", from the catalogue. In the inspector and the fault
+probe, with radius (100–500 km) and floor (M5.5–M7) selectors.
+
+- **Declustering is mandatory and is most of the answer.** A recurrence interval
+  is a rate claim (non-negotiable #2). Measured at Tokyo 300 km: **448 raw M5.5+
+  become 218 independent**; the M6+ median gap goes 0.06 y → 0.32 y. The raw
+  number isn't noisier, it answers a different question. Both counts are always
+  shown so the removal is visible.
+- **Floors never go below M5.5.** It's the only level flat since 1970 — M4.5+
+  rose ~3× on network growth, which would shorten intervals through the record
+  for purely instrumental reasons. Don't add a lower floor to "get more data".
+- **Three refusals, each guarding a specific error:**
+  - Below **8 intervals** no median is printed — Kathmandu M7+ gives 2 intervals
+    with mean 4.85 y and median 9.66 y. Raw gaps are listed instead. Verified:
+    Istanbul and Kathmandu land on 7 at the defaults and correctly withhold.
+  - An **incomplete archive blocks the summary entirely** — a hole merges two
+    real gaps into one longer false one, always erring toward "rarer than it is",
+    and looks exactly like a complete answer.
+  - **"Since the last" is labelled elapsed time, not a countdown.** It's the one
+    number a reader will turn into "so we're due".
+- **Zero is a real answer** — Denver has no independent M5.5+ within 500 km since
+  1970, and the panel says so in those terms rather than looking broken.
+- `declusterGardnerKnopoff` sweeps **largest-first**, and an event already
+  designated independent can never be demoted. Without that guard a small early
+  shock whose window happens to reach a much larger later one could claim it —
+  deleting the very event a recurrence count cares most about.
+- Cost: 32–294 ms real catalogue; worst case (500 km, M5.5, 783 raw) 197 ms.
+  O(n²) declustering dominates — fine on a click, not on a drag.
+
+**Deep archive tier — M7.5+ back to 1900 — shipped.** A second tier beneath the
+M4.5+/1970 one, so the very largest events get a 126-year record instead of 57.
+
+- **1900 is a hard floor and no source fixes it.** Measured M7.5+ per decade:
+  0–3 through the 1890s, then 40 in 1900–10 and 20–58 flat after. That step is
+  instrumental seismology arriving. USGS lists **15** M7.5+ events for all of
+  1500–1900 — 6 North America, 9 mostly Caribbean, **none** in Japan, China, the
+  Mediterranean or South America, which all have written records of huge quakes.
+  Adding NOAA significant-events or regional historical catalogues would fill
+  those gaps *unevenly* and turn a uniformly short record into a regionally
+  biased one — worse for a rate. Pre-1900 may be worth showing; never counting.
+- **No external catalogue needed: USGS already serves ISC-GEM.** Of 262 M7.5+
+  events for 1900–1970, 222 are `iscgem` + 9 `iscgemsup`, and 252 carry `mw`.
+  Verified live for 1960–64: 19 events, all `mw`, no null depths, including
+  Valdivia 1960 (M9.5) and Alaska 1964 (M9.2).
+- **`completeSinceYear(floor)` is the load-bearing piece** — 1900 at M7.5+, 1970
+  below. Assuming 1900 at M6 would count seven near-empty decades as observation
+  and inflate every interval through them. `recurrenceEpochYear` wraps it and the
+  panel prints the epoch, because it moves when the floor moves.
+- Both tiers share `archive_chunks` and never overlap (deep stops at 1969);
+  `completedArchiveYears(db, floor)` keeps them apart via `min_magnitude <=
+  floor`. Deep runs first — 262 events vs ~295,000, so the cheap work lands first.
+- **Measured payoff at Tokyo:** M7.5+ within 500 km goes from **4 events since
+  1970 (median withheld) to 17 since 1900** — 16 intervals, comfortably above the
+  threshold. Per era: 4/8/2/3 across 1900-30/30-60/60-90/90-now, so the long
+  record is what makes the busy mid-century visible at all.
+
+**Plate-boundary context — shipped.** The recurrence panel names which boundaries
+the region's events sit on, ranked, with the PB2002 class ("mostly a subduction
+zone").
+
+- **It reports rather than filters, and that was a measured reversal.** The
+  intuitive design — restrict the query to the nearest boundary — **destroys the
+  sample**: of Tokyo's 17 M7.5+ events, only **3** lie within 100 km of the
+  boundary nearest the city (`OK-PS`). Ten are on the Japan Trench (`PA\OK`),
+  the rest spread over three more pairs, because Tokyo is a **triple junction**
+  and the closest boundary is not the seismogenic one. Wellington is worse: its
+  nearest boundary is 9 km away and **none** of its events are within 100 km.
+- Filtering on "near *any* boundary" fails the other way — 16 of Tokyo's 17
+  survive it, so it costs complexity and removes nothing. In a subduction zone a
+  circle already *is* a corridor.
+- Don't re-propose the corridor filter without re-reading this; it looks obviously
+  right and the data says otherwise.
+- **Subduction polarity is deliberately not decoded.** PB2002's `/` and `\`
+  encode which plate subducts; getting it backwards would be a confident false
+  claim, and the class field already says the boundary type. Labels are
+  "Pacific–Okhotsk", never "Pacific under Okhotsk". Test pins it.
+- A test asserts every plate code in the real dataset has a name, so a PB2002
+  revision can't silently surface bare two-letter codes in the panel.
+
+**Next:** Phase 3 proper (solar/geomagnetic ingest), or aftershock *forecasting*
+(§5.9's model half, Phase 4) once the Python engine exists.
 Measured first: raw M6+ gaps near Tokyo have a 0.06 y median against 0.32 y
 declustered, so **declustering is not optional for a rate claim** (non-negotiable
 #2 says so anyway). The squeeze is real and needs designing around, not ignoring
@@ -423,6 +564,23 @@ Python package would just be scaffolding ahead of need.
   pattern depends on a failed migration rolling back its schema changes. That
   holds in SQLite even for R-Tree virtual tables and their shadow tables —
   which was the doubtful case, and is now a test rather than a belief.
+- **`setInputAction` stores ONE action per event type — a second registration
+  silently replaces the first.** Hover picking and drag-deselect both want
+  `MOUSE_MOVE`; registering them separately left only whichever ran last, with
+  no error and one feature simply never firing. They are now a single handler
+  that does drag first, then hover. Same applies to any future MOUSE_MOVE work.
+- **`scene.pick()` is a GPU render-target readback, not a cheap CPU test.**
+  Running it on every `MOUSE_MOVE` at 60 Hz stalls the pipeline while rotating.
+  Hover picking is throttled to 50 ms and skipped entirely mid-drag (the pointer
+  is moving the camera; the result would be discarded anyway).
+- **A `PolylineCollection` pick returns a `Polyline`, not an `Entity`.** There is
+  no entity id to look up, so the faults layer attaches the `FaultRecord` itself
+  as `id` at `add()` time — that is the only channel by which a pick can say
+  *which* fault. Plate boundaries and subduction zones are entities and already
+  carried `properties`, so they needed nothing.
+- **Cesium property `getValue()` is typed `unknown`; narrow it, never `String()`
+  it.** Coercing a non-string yields `"[object Object]"`, which then renders as a
+  plausible-looking plate pair rather than failing visibly.
 - **Fake viewers in tests must really destroy.** A mock `remove()` that only
   recorded the call let a crash-on-unmount ship: Cesium's real `remove()`
   destroys, and destroying exposed a shared-material bug.

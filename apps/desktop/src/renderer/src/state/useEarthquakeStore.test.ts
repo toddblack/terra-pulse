@@ -142,7 +142,11 @@ describe('large-event alerts', () => {
 
 describe('archive spans toggle', () => {
   const oneYear = archiveSpanHours(ARCHIVE_SPANS[0]!);
-  const allYears = archiveSpanHours(ARCHIVE_SPANS.at(-1)!);
+  const widestSpan = ARCHIVE_SPANS.at(-1)!;
+  const allYears = archiveSpanHours(widestSpan);
+  /** Derived from the span, not hardcoded — each span carries its own floor,
+      and pinning a literal here breaks whenever a span is added. */
+  const widestFloor = widestSpan.minMagnitude;
 
   it('returns to the live view it came from', () => {
     // Without this the History buttons are a one-way door — every span stays
@@ -159,13 +163,14 @@ describe('archive spans toggle', () => {
   });
 
   it('restores the magnitude floor too, not just the window', () => {
-    // Entering the archive auto-raises the floor to M5.5. Restoring only the
-    // window would drop you back on 7d stuck at M5.5 — not where you were.
+    // Entering the archive auto-raises the floor to the span's own. Restoring
+    // only the window would drop you back on 7d stuck at that floor — not
+    // where you were.
     useEarthquakeStore.getState().setWindowHours(168);
     useEarthquakeStore.getState().setMinMagnitude(2.5);
 
     useEarthquakeStore.getState().toggleArchiveSpan(allYears);
-    expect(useEarthquakeStore.getState().minMagnitude).toBe(5.5);
+    expect(useEarthquakeStore.getState().minMagnitude).toBe(widestFloor);
 
     useEarthquakeStore.getState().toggleArchiveSpan(allYears);
 

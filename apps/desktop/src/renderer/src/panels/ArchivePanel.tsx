@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ARCHIVE_MIN_MAGNITUDE,
   ARCHIVE_START_YEAR,
+  DEEP_ARCHIVE_MIN_MAGNITUDE,
+  DEEP_ARCHIVE_START_YEAR,
   type ArchiveProgress,
 } from '@terra-pulse/schema';
 import styles from './ArchivePanel.module.css';
@@ -12,6 +14,12 @@ import styles from './ArchivePanel.module.css';
  * Deliberately explicit about size before you commit to it. This is ~62 MB and
  * a few minutes of requests against a free public service, which is not
  * something to start without saying so.
+ *
+ * **Two tiers, one progress bar.** M4.5+ from 1970 is almost all of the cost;
+ * M7.5+ from 1900 adds 70 more years for 262 events, because that is where
+ * global completeness begins for events that size. `totalChunks` already spans
+ * both, so the bar and the year counts need no special casing — only the copy
+ * did, which is what made a finished deep tier look like it had never run.
  */
 
 const EXPECTED_EVENTS = '~295,000';
@@ -36,7 +44,10 @@ function describe(progress: ArchiveProgress): string {
   }
   if (progress.completedChunks === 0) return 'not downloaded';
   if (isUpToDate(progress)) {
-    return `${String(ARCHIVE_START_YEAR)}–present · ${formatCount(progress.storedEvents)} events`;
+    // Names the *deep* start year, because that is genuinely how far back the
+    // catalogue now reaches. Saying "1970–present" while holding 262 events from
+    // 1900 onward made a completed second tier look like it had never run.
+    return `${String(DEEP_ARCHIVE_START_YEAR)}–present · ${formatCount(progress.storedEvents)} events`;
   }
   return `${String(progress.completedChunks)} of ${String(progress.totalChunks)} years · ${formatCount(progress.storedEvents)} events`;
 }
@@ -100,8 +111,8 @@ export function ArchivePanel() {
       {/* The cost is stated before the click, not after it. */}
       {!running && progress.completedChunks === 0 && (
         <p className={styles.note}>
-          M{ARCHIVE_MIN_MAGNITUDE}+ from {ARCHIVE_START_YEAR} · {EXPECTED_EVENTS} events,{' '}
-          {EXPECTED_SIZE}
+          M{ARCHIVE_MIN_MAGNITUDE}+ from {ARCHIVE_START_YEAR}, M{DEEP_ARCHIVE_MIN_MAGNITUDE}+ back to{' '}
+          {DEEP_ARCHIVE_START_YEAR} · {EXPECTED_EVENTS} events, {EXPECTED_SIZE}
         </p>
       )}
 

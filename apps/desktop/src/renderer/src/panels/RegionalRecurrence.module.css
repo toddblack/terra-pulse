@@ -1,0 +1,126 @@
+/* Shared by the inspector and the fault probe. Colocated with its component. */
+
+.section {
+  margin-top: 0.875rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+}
+
+.heading {
+  margin: 0;
+  color: rgb(148 163 184);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.controlRow {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.chip {
+  flex: 1;
+  padding: 0.25rem 0.125rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.chip:hover {
+  background-color: rgb(51 65 85);
+  color: rgb(226 232 240);
+}
+
+/* Same violet the aftershock decay strip uses — both are "statistics about
+   this event's surroundings", so they read as one family. */
+.chipActive,
+.chipActive:hover {
+  border-color: rgb(167 139 250 / 60%);
+  background-color: rgb(167 139 250 / 22%);
+  color: rgb(233 226 254);
+}
+
+.note {
+  margin: 0.5rem 0 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+.value {
+  margin: 0.625rem 0 0;
+  color: rgb(226 232 240);
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.big {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.sub {
+  display: block;
+  margin-top: 0.125rem;
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  line-height: 1.35;
+}
+
+/* An outright refusal rather than a caveat: the number would be wrong in a
+   known direction, so none is offered. */
+.blocked {
+  margin: 0.5rem 0 0;
+  padding: 0.375rem 0.5rem;
+  border-left: 2px solid rgb(251 146 60);
+  border-radius: 0 0.25rem 0.25rem 0;
+  background-color: rgb(251 146 60 / 12%);
+  color: rgb(254 215 170);
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
+.footnote {
+  margin: 0.625rem 0 0;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  line-height: 1.35;
+}
+
+/* Plate-boundary context. A list rather than a chart: four rows of "name,
+   count" is the whole dataset, and a bar chart of four values in a 19rem panel
+   would be decoration. */
+.boundaryRow {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  margin-top: 0.1875rem;
+  color: rgb(203 213 225);
+  font-size: 0.6875rem;
+}
+
+.boundaryName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boundaryCount {
+  flex: none;
+  color: rgb(148 163 184);
+  font-variant-numeric: tabular-nums;
+}

@@ -741,6 +741,90 @@ perceptible gain. Validated against known ground truth: Parkfield → San Andrea
 
 ---
 
+### 5.11 Observed Recurrence Intervals — shipped
+
+"How often do independent earthquakes happen here?", answered from the
+instrumental catalogue. In the inspector for a selected event, and in the fault
+probe for any clicked point.
+
+**This is the honest half of the question §5.10 split in two.** It reports gaps
+the catalogue recorded between 1970 and now. It does **not** say a region is due
+or overdue — that needs paleoseismology across millennia, and a 57-year record
+cannot substitute for it however carefully it is handled.
+
+**Declustering is mandatory, and it is most of the answer.** A recurrence
+interval is a rate claim, so non-negotiable #2 applies. Measured on the real
+catalogue at Tokyo, 300 km: **448 raw M5.5+ events become 218 independent**, and
+the median gap goes from 0.06 y to 0.32 y at M6+. The raw figure is not a noisier
+version of the right answer — it answers "how often does the ground shake", which
+is a different question wearing the same units. Both counts are always shown, so
+the removal is visible rather than silent.
+
+**Parameters, fixed rather than tuned.** Floors are M5.5/6/6.5/7 — never lower,
+because M5.5 is the only level flat since 1970 and M4.5+ rose ~3× on network
+growth alone, which would shorten intervals through the record for purely
+instrumental reasons. Radii are 100/200/300/500 km. Defaults are 300 km at M6,
+chosen from measured counts: at 300 km, M5.5+ yields 15–218 independent events
+across seismic regions, M6+ yields 8–64, M6.5+ drops to 2–27 and M7+ to 1–8.
+
+**Three refusals, each guarding a specific way of being wrong:**
+
+- **Below 8 intervals, no median is printed.** Kathmandu at M7+ gives two
+  intervals whose mean is 4.85 y and whose median is 9.66 — both true, neither
+  meaningful. The raw gaps are listed instead, which are honest at any count.
+  Verified on real data: Istanbul and Kathmandu at the defaults land on 7
+  intervals and correctly withhold.
+- **An incomplete archive blocks the summary entirely.** A hole in the record
+  merges two real gaps into one longer false gap — an error that always points
+  toward "rarer than it is" and looks exactly like a complete answer.
+- **"Time since the last" is labelled as elapsed time, not a countdown.** It is
+  the one number a reader will try to turn into "so we're due", and the panel
+  says outright that intervals vary and nothing here predicts the next.
+
+Zero is a real answer, not a failure: Denver has no independent M5.5+ within
+500 km since 1970, and the panel says so in those terms.
+
+Cost against the real catalogue: 32–294 ms, worst realistic case (500 km at
+M5.5, 783 raw events) 197 ms. Declustering is O(n²) and dominates — fine on a
+click, not fine on a drag.
+
+**Deep tier — M7.5+ back to 1900.** A second archive tier beneath the main one,
+for the question the 1970 record cannot answer: intervals between the very
+largest earthquakes.
+
+Measured from USGS's own count endpoint, M7.5+ per decade: **0–3 across the
+1850s–1890s, then 40 in 1900–1910 and 20–58 flat thereafter.** The 13× step is
+global instrumental seismology arriving (Milne seismographs, ~1900), not
+earthquakes arriving.
+
+- **1900 is a hard floor, and not for want of a better source.** USGS lists 15
+  M7.5+ events for all of 1500–1900 — 6 North America, 9 mostly Caribbean, and
+  *none* in Japan, China, the Mediterranean or South America, all of which have
+  written records of enormous earthquakes. The true count is in the hundreds.
+  Adding NOAA's significant-events database or regional historical catalogues
+  would fill those gaps **unevenly**: Japan and the Mediterranean would light up,
+  the open Pacific would stay dark. That converts a uniformly short record into a
+  regionally biased one, which is strictly worse for a rate — intervals would
+  read short where historians worked and long where they didn't. Pre-1900 events
+  may be worth *showing*; they must never feed a rate.
+- **No external catalogue is needed.** Of the 262 M7.5+ events USGS returns for
+  1900–1970, **222 are `iscgem`** and 9 more `iscgemsup` — the ISC-GEM Global
+  Instrumental Earthquake Catalogue, the relocated homogeneous-Mw reference for
+  the era. 252 of 262 carry `mw`. Verified live for 1960–64: 19 events, all `mw`,
+  zero null depths, including Valdivia 1960 (M9.5) and Alaska 1964 (M9.2).
+- **Cost is trivial**: 262 events against the main tier's ~295,000. The tiers run
+  deep-first so the cheap work lands before the expensive sweep.
+- **The two tiers share `archive_chunks`** and never overlap (deep stops at 1969).
+  `completedArchiveYears(db, floor)` resolves each correctly because it matches
+  `min_magnitude <= floor` — a year held only at M7.5 does not satisfy an M4.5
+  request, which is what stops the tiers masking each other's holes.
+- **The usable epoch therefore depends on the floor** — `completeSinceYear()`
+  returns 1900 at M7.5+ and 1970 below. Assuming 1900 at M6 would count seven
+  near-empty decades as observation and inflate every interval through them.
+
+
+---
+
 ## 6. Pre-Registered Hypotheses
 
 Maintained in `docs/HYPOTHESES.md`. Every hypothesis is written down *before*

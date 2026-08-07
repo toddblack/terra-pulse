@@ -41,6 +41,11 @@ export function createActiveFaultsLayer(tone: BackdropTone): GlobeLayer {
 
     for (const fault of ACTIVE_FAULTS) {
       built.add({
+        // Carried so `scene.pick()` can say *which* fault is under the pointer.
+        // A PolylineCollection pick returns a Polyline rather than an Entity, so
+        // there is no entity id to look up — this is the only channel. It's a
+        // reference to the existing record, not a copy.
+        id: fault,
         positions: Cesium.Cartesian3.fromDegreesArray(fault.p),
         width: FAULT_LINE_WIDTH,
         // A material PER POLYLINE, never one shared across them.

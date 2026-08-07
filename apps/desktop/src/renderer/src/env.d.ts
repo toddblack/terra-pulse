@@ -7,6 +7,7 @@ import type {
   EarthquakeQuery,
   EarthquakeSyncResult,
   MissedEvents,
+  RegionalRecurrence,
 } from '@terra-pulse/schema';
 
 export {};
@@ -26,6 +27,13 @@ declare global {
         missed(): Promise<MissedEvents | null>;
         /** What actually followed an event. Null if the id isn't catalogued. */
         sequence(eventId: string): Promise<AftershockSequence | null>;
+        /** Observed recurrence intervals near a point since 1970. */
+        recurrence(request: {
+          latitude: number;
+          longitude: number;
+          radiusKm: number;
+          minMagnitude: number;
+        }): Promise<RegionalRecurrence>;
       };
       archive: {
         status(): Promise<ArchiveProgress>;

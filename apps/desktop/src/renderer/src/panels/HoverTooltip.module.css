@@ -1,0 +1,51 @@
+/* Follows the pointer; see HoverTooltip.tsx for why it isn't docked. */
+
+.tooltip {
+  position: absolute;
+  z-index: 20;
+  max-width: 15rem;
+  padding: 0.3125rem 0.5rem;
+  border-radius: 0.3125rem;
+  background-color: rgb(15 23 42 / 94%);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 45%);
+  color: rgb(226 232 240);
+  /* Must never intercept the pointer: it sits next to the cursor, and a
+     tooltip that can be picked would flicker as the pick alternates between
+     the globe and the tooltip itself. */
+  pointer-events: none;
+}
+
+/* A left edge coloured by what is under the pointer, so the kind registers
+   before the text is read. Each matches that layer's own colour. */
+.tooltip[data-kind='earthquake'] {
+  border-left: 2px solid rgb(148 163 184);
+}
+
+.tooltip[data-kind='fault'] {
+  border-left: 2px solid rgb(217 160 90);
+}
+
+.tooltip[data-kind='boundary'] {
+  border-left: 2px solid rgb(167 139 250);
+}
+
+.title {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.detail {
+  display: block;
+  margin-top: 0.0625rem;
+  overflow: hidden;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  /* Place strings run long ("281 km SSE of Kamaishi, Japan"); truncating keeps
+     the tooltip a predictable size next to a moving cursor rather than
+     reflowing to three lines. */
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

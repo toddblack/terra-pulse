@@ -42,6 +42,87 @@ export const ARCHIVE_ANALYSIS_MIN_MAGNITUDE = 5.5;
 export const ARCHIVE_START_YEAR = 1970;
 
 /**
+ * The deep archive: **M7.5+ back to 1900**, a second tier beneath the main one.
+ *
+ * ## Why 1900, and why it is a hard floor
+ *
+ * Measured against USGS's own count endpoint, M7.5+ per decade:
+ *
+ *     1850s-1890s   0-3      <- essentially nothing recorded
+ *     1900-1910      40      <- 13x jump
+ *     1910-2020    20-58     <- flat within clustering noise
+ *
+ * The jump is global instrumental seismology arriving (Milne seismographs,
+ * ~1900), not earthquakes arriving. Before it the catalogue records where
+ * people wrote things down.
+ *
+ * **Going further back is not a matter of finding a better source.** USGS lists
+ * 15 M7.5+ events for the whole of 1500-1900, and by region they are 6 North
+ * America and 9 mostly-Caribbean — none in Japan, China, the Mediterranean or
+ * South America, all of which have written records of enormous earthquakes. The
+ * true count is in the hundreds. Adding NOAA's significant-events database or
+ * regional historical catalogues would add events *unevenly*: Japan and the
+ * Mediterranean would fill in, the open Pacific would stay empty. That turns a
+ * uniformly short record into a regionally biased one, which is worse for a rate
+ * — intervals would read short where historians worked and long where they
+ * didn't. Pre-1900 events may be worth *showing*; they must never feed a rate.
+ *
+ * ## Why USGS is the right source
+ *
+ * No external catalogue is needed. Of the 262 M7.5+ events USGS returns for
+ * 1900-1970, **222 come from `iscgem`** and 9 more from `iscgemsup` — the
+ * ISC-GEM Global Instrumental Earthquake Catalogue, which is the relocated,
+ * homogeneous-Mw reference for this era. 252 of the 262 carry `mw`. ComCat is
+ * already serving the gold standard.
+ *
+ * ## Cost
+ *
+ * 262 events across 70 years — trivial next to the main archive's ~295,000.
+ */
+export const DEEP_ARCHIVE_MIN_MAGNITUDE = 7.5;
+export const DEEP_ARCHIVE_START_YEAR = 1900;
+
+/**
+ * The earliest year the catalogue is complete enough at `minMagnitude` to
+ * support a rate claim.
+ *
+ * The answer depends on the floor, which is the whole point: bigger earthquakes
+ * were detectable earlier. M7.5+ is complete from 1900; everything below it only
+ * from 1970, where the main archive begins.
+ *
+ * Used by anything that divides events by time. Getting it wrong in the generous
+ * direction — assuming 1900 for M6 — would count a near-empty 70 years as
+ * observation and inflate every interval through it.
+ */
+export function completeSinceYear(minMagnitude: number): number {
+  return minMagnitude >= DEEP_ARCHIVE_MIN_MAGNITUDE
+    ? DEEP_ARCHIVE_START_YEAR
+    : ARCHIVE_START_YEAR;
+}
+
+/**
+ * Chunks for the deep archive, oldest first — 1900 up to where the main archive
+ * takes over.
+ *
+ * Same calendar-year boundaries as `archiveChunks`, so `archive_chunks` rows are
+ * interchangeable between the tiers and resume works identically. The two never
+ * overlap: this stops at 1969, the main archive starts at 1970.
+ */
+export function deepArchiveChunks(): ArchiveChunk[] {
+  const chunks: ArchiveChunk[] = [];
+
+  for (let year = DEEP_ARCHIVE_START_YEAR; year < ARCHIVE_START_YEAR; year += 1) {
+    chunks.push({
+      year,
+      startUtc: `${String(year)}-01-01T00:00:00.000Z`,
+      endUtc: `${String(year + 1)}-01-01T00:00:00.000Z`,
+    });
+  }
+
+  return chunks;
+}
+
+/**
  * FDSN returns at most this many events per request, so every chunk has to be
  * fetched in pages of no more than this.
  *
@@ -140,8 +221,19 @@ export const ARCHIVE_SPANS: readonly ArchiveSpan[] = [
   { years: 10, minMagnitude: ARCHIVE_ANALYSIS_MIN_MAGNITUDE, label: '10y' },
   // "All" is expressed in years like the others rather than as a sentinel, so
   // every consumer does the same arithmetic. Comfortably past 1970 so it keeps
-  // covering the whole archive as years pass.
+  // covering the whole M4.5+/M5.5+ archive as years pass.
   { years: 100, minMagnitude: ARCHIVE_ANALYSIS_MIN_MAGNITUDE, label: 'all' },
+  // The deep tier, at **its own floor**.
+  //
+  // Without this the 1900-1969 events were downloaded and then invisible: the
+  // widest span reached 1926 and no view went further back, so the 1906 San
+  // Francisco M7.9 sat in the database with nothing able to draw it.
+  //
+  // The floor is M7.5 rather than M5.5 *because that is what the era holds*.
+  // Showing 1900-1970 under an M5.5 label would render seven decades that look
+  // quiet next to a dense post-1970 record — the instrumental artefact this
+  // project warns about everywhere else, manufactured by the view itself.
+  { years: 130, minMagnitude: DEEP_ARCHIVE_MIN_MAGNITUDE, label: '1900+' },
 ];
 
 const HOURS_PER_YEAR = 365.25 * 24;
