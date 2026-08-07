@@ -8,6 +8,7 @@ import {
   pruneEarthquakesBefore,
   queryAftershockSequence,
   queryEarthquakes,
+  queryRegionalRecurrence,
   signaturesMatch,
   type EarthquakeQuery,
 } from '@terra-pulse/db';
@@ -25,6 +26,7 @@ import {
   longestCoverageHours,
   type AftershockSequence,
   type EarthquakeEvent,
+  type RegionalRecurrence,
   type EarthquakeSyncResult,
 } from '@terra-pulse/schema';
 
@@ -313,6 +315,29 @@ export function registerEarthquakeIpcHandlers(
       const mainshock = getEarthquakeById(db, eventId);
       if (mainshock === null) return null;
       return queryAftershockSequence(db, mainshock, Date.now());
+    },
+  );
+
+  /**
+   * Observed recurrence intervals for a region (PROJECT_PLAN §5.11).
+   *
+   * `Date.now()` rather than the renderer's playhead: how often earthquakes have
+   * occurred somewhere is a fact about the record, not about where the scrubber
+   * happens to sit.
+   */
+  ipcMain.handle(
+    'earthquakes:recurrence',
+    (
+      _event,
+      request: { latitude: number; longitude: number; radiusKm: number; minMagnitude: number },
+    ): RegionalRecurrence => {
+      return queryRegionalRecurrence(
+        db,
+        { latitude: request.latitude, longitude: request.longitude },
+        request.radiusKm,
+        request.minMagnitude,
+        Date.now(),
+      );
     },
   );
 }

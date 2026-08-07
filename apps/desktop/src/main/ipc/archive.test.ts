@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ArchiveChunk, ArchiveProgress, EarthquakeEvent } from '@terra-pulse/schema';
+import {
+  ARCHIVE_MIN_MAGNITUDE,
+  DEEP_ARCHIVE_MIN_MAGNITUDE,
+  deepArchiveChunks,
+} from '@terra-pulse/schema';
 import { openDatabase, listArchiveChunks, queryEarthquakes } from '@terra-pulse/db';
 import { ArchiveCancelledError } from '@terra-pulse/ingest';
 import { createArchiveController } from './archive';
@@ -38,6 +43,18 @@ function makeEvent(id: string, year: number): EarthquakeEvent {
 const NOW = new Date('1974-05-05T00:00:00.000Z');
 const now = () => NOW;
 
+/**
+ * The deep tier: M7.5+ for 1900..1969, ahead of the main M4.5+ tier.
+ *
+ * Every count here is main-tier + this, because the backfill runs both. Derived
+ * from `deepArchiveChunks()` rather than hard-coded so moving the start year
+ * updates the expectations with it.
+ */
+const DEEP = deepArchiveChunks().length;
+
+/** Years the deep tier covers, all of which are final relative to NOW. */
+const DEEP_YEARS = deepArchiveChunks().map((chunk) => chunk.year);
+
 function setup() {
   const db = openDatabase(':memory:');
   const progress: ArchiveProgress[] = [];
@@ -59,9 +76,10 @@ describe('archive controller', () => {
 
     const result = await controller.start();
 
-    expect(fetchArchiveChunk).toHaveBeenCalledTimes(5); // 1970..1974
+    // 70 deep chunks (1900..1969 at M7.5+) then 1970..1974 at M4.5+.
+    expect(fetchArchiveChunk).toHaveBeenCalledTimes(DEEP + 5);
     expect(result.state).toBe('complete');
-    expect(queryEarthquakes(db)).toHaveLength(5);
+    expect(queryEarthquakes(db)).toHaveLength(DEEP + 5);
   });
 
   it('records completed years but never the current one', async () => {
@@ -71,7 +89,44 @@ describe('archive controller', () => {
 
     await controller.start();
 
-    expect(listArchiveChunks(db).map((chunk) => chunk.year)).toEqual([1970, 1971, 1972, 1973]);
+    expect(listArchiveChunks(db).map((chunk) => chunk.year)).toEqual([
+      ...DEEP_YEARS,
+      1970,
+      1971,
+      1972,
+      1973,
+    ]);
+  });
+
+  it('fetches the deep tier at its own floor, not the main one', async () => {
+    // The two tiers exist to apply different floors over different spans; a
+    // single floor for both would either miss 1900-1969 or try to pull M4.5+
+    // out of an era that cannot supply it.
+    const { controller } = setup();
+    await controller.start();
+
+    const calls = fetchArchiveChunk.mock.calls as [
+      { chunk: ArchiveChunk; minMagnitude: number },
+    ][];
+    const deep = calls.filter(([o]) => o.chunk.year < 1970);
+    const main = calls.filter(([o]) => o.chunk.year >= 1970);
+
+    expect(deep).toHaveLength(DEEP);
+    expect(deep.every(([o]) => o.minMagnitude === DEEP_ARCHIVE_MIN_MAGNITUDE)).toBe(true);
+    expect(main.every(([o]) => o.minMagnitude === ARCHIVE_MIN_MAGNITUDE)).toBe(true);
+  });
+
+  it('runs the deep tier before the main one', async () => {
+    // Cheapest work first: 70 years at M7.5+ is a few hundred events against
+    // ~295,000, so an interrupted run still leaves the large-event record whole.
+    const { controller } = setup();
+    await controller.start();
+
+    const years = (fetchArchiveChunk.mock.calls as [{ chunk: ArchiveChunk }][]).map(
+      ([o]) => o.chunk.year,
+    );
+    expect(years.slice(0, DEEP)).toEqual(DEEP_YEARS);
+    expect(years.slice(DEEP)).toEqual([1970, 1971, 1972, 1973, 1974]);
   });
 
   it('resumes rather than restarting, skipping years already recorded', async () => {
@@ -116,7 +171,7 @@ describe('archive controller', () => {
     expect(result.state).toBe('failed');
     expect(result.error).toMatch(/1972/);
     // The years before it stand, so a retry resumes from the break.
-    expect(listArchiveChunks(db).map((chunk) => chunk.year)).toEqual([1970, 1971]);
+    expect(listArchiveChunks(db).map((chunk) => chunk.year)).toEqual([...DEEP_YEARS, 1970, 1971]);
   });
 
   it('does not record a year whose fetch was cancelled partway', async () => {
@@ -131,7 +186,7 @@ describe('archive controller', () => {
     const result = await controller.start();
 
     expect(result.state).toBe('cancelled');
-    expect(listArchiveChunks(db).map((chunk) => chunk.year)).toEqual([1970, 1971]);
+    expect(listArchiveChunks(db).map((chunk) => chunk.year)).toEqual([...DEEP_YEARS, 1970, 1971]);
   });
 
   it('returns the in-flight run instead of starting a second one', async () => {
@@ -141,7 +196,7 @@ describe('archive controller', () => {
 
     const [a, b] = await Promise.all([controller.start(), controller.start()]);
 
-    expect(fetchArchiveChunk).toHaveBeenCalledTimes(5);
+    expect(fetchArchiveChunk).toHaveBeenCalledTimes(DEEP + 5);
     expect(a).toEqual(b);
   });
 
@@ -161,7 +216,7 @@ describe('archive controller', () => {
     expect(controller.status()).toEqual({
       state: 'idle',
       completedChunks: 0,
-      totalChunks: 5,
+      totalChunks: DEEP + 5,
       storedEvents: 0,
       currentYear: null,
       error: null,
@@ -174,7 +229,7 @@ describe('archive controller', () => {
     await controller.start();
 
     const years = progress.map((p) => p.currentYear).filter((year) => year !== null);
-    expect(years).toEqual([1970, 1971, 1972, 1973, 1974]);
+    expect(years).toEqual([...DEEP_YEARS, 1970, 1971, 1972, 1973, 1974]);
     expect(progress.at(-1)?.state).toBe('complete');
     expect(progress.at(-1)?.currentYear).toBeNull();
   });
@@ -191,7 +246,7 @@ describe('archive controller', () => {
 
     const result = await controller.start();
 
-    // Four recorded years at ten events each; 1974 is not recorded.
-    expect(result.storedEvents).toBe(40);
+    // Every final year at ten events each; 1974 is not recorded.
+    expect(result.storedEvents).toBe((DEEP + 4) * 10);
   });
 });

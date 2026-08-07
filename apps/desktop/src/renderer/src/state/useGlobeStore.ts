@@ -5,13 +5,44 @@ import {
   defaultOverlayVisibility,
   type BasemapId,
 } from '../layers/registry';
-import type { BackdropTone } from '@terra-pulse/schema';
+import type { HoverTarget } from '../globe/hover-target';
+import type { FaultRecord } from '../layers/fault-association';
+import {
+  DEFAULT_RECURRENCE_FLOOR,
+  DEFAULT_RECURRENCE_RADIUS_KM,
+  type BackdropTone,
+} from '@terra-pulse/schema';
 
-/** A point the user asked about, in degrees. */
-export interface ProbePoint {
-  latitude: number;
-  longitude: number;
+/** What the pointer is over, plus where to draw the tooltip. */
+export interface HoverState {
+  target: HoverTarget;
+  /** Screen position of the pointer, CSS pixels within the canvas. */
+  x: number;
+  y: number;
 }
+
+/**
+ * A place the user asked about, and what — if anything — they clicked there.
+ *
+ * **One slot for three cases, because they all answer questions about the same
+ * point.** Clicking a fault, clicking a plate boundary, and probing bare globe
+ * used to fill two separate panels that repeated each other's fault section.
+ * They now fill one: `kind` decides what sourced detail appears at the top, and
+ * the coordinate drives the recurrence section underneath in every case.
+ *
+ * The coordinate is always where the pointer was, not the feature's centroid —
+ * asking "how often here" about the middle of a 500 km fault trace would answer
+ * for somewhere the user never pointed at.
+ *
+ * Kept separate from the earthquake selection: they describe different things
+ * and appear in different panels, so closing one must not close the other.
+ */
+export type LocationSelection = { latitude: number; longitude: number } & (
+  | { kind: 'fault'; fault: FaultRecord }
+  | { kind: 'boundary'; pair: string; boundaryClass: string }
+  /** Probe mode: bare globe, so the panel finds the nearest fault itself. */
+  | { kind: 'point' }
+);
 
 interface GlobeState {
   /** Exclusive group — exactly one basemap is active (PROJECT_PLAN §4). */
@@ -28,34 +59,69 @@ interface GlobeState {
    * could predict from watching it once.
    */
   faultProbeActive: boolean;
-  /** The probed point, or null when nothing has been clicked yet. */
-  probePoint: ProbePoint | null;
+  /** What the location panel is showing, or null when it is closed. */
+  location: LocationSelection | null;
+
+  /**
+   * Region size and magnitude floor for the recurrence panel.
+   *
+   * Kept in the store rather than in the panel so the choice survives changing
+   * selection — someone comparing two regions at M6.5/200 km should not have to
+   * re-pick it on every click.
+   */
+  recurrenceRadiusKm: number;
+  recurrenceFloor: number;
+
+  /** Live hover readout, or null when the pointer is over empty globe. */
+  hover: HoverState | null;
+
 
   setActiveBasemap: (id: BasemapId) => void;
   toggleLayer: (id: string) => void;
   setLayerVisible: (id: string, visible: boolean) => void;
   toggleFaultProbe: () => void;
-  setProbePoint: (point: ProbePoint | null) => void;
+  selectLocation: (selection: LocationSelection | null) => void;
+  setRecurrenceRadiusKm: (radiusKm: number) => void;
+  setRecurrenceFloor: (floor: number) => void;
+  setHover: (hover: HoverState | null) => void;
+
 }
 
 export const useGlobeStore = create<GlobeState>((set) => ({
   activeBasemapId: DEFAULT_BASEMAP_ID,
   layerVisibility: defaultOverlayVisibility(),
   faultProbeActive: false,
-  probePoint: null,
+  location: null,
+  recurrenceRadiusKm: DEFAULT_RECURRENCE_RADIUS_KM,
+  recurrenceFloor: DEFAULT_RECURRENCE_FLOOR,
+  hover: null,
+
 
   setActiveBasemap: (id) => set({ activeBasemapId: id }),
 
-  // Leaving the mode drops the probed point with it. A stale reading left on
-  // screen after the mode is off has no way to be refreshed or dismissed, and
-  // describes a place the user has stopped asking about.
+  /**
+   * Leaving probe mode drops a probed *point* with it, but leaves a clicked
+   * fault or boundary alone.
+   *
+   * A bare-point reading has no way to be refreshed once the mode is off — you
+   * cannot click another one — so it would sit there describing a place the user
+   * has stopped asking about. A clicked feature is still perfectly meaningful
+   * with the mode off, and closing it would be gratuitous.
+   */
   toggleFaultProbe: () =>
     set((state) => ({
       faultProbeActive: !state.faultProbeActive,
-      probePoint: state.faultProbeActive ? null : state.probePoint,
+      location:
+        state.faultProbeActive && state.location?.kind === 'point' ? null : state.location,
     })),
 
-  setProbePoint: (probePoint) => set({ probePoint }),
+  selectLocation: (location) => set({ location }),
+
+  setRecurrenceRadiusKm: (recurrenceRadiusKm) => set({ recurrenceRadiusKm }),
+  setRecurrenceFloor: (recurrenceFloor) => set({ recurrenceFloor }),
+
+  setHover: (hover) => set({ hover }),
+
 
   toggleLayer: (id) =>
     set((state) => ({

@@ -21,6 +21,7 @@ export {
 } from './archive-queries';
 export type { CompletedChunk } from './archive-queries';
 export { queryAftershockSequence } from './aftershock-queries';
+export { queryRegionalRecurrence } from './recurrence-queries';
 // EarthquakeQuery/BoundingBox live in @terra-pulse/schema, not here — they're
 // plain parameter shapes with no node:sqlite dependency, and keeping them in
 // schema means renderer code (which type-checks with no Node types at all,

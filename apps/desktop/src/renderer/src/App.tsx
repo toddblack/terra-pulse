@@ -6,10 +6,12 @@ import { EventListPanel } from './panels/EventListPanel';
 import { MissedEventsPanel } from './panels/MissedEventsPanel';
 import { LayerPanel } from './panels/LayerPanel';
 import { RangeControls } from './panels/RangeControls';
-import { FaultProbePanel } from './panels/FaultProbePanel';
+import { FaultProbeToggle } from './panels/FaultProbeToggle';
 import { DepthLegend } from './panels/DepthLegend';
 import { TimeScrubber } from './panels/TimeScrubber';
 import { EarthquakeInspector } from './panels/EarthquakeInspector';
+import { LocationPanel } from './panels/LocationPanel';
+import { HoverTooltip } from './panels/HoverTooltip';
 import { useEarthquakeStore } from './state/useEarthquakeStore';
 import { playAlertSound } from './audio/alert-sound';
 import styles from './App.module.css';
@@ -71,7 +73,7 @@ export default function App() {
       <div className={styles.leftColumn}>
         <RangeControls />
         <ArchivePanel />
-        <FaultProbePanel />
+        <FaultProbeToggle />
       </div>
       <LargeEventBanner />
       <MissedEventsPanel />
@@ -82,6 +84,10 @@ export default function App() {
         <DepthLegend />
       </div>
       <EarthquakeInspector />
+      <LocationPanel />
+      {/* Last, so it draws above every panel — it tracks the pointer and
+          must never be occluded by the chrome it passes over. */}
+      <HoverTooltip />
     </div>
   );
 }

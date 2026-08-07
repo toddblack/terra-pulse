@@ -4,6 +4,7 @@ import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { depthClass, depthColorHex } from '../layers/earthquake-encoding';
 import { AftershockSequenceSection } from './AftershockSequence';
 import { NearestFaultSection } from './NearestFault';
+import { RegionalRecurrenceSection } from './RegionalRecurrence';
 import { hasSequencePanel } from './useAftershockSequence';
 import styles from './EarthquakeInspector.module.css';
 
@@ -159,6 +160,10 @@ export function EarthquakeInspector() {
             distance; it does not claim the event was on it — see the note in
             NearestFault.tsx for why that distinction is load-bearing. */}
         <NearestFaultSection point={event} depthKm={event.depthKm} />
+
+        {/* How often this happens around here, from the catalogue. Descriptive
+            only — it never says a region is due. See RegionalRecurrence.tsx. */}
+        <RegionalRecurrenceSection point={event} />
 
 
         {/* The antipode is pure geometry — the point opposite on a sphere — so

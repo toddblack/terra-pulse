@@ -83,11 +83,19 @@ export interface EarthquakeQuery {
  *   with no class boundary on it, which is the exact mistake the rest of this
  *   list was corrected to avoid.
  *
+ * - **M7.5** is the one entry that is *not* a class boundary, and it is here for
+ *   a different reason: it is the deep archive's completeness floor. M7.5+ is
+ *   globally complete back to 1900, so the `1900+` browsing span uses it, and
+ *   `ARCHIVE_SPANS` may only offer floors this list can render a button for.
+ *   Precedent for a non-class threshold with a stated job is `ALERT_MIN_MAGNITUDE`
+ *   at M5.8 — completeness and interrupt-frequency are allowed to sit between
+ *   the class boundaries; only *display* floors have to land on them.
+ *
  * An earlier version of this list was `[1, 2, 3, 4, 5]`. Round numbers read
  * tidier but sit beside the real thresholds rather than on them, and M5+ over a
  * long span would ship a 36% coverage drift looking like signal.
  */
-export const MAGNITUDE_FLOORS: readonly number[] = [1, 2.5, 4.5, 5.5, 6, 7];
+export const MAGNITUDE_FLOORS: readonly number[] = [1, 2.5, 4.5, 5.5, 6, 7, 7.5];
 
 /**
  * How far back the catalogue is fetched, and to what magnitude floor.

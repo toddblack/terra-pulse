@@ -6,6 +6,7 @@ import type {
   EarthquakeQuery,
   EarthquakeSyncResult,
   MissedEvents,
+  RegionalRecurrence,
 } from '@terra-pulse/schema';
 
 // Narrow, specific functions — never a raw ipcRenderer passthrough
@@ -67,6 +68,20 @@ contextBridge.exposeInMainWorld('terraPulse', {
      */
     sequence: (eventId: string): Promise<AftershockSequence | null> =>
       ipcRenderer.invoke('earthquakes:sequence', eventId),
+
+    /**
+     * How often independent earthquakes have occurred near a point since 1970.
+     *
+     * Descriptive only — it reports gaps the catalogue recorded and never
+     * extrapolates to the next one. See PROJECT_PLAN §5.11 for why a 57-year
+     * record cannot speak to whether anywhere is "overdue".
+     */
+    recurrence: (request: {
+      latitude: number;
+      longitude: number;
+      radiusKm: number;
+      minMagnitude: number;
+    }): Promise<RegionalRecurrence> => ipcRenderer.invoke('earthquakes:recurrence', request),
   },
   archive: {
     status: (): Promise<ArchiveProgress> => ipcRenderer.invoke('archive:status'),

@@ -9,7 +9,9 @@ import {
 import { ArchiveCancelledError, fetchArchiveChunk } from '@terra-pulse/ingest';
 import {
   ARCHIVE_MIN_MAGNITUDE,
+  DEEP_ARCHIVE_MIN_MAGNITUDE,
   archiveChunks,
+  deepArchiveChunks,
   type ArchiveChunk,
   type ArchiveProgress,
 } from '@terra-pulse/schema';
@@ -58,7 +60,31 @@ export function createArchiveController(
   onProgress: (progress: ArchiveProgress) => void,
   now: () => Date = () => new Date(),
 ): ArchiveController {
-  const minMagnitude = ARCHIVE_MIN_MAGNITUDE;
+  /**
+   * The backfill runs in **two tiers**, each a floor over a different span.
+   *
+   * The deep tier is M7.5+ from 1900, where global instrumental completeness
+   * begins for events that size; the main tier is M4.5+ from 1970. They never
+   * overlap — the deep chunks stop at 1969 — so the same `archive_chunks` table
+   * records both, and `completedArchiveYears(db, floor)` resolves each correctly
+   * because it matches on `min_magnitude <= floor`.
+   *
+   * Deep first: 70 years at M7.5+ is 262 events against the main tier's ~295,000,
+   * so the cheap work lands first and an interrupted run still leaves the whole
+   * large-event record in place.
+   */
+  function plannedChunks(at: Date): { chunk: ArchiveChunk; minMagnitude: number }[] {
+    return [
+      ...deepArchiveChunks().map((chunk) => ({
+        chunk,
+        minMagnitude: DEEP_ARCHIVE_MIN_MAGNITUDE,
+      })),
+      ...archiveChunks(at.getUTCFullYear()).map((chunk) => ({
+        chunk,
+        minMagnitude: ARCHIVE_MIN_MAGNITUDE,
+      })),
+    ];
+  }
 
   let state: ArchiveProgress['state'] = 'idle';
   let currentYear: number | null = null;
@@ -67,11 +93,13 @@ export function createArchiveController(
   const signal = { aborted: false };
 
   function totalChunks(): number {
-    return archiveChunks(now().getUTCFullYear()).length;
+    return plannedChunks(now()).length;
   }
 
   function status(): ArchiveProgress {
-    const summary = archiveChunkSummary(db, minMagnitude);
+    // Counts both tiers: the query matches `min_magnitude <= ?`, so the deeper
+    // floor is the one that includes everything.
+    const summary = archiveChunkSummary(db, DEEP_ARCHIVE_MIN_MAGNITUDE);
     return {
       state,
       completedChunks: summary.completedChunks,
@@ -94,7 +122,11 @@ export function createArchiveController(
    * a failure partway leaves the year unrecorded and the next run refetches it.
    * The upsert makes that repetition free.
    */
-  async function runChunk(chunk: ArchiveChunk, canRecord: boolean): Promise<void> {
+  async function runChunk(
+    chunk: ArchiveChunk,
+    minMagnitude: number,
+    canRecord: boolean,
+  ): Promise<void> {
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= CHUNK_ATTEMPTS; attempt++) {
@@ -120,18 +152,22 @@ export function createArchiveController(
 
   async function run(): Promise<ArchiveProgress> {
     const at = now();
-    const done = completedArchiveYears(db, minMagnitude);
-    const chunks = archiveChunks(at.getUTCFullYear());
+    const chunks = plannedChunks(at);
 
     state = 'running';
     error = null;
     publish();
 
     try {
-      for (const chunk of chunks) {
+      for (const { chunk, minMagnitude } of chunks) {
         if (signal.aborted) throw new ArchiveCancelledError();
 
         const final = isYearFinal(chunk.year, at);
+        // Resolved per tier, because "already fetched" means "at a floor at
+        // least as low as this one" — a year held only at M7.5 does not satisfy
+        // an M4.5 request, and treating it as done would leave a hole shaped
+        // exactly like the difference between the two.
+        const done = completedArchiveYears(db, minMagnitude);
         // A finished year already recorded needs nothing. The current year is
         // never "already done" — see isYearFinal.
         if (final && done.has(chunk.year)) continue;
@@ -139,7 +175,7 @@ export function createArchiveController(
         currentYear = chunk.year;
         publish();
 
-        await runChunk(chunk, final);
+        await runChunk(chunk, minMagnitude, final);
       }
 
       state = 'complete';
