@@ -3,3 +3,4 @@ export * from './earthquake';
 export * from './archive';
 export * from './aftershocks';
 export * from './recurrence';
+export * from './antipodal';

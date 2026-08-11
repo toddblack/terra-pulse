@@ -7,6 +7,7 @@ import {
   insertEarthquakes,
   pruneEarthquakesBefore,
   queryAftershockSequence,
+  queryAntipodalWindow,
   queryEarthquakes,
   queryRegionalRecurrence,
   signaturesMatch,
@@ -25,6 +26,7 @@ import {
   ingestPasses,
   longestCoverageHours,
   type AftershockSequence,
+  type AntipodalWindow,
   type EarthquakeEvent,
   type RegionalRecurrence,
   type EarthquakeSyncResult,
@@ -338,6 +340,21 @@ export function registerEarthquakeIpcHandlers(
         request.minMagnitude,
         Date.now(),
       );
+    },
+  );
+  /**
+   * What the catalogue recorded near an event's antipode (PROJECT_PLAN §5.3).
+   *
+   * Observation only — the registered H5 test is a separate Analyze job. Takes
+   * an id and looks the trigger up here, so the geometry is always centred on a
+   * real catalogue row rather than on renderer-supplied coordinates.
+   */
+  ipcMain.handle(
+    'earthquakes:antipodal',
+    (_event, eventId: string): AntipodalWindow | null => {
+      const trigger = getEarthquakeById(db, eventId);
+      if (trigger === null) return null;
+      return queryAntipodalWindow(db, trigger, Date.now());
     },
   );
 }

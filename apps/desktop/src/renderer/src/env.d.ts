@@ -2,6 +2,7 @@
 
 import type {
   AftershockSequence,
+  AntipodalWindow,
   ArchiveProgress,
   EarthquakeEvent,
   EarthquakeQuery,
@@ -34,6 +35,8 @@ declare global {
           radiusKm: number;
           minMagnitude: number;
         }): Promise<RegionalRecurrence>;
+        /** What was recorded near an event's antipode, plus the background rate. */
+        antipodal(eventId: string): Promise<AntipodalWindow | null>;
       };
       archive: {
         status(): Promise<ArchiveProgress>;
