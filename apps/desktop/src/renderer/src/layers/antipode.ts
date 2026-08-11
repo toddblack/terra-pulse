@@ -16,33 +16,10 @@ export interface LatLon {
   longitude: number;
 }
 
-/**
- * Wraps a longitude into [-180, 180).
- *
- * Half-open at the top on purpose: 180 and -180 are the same meridian, so
- * allowing both would let the antipode of one place print two different ways
- * depending on which side of the date line it started.
- */
-export function normalizeLongitude(longitude: number): number {
-  if (!Number.isFinite(longitude)) return Number.NaN;
-  return ((((longitude + 180) % 360) + 360) % 360) - 180;
-}
-
-/**
- * The point directly opposite on the globe.
- *
- * Latitude mirrors about the equator; longitude moves half a turn. Deliberately
- * ignores depth: a hypocentre 600 km down is still *below* a surface point, and
- * the antipode of that surface point is what "the other side of the world" means.
- * Treating depth as part of the geometry would put the far end inside the mantle
- * rather than on the surface.
- */
-export function antipodeOf(point: LatLon): LatLon {
-  return {
-    latitude: -point.latitude,
-    longitude: normalizeLongitude(point.longitude + 180),
-  };
-}
+// The geometry itself lives in `@terra-pulse/schema` because the antipodal
+// *query* runs in main and needs the same maths. Re-exported here so existing
+// renderer imports keep working and there is only ever one implementation.
+export { antipodeOf, normalizeLongitude } from '@terra-pulse/schema';
 
 /**
  * Formatted for display: "36.05°S, 67.86°E".

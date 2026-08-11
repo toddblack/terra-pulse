@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AftershockSequence,
+  AntipodalWindow,
   ArchiveProgress,
   EarthquakeEvent,
   EarthquakeQuery,
@@ -82,6 +83,15 @@ contextBridge.exposeInMainWorld('terraPulse', {
       radiusKm: number;
       minMagnitude: number;
     }): Promise<RegionalRecurrence> => ipcRenderer.invoke('earthquakes:recurrence', request),
+
+    /**
+     * What the catalogue recorded near an event's antipode (PROJECT_PLAN §5.3).
+     *
+     * Observation, with the antipode's background rate attached so the result
+     * cannot be read as evidence on its own. The registered H5 test is separate.
+     */
+    antipodal: (eventId: string): Promise<AntipodalWindow | null> =>
+      ipcRenderer.invoke('earthquakes:antipodal', eventId),
   },
   archive: {
     status: (): Promise<ArchiveProgress> => ipcRenderer.invoke('archive:status'),

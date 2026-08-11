@@ -290,6 +290,41 @@ before the 1900-1969 events were reachable at all:
   over a fully-downloaded deep tier, which read as the download having failed.
   It names `DEEP_ARCHIVE_START_YEAR` now.
 
+**Antipodal window — shipped** (§5.3, the observational half of **H5**). In the
+inspector for any M6+ event: what the catalogue recorded within 1000 km of its
+antipode in the registered 72 h window — distance, delay, magnitude.
+
+- **The background rate ships with every answer and is the whole point.** A bare
+  list of hits near an antipode is a coincidence generator. The prompting case: a
+  Colombia M7.4 followed 4.6 h later by a Sumatra M5.1 just **197 km** from its
+  antipode. Striking — until you see that this patch of Sumatra produces an M5+
+  **every 8 days anyway** at that radius. So the panel prints the rate *before*
+  the result, with equal weight.
+- **Measured across the 14 most recent M7+ triggers, the confounder is total.**
+  All 3 that produced any hit were South America → Indonesia. Every other
+  antipode has a background of hundreds to tens of thousands of days: Mexico 940,
+  Philippines 6,892, Japan **20,676** (one per 57 years), Tonga silent. The
+  apparent "signal" is entirely that South America and Indonesia are both highly
+  seismic *and* antipodal to each other. Nothing will ever be found opposite
+  Japan because the South Atlantic is empty.
+- **`backgroundSilent` exists for that case.** ~36% of M6+ antipodes have had *no*
+  M5+ within 500 km since 1970, so an empty window there says nothing at all —
+  sparse instrument coverage and real quiet are indistinguishable. The panel says
+  so rather than presenting absence as a finding.
+- **No probability is printed.** A rate is descriptive; "p = 0.03" would be a
+  significance claim (non-negotiable #1). The registered H5 test — declustered,
+  completeness-weighted, KS against the null — stays an Analyze job.
+- **`ANTIPODAL_WINDOW_HOURS` is 72 and must not be shortened to 24** because a
+  suggestive case happened to land at 4.6 h. H5 was registered 2026-07-24 at
+  0–72 h; changing it now is exactly the free-parameter-after-the-fact that
+  non-negotiable #3 forbids. A 24 h variant is defensible *a priori* — surface
+  waves cross in ~2–3 h — but it must be registered as a *second* hypothesis and
+  paid for in the FDR denominator. Pinned by a test.
+- `normalizeLongitude` short-circuits in-range values and `antipodeOf` uses a
+  single half-turn shift, because the modulo route drifted ~1e-14° on real
+  coordinates. Exact round-tripping isn't achievable in floating point and isn't
+  required — that's a nanometre — so the test asserts closeness, not equality.
+
 **Observed recurrence intervals — shipped** (§5.11). "How often do independent
 earthquakes happen here", from the catalogue. In the inspector and the fault
 probe, with radius (100–500 km) and floor (M5.5–M7) selectors.

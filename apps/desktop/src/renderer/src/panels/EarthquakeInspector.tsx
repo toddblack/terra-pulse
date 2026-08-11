@@ -3,6 +3,7 @@ import { useEarthquakeStore, selectEventById } from '../state/useEarthquakeStore
 import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { depthClass, depthColorHex } from '../layers/earthquake-encoding';
 import { AftershockSequenceSection } from './AftershockSequence';
+import { AntipodalSection, hasAntipodalPanel } from './AntipodalSection';
 import { NearestFaultSection } from './NearestFault';
 import { RegionalRecurrenceSection } from './RegionalRecurrence';
 import { hasSequencePanel } from './useAftershockSequence';
@@ -155,6 +156,12 @@ export function EarthquakeInspector() {
             Gardner-Knopoff window is smaller than the catalogue's own floor can
             usefully fill. */}
         {hasSequencePanel(event) && <AftershockSequenceSection event={event} />}
+
+        {/* What the catalogue recorded on the far side of the planet. M6+ only
+            (§5.3) — below that the focused energy is negligible and the
+            candidate pool is noise. Observation, with the antipode's own
+            background rate attached so it can't be read as evidence. */}
+        {hasAntipodalPanel(event) && <AntipodalSection event={event} />}
 
         {/* What's mapped where this happened. Reports the nearest trace and its
             distance; it does not claim the event was on it — see the note in
