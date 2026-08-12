@@ -38,12 +38,33 @@ function years(value: number): string {
  * Tokyo give a 0.06 y median gap against 0.32 y declustered, and the raw figure
  * is not a noisier version of the right answer — it answers a different question.
  */
+/**
+ * The framed form, for the location panel — which is not collapsible.
+ *
+ * The inspector uses `RegionalRecurrenceBody` inside a `CollapsibleSection`, so
+ * the two share the content and differ only in the frame.
+ */
 export function RegionalRecurrenceSection({
   point,
   heading = 'How often here',
 }: {
   point: { latitude: number; longitude: number };
   heading?: string;
+}) {
+  return (
+    <section className={styles.section} aria-labelledby="recurrence-heading">
+      <h3 id="recurrence-heading" className={styles.heading}>
+        {heading}
+      </h3>
+      <RegionalRecurrenceBody point={point} />
+    </section>
+  );
+}
+
+export function RegionalRecurrenceBody({
+  point,
+}: {
+  point: { latitude: number; longitude: number };
 }) {
   const radiusKm = useGlobeStore((state) => state.recurrenceRadiusKm);
   const minMagnitude = useGlobeStore((state) => state.recurrenceFloor);
@@ -58,11 +79,7 @@ export function RegionalRecurrenceSection({
   });
 
   return (
-    <section className={styles.section} aria-labelledby="recurrence-heading">
-      <h3 id="recurrence-heading" className={styles.heading}>
-        {heading}
-      </h3>
-
+    <>
       <div className={styles.controls}>
         <div className={styles.controlRow} role="group" aria-label="Region radius">
           {RECURRENCE_RADII_KM.map((km) => (
@@ -97,7 +114,7 @@ export function RegionalRecurrenceSection({
       {state.status === 'loading' && <p className={styles.note}>reading catalogue…</p>}
       {state.status === 'error' && <p className={styles.note}>couldn&rsquo;t read this region</p>}
       {state.status === 'ready' && <Body recurrence={state.recurrence} />}
-    </section>
+    </>
   );
 }
 

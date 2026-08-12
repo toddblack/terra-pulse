@@ -75,6 +75,25 @@ interface GlobeState {
   /** Live hover readout, or null when the pointer is over empty globe. */
   hover: HoverState | null;
 
+  /**
+   * Which inspector sections are expanded, by section id.
+   *
+   * Missing means collapsed, which is the default for every section. The
+   * inspector is vertically centred and its four sections together run past the
+   * time scrubber at the bottom of the window; starting collapsed keeps the
+   * panel to the event's own identity, which is what every selection is about.
+   *
+   * **Kept here rather than in the panel so it survives changing selection.**
+   * Expansion is a statement about what you are interested in, not about one
+   * earthquake — re-opening "What followed" on every click through the event
+   * list would make the feature cost more than it saves.
+   *
+   * A collapsed section is **not rendered at all**, so its data hook never runs
+   * and its IPC never fires. That is deliberate and is most of the value: the
+   * recurrence query alone is 32–294 ms of O(n²) declustering in main, paid on
+   * every selection before this existed.
+   */
+  expandedSections: Record<string, boolean>;
 
   setActiveBasemap: (id: BasemapId) => void;
   toggleLayer: (id: string) => void;
@@ -84,7 +103,7 @@ interface GlobeState {
   setRecurrenceRadiusKm: (radiusKm: number) => void;
   setRecurrenceFloor: (floor: number) => void;
   setHover: (hover: HoverState | null) => void;
-
+  toggleSection: (id: string) => void;
 }
 
 export const useGlobeStore = create<GlobeState>((set) => ({
@@ -95,7 +114,7 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   recurrenceRadiusKm: DEFAULT_RECURRENCE_RADIUS_KM,
   recurrenceFloor: DEFAULT_RECURRENCE_FLOOR,
   hover: null,
-
+  expandedSections: {},
 
   setActiveBasemap: (id) => set({ activeBasemapId: id }),
 
@@ -122,6 +141,15 @@ export const useGlobeStore = create<GlobeState>((set) => ({
 
   setHover: (hover) => set({ hover }),
 
+  /**
+   * Absent means collapsed, so the first click on an untouched section opens
+   * it. Written as `!state.expandedSections[id]` rather than compared against
+   * `false` for exactly that reason.
+   */
+  toggleSection: (id) =>
+    set((state) => ({
+      expandedSections: { ...state.expandedSections, [id]: !state.expandedSections[id] },
+    })),
 
   toggleLayer: (id) =>
     set((state) => ({

@@ -581,6 +581,48 @@ Cesium's `homeButton` is off, like every other default widget. It was the only
 camera reset — if that becomes annoying, add one to our own chrome where we
 control placement rather than turning it back on.
 
+### Collapsible inspector sections
+
+All four inspector sections — What followed, Near the antipode, Nearest mapped
+fault, How often here — are collapsed by default behind `CollapsibleSection`.
+Prompted by the panel covering the time scrubber.
+
+- **A collapsed section is unmounted, not hidden, and that is the point.**
+  `{open && children}`, never `display: none`. Each section owns a data hook, so
+  unmounting is the only thing that actually stops the IPC: recurrence alone is
+  32–294 ms of O(n²) declustering in main, paid on *every* selection before
+  this. Clicking through the event list is now free unless you asked for an
+  answer. If anyone converts this to CSS hiding "to preserve scroll position",
+  they will silently restore the whole cost.
+- **The headers therefore can't carry a summary.** "What followed — 47
+  aftershocks" needs the query to have run, which is the cost being avoided.
+  Considered and rejected on those grounds; the heading states the question.
+- **Expansion lives in `useGlobeStore`, not the panel**, so it survives changing
+  selection. It is a statement about what you are interested in, not about one
+  earthquake. Absent means collapsed, so `toggleSection` negates rather than
+  comparing against `false` — otherwise the first click on every section is a
+  no-op. Test pins it.
+- **Independent, not a true accordion.** The sections answer different questions
+  and comparing two at once is reasonable.
+- **Open/closed is signalled without hue.** The app's existing active language
+  is a tinted fill in a colour that *means* something (violet for the recurrence
+  region, red for the antipode chord). A disclosure state means nothing beyond
+  "there is more here", so it gets neutral emphasis — flat and dim closed,
+  filled/outlined/near-white open — plus a literal `show`/`hide` word, because a
+  0.7 rem rotated triangle is not enough on its own. The border exists in both
+  states and is merely transparent when closed, so opening doesn't shift the row.
+- **`max-height` is now `calc(100vh - 18rem)` and the arithmetic is not
+  guessable.** The panel is centred (`top: 50%` + `translateY(-50%)`), so its
+  bottom edge sits at `(100vh - height) / 2` — **every rem off the height buys
+  only half a rem of clearance**, and the clearance is paid at the top too,
+  where nothing is in the way. The scrubber is ~5.7 rem tall at `bottom: 1rem`.
+  Collapsing makes the collision rare; this makes it impossible, which matters
+  because two expanded sections would otherwise put the panel straight back over
+  the scrubber.
+- `NearestFault` and `RegionalRecurrence` are also used by `LocationPanel`,
+  which is not collapsible, so each exports both a `*Body` and a framed
+  `*Section`. The frame is the only difference.
+
 ### Known gaps
 
 - ~~`INGEST_WINDOW_MS` is 4 days while the UI offers 30d~~ — fixed by archive

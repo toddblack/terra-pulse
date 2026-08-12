@@ -36,8 +36,23 @@
 }
 
 .scrollArea {
-  /* Clears the basemap toggle and legend along the bottom edge. */
-  max-height: calc(100vh - 10rem);
+  /* Sized so the panel cannot reach the time scrubber, which is the collision
+     the collapsible sections exist to make rare and this makes impossible.
+     Collapsing helps by default; two expanded sections would otherwise put the
+     panel straight back over the scrubber.
+
+     The arithmetic, because it is not guessable: the panel is centred
+     (`top: 50%` + `translateY(-50%)`), so its bottom edge sits at
+     `(100vh - height) / 2` and every rem taken off the height buys only half a
+     rem of clearance. The scrubber is ~5.7rem tall at `bottom: 1rem`, so its
+     top edge is ~6.7rem up; 8rem of clearance leaves a visible gap. That needs
+     a total height of `100vh - 16rem`, less this panel's own 1.875rem of
+     padding.
+
+     Being centred is what makes this expensive — the clearance has to be paid
+     at the top as well, where nothing is in the way. If the panel ever stops
+     pointing at the centred event, revisit this along with it. */
+  max-height: calc(100vh - 18rem);
   overflow-y: auto;
 }
 

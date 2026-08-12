@@ -2,10 +2,11 @@ import { antipodeOf, formatLatLon } from '../layers/antipode';
 import { useEarthquakeStore, selectEventById } from '../state/useEarthquakeStore';
 import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { depthClass, depthColorHex } from '../layers/earthquake-encoding';
-import { AftershockSequenceSection } from './AftershockSequence';
-import { AntipodalSection, hasAntipodalPanel } from './AntipodalSection';
-import { NearestFaultSection } from './NearestFault';
-import { RegionalRecurrenceSection } from './RegionalRecurrence';
+import { AftershockSequenceBody } from './AftershockSequence';
+import { AntipodalBody, hasAntipodalPanel } from './AntipodalSection';
+import { CollapsibleSection } from './CollapsibleSection';
+import { NearestFaultBody } from './NearestFault';
+import { RegionalRecurrenceBody } from './RegionalRecurrence';
 import { hasSequencePanel } from './useAftershockSequence';
 import styles from './EarthquakeInspector.module.css';
 
@@ -151,27 +152,44 @@ export function EarthquakeInspector() {
           )}
         </dl>
 
+        {/* Every section below is collapsed until asked for, and a collapsed
+            one does not mount — so its query never runs. See
+            CollapsibleSection.tsx. The eligibility gates stay out here so an
+            ineligible event gets no header at all, rather than a header that
+            opens onto nothing. */}
+
         {/* Observation, not forecast: what the catalogue actually recorded
             after this event. Offered from M5 up (§5.9) — below that the
             Gardner-Knopoff window is smaller than the catalogue's own floor can
             usefully fill. */}
-        {hasSequencePanel(event) && <AftershockSequenceSection event={event} />}
+        {hasSequencePanel(event) && (
+          <CollapsibleSection id="sequence" title="What followed">
+            <AftershockSequenceBody event={event} />
+          </CollapsibleSection>
+        )}
 
         {/* What the catalogue recorded on the far side of the planet. M6+ only
             (§5.3) — below that the focused energy is negligible and the
             candidate pool is noise. Observation, with the antipode's own
             background rate attached so it can't be read as evidence. */}
-        {hasAntipodalPanel(event) && <AntipodalSection event={event} />}
+        {hasAntipodalPanel(event) && (
+          <CollapsibleSection id="antipodal" title="Near the antipode">
+            <AntipodalBody event={event} />
+          </CollapsibleSection>
+        )}
 
         {/* What's mapped where this happened. Reports the nearest trace and its
             distance; it does not claim the event was on it — see the note in
             NearestFault.tsx for why that distinction is load-bearing. */}
-        <NearestFaultSection point={event} depthKm={event.depthKm} />
+        <CollapsibleSection id="fault" title="Nearest mapped fault">
+          <NearestFaultBody point={event} depthKm={event.depthKm} />
+        </CollapsibleSection>
 
         {/* How often this happens around here, from the catalogue. Descriptive
             only — it never says a region is due. See RegionalRecurrence.tsx. */}
-        <RegionalRecurrenceSection point={event} />
-
+        <CollapsibleSection id="recurrence" title="How often here">
+          <RegionalRecurrenceBody point={event} />
+        </CollapsibleSection>
 
         {/* The antipode is pure geometry — the point opposite on a sphere — so
             it is offered for any event and stated as a coordinate, not as a
