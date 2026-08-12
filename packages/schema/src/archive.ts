@@ -220,20 +220,19 @@ export const ARCHIVE_SPANS: readonly ArchiveSpan[] = [
   { years: 1, minMagnitude: ARCHIVE_MIN_MAGNITUDE, label: '1y' },
   { years: 10, minMagnitude: ARCHIVE_ANALYSIS_MIN_MAGNITUDE, label: '10y' },
   // "All" is expressed in years like the others rather than as a sentinel, so
-  // every consumer does the same arithmetic. Comfortably past 1970 so it keeps
-  // covering the whole M4.5+/M5.5+ archive as years pass.
-  { years: 100, minMagnitude: ARCHIVE_ANALYSIS_MIN_MAGNITUDE, label: 'all' },
-  // The deep tier, at **its own floor**.
+  // every consumer does the same arithmetic.
   //
-  // Without this the 1900-1969 events were downloaded and then invisible: the
-  // widest span reached 1926 and no view went further back, so the 1906 San
-  // Francisco M7.9 sat in the database with nothing able to draw it.
+  // **130, not 100, and the difference is 91 events.** At 100 years this reached
+  // 1926 — sized when the archive started at 1970, with slack — which left the
+  // whole deep tier undrawable: the 1906 San Francisco M7.9, the 1906
+  // Ecuador-Colombia M8.8 and 34 other M7.9+ events sat in the database with no
+  // view able to show them. 130 keeps it comfortably past 1900 as years pass.
   //
-  // The floor is M7.5 rather than M5.5 *because that is what the era holds*.
-  // Showing 1900-1970 under an M5.5 label would render seven decades that look
-  // quiet next to a dense post-1970 record — the instrumental artefact this
-  // project warns about everywhere else, manufactured by the view itself.
-  { years: 130, minMagnitude: DEEP_ARCHIVE_MIN_MAGNITUDE, label: '1900+' },
+  // A separate `1900+` span at the deep tier's own M7.5 floor was tried and
+  // removed: it needed M7.5 in `MAGNITUDE_FLOORS`, which forced a seventh floor
+  // button, which widened the whole left column (it is `width: max-content`).
+  // One span that genuinely covers everything is worth more than a second button.
+  { years: 130, minMagnitude: ARCHIVE_ANALYSIS_MIN_MAGNITUDE, label: 'all' },
 ];
 
 const HOURS_PER_YEAR = 365.25 * 24;

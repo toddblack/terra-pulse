@@ -7,7 +7,11 @@
      ring on large events. */
   top: 50%;
   right: calc(50% + 4rem);
-  width: 19rem;
+  /* Grows *away* from the globe centre, because the right edge is pinned beside
+     the centred event. At the window's 1000px minimum this leaves ~52px of left
+     margin before it would reach the range controls — that margin is what
+     `minWidth` in main/index.ts exists to guarantee, so the two move together. */
+  width: 24rem;
   transform: translateY(-50%);
   padding: 0.875rem 1rem 1rem;
   border-radius: 0.5rem;

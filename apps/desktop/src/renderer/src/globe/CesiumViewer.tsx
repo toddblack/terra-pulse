@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
 import { useGlobeStore } from '../state/useGlobeStore';
-import { previousWindowHours } from '@terra-pulse/schema';
-import { useEarthquakeStore, windowStartMs } from '../state/useEarthquakeStore';
+import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { eventIdFromEntityId } from '../layers/earthquake-layer';
 import { focusAltitudeM } from './camera-focus';
 import {
@@ -12,13 +11,16 @@ import {
   describeFault,
   type HoverTarget,
 } from './hover-target';
+import type { AntipodalEvent } from '@terra-pulse/schema';
 import type { FaultRecord } from '../layers/fault-association';
 import { createLocationHighlight } from '../layers/location-highlight';
 import { watchSelection } from './selection-sync';
 import { useGlobeLayers } from './useGlobeLayers';
+import { displayWindow, LIVE_END_MARGIN_MS } from './display-window';
 import { useNow } from './useNow';
 import { usePlayback } from './usePlayback';
 import { useVisibleEarthquakes } from './useVisibleEarthquakes';
+import { useAntipodal } from '../panels/useAntipodal';
 import styles from './CesiumViewer.module.css';
 
 /**
@@ -26,6 +28,15 @@ import styles from './CesiumViewer.module.css';
  * drag rather than a slightly shaky click.
  */
 const DRAG_THRESHOLD_PX = 5;
+
+/**
+ * Stable empty array for "no hits yet".
+ *
+ * A fresh `[]` each render is a new identity, which would re-run the layer
+ * effect — and therefore rebuild the chord and restart its animation — on every
+ * single render while the lookup is in flight.
+ */
+const EMPTY_HITS: readonly AntipodalEvent[] = [];
 
 export function CesiumViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -46,28 +57,18 @@ export function CesiumViewer() {
   /**
    * The window the layers should display.
    *
-   * Always a window, never null — live mode is simply a window whose end sits
-   * slightly in the future, which keeps one code path instead of two. The
-   * margin exists so a freshly-polled event can't land after the end and be
-   * hidden; the earthquake layer clamps it back to now before measuring
-   * recency, so it doesn't drag the 24-hour boundary along with it.
+   * Shared with the event list and the legend's count via `displayWindow`, so
+   * what the globe draws and what the panels claim cannot disagree. This is the
+   * **cheap channel**: it reaches the layers through `setTimeWindow`, which
+   * flips visibility flags rather than rebuilding entities — which is why it can
+   * afford to follow the clock and the built event set cannot.
    */
   const nowMs = useNow();
   const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
-  const timeWindow = useMemo(() => {
-    const endMs = playheadMs ?? nowMs + 60 * 60 * 1000;
-    const trailHours = trailingWindow ? previousWindowHours(windowHours) : null;
-
-    return {
-      // A trailing window moves the *start* with the playhead instead of
-      // pinning it to the span's beginning. It goes through `setTimeWindow`
-      // rather than narrowing the built event set, because that is the cheap
-      // channel — narrowing the set would rebuild every entity on every tick.
-      startMs:
-        trailHours === null ? windowStartMs(windowHours, nowMs) : endMs - trailHours * 3_600_000,
-      endMs,
-    };
-  }, [windowHours, playheadMs, nowMs, trailingWindow]);
+  const timeWindow = useMemo(
+    () => displayWindow(windowHours, playheadMs, trailingWindow, nowMs, LIVE_END_MARGIN_MS),
+    [windowHours, playheadMs, nowMs, trailingWindow],
+  );
   const select = useEarthquakeStore((state) => state.select);
   const selectedEventId = useEarthquakeStore((state) => state.selectedEventId);
   const focusRequest = useEarthquakeStore((state) => state.focusRequest);
@@ -84,6 +85,17 @@ export function CesiumViewer() {
     () => events.find((candidate) => candidate.id === antipodeEventId) ?? null,
     [events, antipodeEventId],
   );
+
+  /**
+   * What was recorded near the antipode, for the rings and hit markers.
+   *
+   * Keyed on the *antipode* event rather than the selection: they are usually
+   * the same event, but the chord can outlive a selection change and the marks
+   * must describe the chord that is actually drawn.
+   */
+  const antipodalState = useAntipodal(antipodeEvent);
+  const antipodeHits =
+    antipodalState.status === 'ready' ? antipodalState.window.events : EMPTY_HITS;
 
   /** Read by the drag handler without making it depend on the mode. */
   const antipodeActiveRef = useRef(antipodeEventId !== null);
@@ -160,6 +172,7 @@ export function CesiumViewer() {
     layerVisibility,
     events,
     antipodeEvent,
+    antipodeHits,
     timeWindow,
     viewerReadyToken,
   });

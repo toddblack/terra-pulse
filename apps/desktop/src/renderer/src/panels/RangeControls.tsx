@@ -1,5 +1,7 @@
 import {
   ARCHIVE_SPANS,
+  ARCHIVE_START_YEAR,
+  DEEP_ARCHIVE_MIN_MAGNITUDE,
   COVERAGE_TIERS,
   archiveSpanHours,
   magnitudeFloorsForWindow,
@@ -8,6 +10,7 @@ import {
   previousWindowHours,
 } from '@terra-pulse/schema';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
+import { useNow } from '../globe/useNow';
 import styles from './RangeControls.module.css';
 
 /**
@@ -32,11 +35,11 @@ const COVERAGE_NOTES: Record<number, string> = {
   2.5: 'instrumented regions only',
   4.5: 'globally complete',
   5.5: 'globally complete · steady since 1970',
-  // The two archive floors. Named by USGS's own classes rather than described
-  // as "complete" again — above M5.5 completeness stopped being the
-  // interesting property, and the class is what a reader is actually picking.
-  6: 'strong · 7,907 since 1970',
-  7: 'major · 781 since 1970',
+  // The archive floors. Named by USGS's own classes rather than described as
+  // "complete" again — above M5.5 completeness stopped being the interesting
+  // property, and the class is what a reader is actually picking.
+  6: 'strong · 7,910 since 1970',
+  7: 'major · 782 since 1970',
 };
 
 /**
@@ -75,6 +78,7 @@ export function RangeControls() {
   const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
   const setTrailingWindow = useEarthquakeStore((state) => state.setTrailingWindow);
   const trailHours = previousWindowHours(windowHours);
+  const nowMs = useNow();
 
   const activeNote = COVERAGE_NOTES[minMagnitude];
   const bandCeiling = nextMagnitudeFloorAbove(minMagnitude);
@@ -83,11 +87,27 @@ export function RangeControls() {
   const availableFloors = magnitudeFloorsForWindow(windowHours);
   const spanFloor = minMagnitudeForWindow(windowHours);
 
+  /**
+   * Whether the current window reaches back past the main archive's 1970 start.
+   *
+   * Only the widest span does. It matters because the record changes character
+   * there rather than simply ending: 1900-1970 holds the deep tier's M7.5+ and
+   * nothing below it, so on a M5.5 view those seven decades render as 262 marks
+   * against 26,767 after. Played back on the scrubber that reads as seismicity
+   * exploding in 1970, which is the instrumental artefact this project warns
+   * about everywhere else — manufactured here by the view itself.
+   */
+  // Via `useNow`, never a bare `Date.now()` — reading the clock during render
+  // is impure, and nothing re-renders when it ticks, so the value would go
+  // stale until some unrelated state change happened to refresh it.
+  const reachesDeepTier =
+    nowMs - windowHours * 3_600_000 < Date.UTC(ARCHIVE_START_YEAR, 0, 1);
+
   return (
     <div id="range-controls" className={styles.panel}>
       <div className={styles.group}>
         <h2 className={styles.heading}>Magnitude</h2>
-        <div className={styles.buttonRow} role="group" aria-label="Minimum magnitude">
+        <div className={styles.magnitudeGrid} role="group" aria-label="Minimum magnitude">
           {availableFloors.map((floor) => (
             <button
               key={floor}
@@ -136,6 +156,13 @@ export function RangeControls() {
         {spanFloor > 1 && (
           <p className={styles.note}>
             below {formatMagnitude(spanFloor)}+ not stored this far back
+          </p>
+        )}
+        {/* Louder than the floor note above, because this one says the record
+            changes character mid-view rather than simply stopping. */}
+        {reachesDeepTier && (
+          <p className={styles.warning}>
+            before {ARCHIVE_START_YEAR}: {formatMagnitude(DEEP_ARCHIVE_MIN_MAGNITUDE)}+ only
           </p>
         )}
       </div>

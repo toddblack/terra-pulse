@@ -85,9 +85,13 @@ function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    // The inspector sits left of the viewport centre (where a selected event
-    // is flown to); below roughly this width the two would start to collide.
-    minWidth: 940,
+    // The inspector sits left of the viewport centre (where a selected event is
+    // flown to), so its left edge lands at `50% - (width + 4rem)`. At the
+    // inspector's 24rem that is 448px from centre, leaving ~52px of margin here
+    // before it reaches the left column. Widening the panel without raising
+    // this is what makes them collide, so the two are a pair — see
+    // EarthquakeInspector.module.css.
+    minWidth: 1000,
     minHeight: 600,
     show: false,
     webPreferences: {

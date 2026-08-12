@@ -10,7 +10,7 @@ import { useGlobeStore } from '../state/useGlobeStore';
 import { useRecurrence } from './useRecurrence';
 import styles from './RegionalRecurrence.module.css';
 
-/** Years, at a precision that doesn't overstate what a 57-year record knows. */
+/** Years, at a precision that doesn't overstate what a few decades can know. */
 function years(value: number): string {
   if (value < 1) {
     const months = value * 12;
@@ -25,10 +25,12 @@ function years(value: number): string {
  *
  * ## What this says, and what it refuses to
  *
- * It reports gaps the catalogue actually recorded between 1970 and now. It does
- * **not** forecast, and it never says a region is "due" or "overdue". That claim
- * needs paleoseismology — trenching a fault to read ruptures across millennia —
- * and no amount of care applied to a 57-year record can substitute for it.
+ * It reports gaps the catalogue actually recorded, from whenever it became
+ * complete at the chosen floor — 1970 below M7.5, 1900 at or above it, which is
+ * why the panel prints its epoch. It does **not** forecast, and it never says a
+ * region is "due" or "overdue". That claim needs paleoseismology — trenching a
+ * fault to read ruptures across millennia — and neither 57 nor 126 years can
+ * substitute for it.
  *
  * Every number here is descriptive, which is what keeps it in Explore under
  * non-negotiable #1. Declustering is applied first, because a recurrence

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as Cesium from 'cesium';
 import type { EarthquakeEvent } from '@terra-pulse/schema';
+import { ANTIPODAL_RINGS_KM } from '@terra-pulse/schema';
 import { antipodeEntityId, createAntipodeLayer } from './antipode-layer';
 
 function makeEvent(overrides: Partial<EarthquakeEvent> = {}): EarthquakeEvent {
@@ -58,13 +59,44 @@ describe('antipode layer', () => {
     expect(layer.category).toBe('analysis');
   });
 
-  it('draws a chord and an antipode marker', () => {
+  it('draws a chord, an antipode marker and the distance rings', () => {
     const { viewer, added } = createFakeViewer();
     createAntipodeLayer(makeEvent(), 'light').mount(viewer);
 
     const entities = added[0]!.entities.values;
-    expect(entities).toHaveLength(2);
+    // chord + endpoint marker + one ring per ANTIPODAL_RINGS_KM entry.
+    expect(entities).toHaveLength(2 + ANTIPODAL_RINGS_KM.length);
     expect(added[0]!.entities.getById(antipodeEntityId('us0001'))).toBeDefined();
+    for (const km of ANTIPODAL_RINGS_KM) {
+      expect(
+        added[0]!.entities.getById(`${antipodeEntityId('us0001')}::ring-${String(km)}`),
+      ).toBeDefined();
+    }
+  });
+
+  it('draws no hit markers when nothing was recorded near the antipode', () => {
+    const { viewer, added } = createFakeViewer();
+    createAntipodeLayer(makeEvent(), 'light', []).mount(viewer);
+
+    const hits = added[0]!.entities.values.filter((e: { id?: string }) =>
+      String(e.id ?? '').includes('::hit-'),
+    );
+    expect(hits).toHaveLength(0);
+  });
+
+  it('marks each recorded hit at its own epicentre', () => {
+    // The marks go where the earthquakes were, not on the antipode itself —
+    // the whole point is seeing how far off-centre they fell.
+    const { viewer, added } = createFakeViewer();
+    const hit = {
+      event: { ...makeEvent(), id: 'target-1', latitude: -35, longitude: 113 },
+      distanceKm: 197,
+      delayHours: 4.6,
+    };
+    createAntipodeLayer(makeEvent(), 'light', [hit]).mount(viewer);
+
+    const marker = added[0]!.entities.getById(`${antipodeEntityId('us0001')}::hit-target-1`);
+    expect(marker).toBeDefined();
   });
 
   it('draws the chord straight through the planet, not around it', () => {
@@ -154,7 +186,7 @@ describe('antipode layer', () => {
     // rather than trusting the animation to have run.
     let clock = 0;
     const { viewer, added } = createFakeViewer();
-    createAntipodeLayer(makeEvent(), 'light', () => clock).mount(viewer);
+    createAntipodeLayer(makeEvent(), 'light', [], () => clock).mount(viewer);
 
     const chord = added[0]!.entities.getById(antipodeEntityId('us0001'));
     const at = (t: number) => {

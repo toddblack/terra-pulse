@@ -202,9 +202,11 @@ slip rate and kinematics — in the inspector for a selected event, and via a
 - **The reason it exists: "recurrence interval" was two different quantities.**
   "The southern San Andreas is overdue" is *paleoseismology* — trenching, ~10–14
   ruptures over millennia. "M6+ here occurred 29 times since 1970" is the
-  *instrumental catalogue*. **The 57-year archive can never say whether anywhere
-  is overdue**; that's an §11-class limit, not a matter of effort. Recurrence is
-  also a property of a fault, not of a circle — hence association, not a radius.
+  *instrumental catalogue*. **Neither tier of the archive can say whether
+  anywhere is overdue** — 57 years below M7.5, 126 at or above it, against a
+  southern San Andreas recurrence of ~150–200 years. That's an §11-class limit,
+  not a matter of effort. Recurrence is also a property of a fault, not of a
+  circle — hence association, not a radius.
 - **Slip rate is shown; recurrence is NOT derived from it.** Converting mm/yr to
   years needs a characteristic slip per event, i.e. magnitude-scaling relations
   — model output with assumptions, which belongs in Analyze, not beside
@@ -265,30 +267,58 @@ boundary opens the location panel.
   whatever Cesium had set, clearing the boundary. `events` was only ever there to
   survive layer rebuilds, which the `dataSourceAdded` subscription already
   handles properly. **Anything keyed on `events` re-runs on a 30 s timer** — that
-  is the tell for this whole class of bug.
+  *was* the tell for this whole class of bug; the timer itself is now gone, see
+  "The 30-second rebuild" below.
 - **The coordinate is always where the pointer was, never the feature's
   centroid** — recurrence for the middle of a 500 km trace answers for somewhere
   the user never clicked.
 - Leaving probe mode clears a probed *point* but keeps a clicked feature: a point
   can't be refreshed with the mode off, a clicked fault doesn't need to be.
 
-**The deep tier needs a view, not just a download.** Two follow-ups were needed
-before the 1900-1969 events were reachable at all:
+**The deep tier needs a view, not just a download** — and the first attempt at
+that view cost more than it was worth.
 
 - **`ARCHIVE_SPANS`' widest view was 100 years**, sized when the archive started
-  at 1970. From 2026 that reaches 1926, so the 1906 San Francisco M7.9 sat in the
-  database with no view able to draw it. A `1900+` span at **M7.5** fixes it — at
-  the deep tier's own floor, because showing 1900-1970 under an M5.5 label would
-  render seven decades that look quiet beside a dense post-1970 record, which is
-  the instrumental artefact this project warns about everywhere else, manufactured
-  by the view itself.
-- **`MAGNITUDE_FLOORS` gained M7.5**, the one entry that is not a USGS class
-  boundary. `ARCHIVE_SPANS` may only offer floors the selector can render, and a
-  test enforces that. Precedent for a non-class threshold with a stated job is
-  `ALERT_MIN_MAGNITUDE` at M5.8.
+  at 1970. From 2026 that reaches 1926, so **91 events** — including the 1906 San
+  Francisco M7.9 and the 1906 Ecuador-Colombia M8.8 — sat in the database with no
+  view able to draw them. **`all` is now 130 years**, which covers the whole
+  archive (earliest event 1900-01-31) and costs 262 extra marks: 27,029 at M5.5,
+  against 26,746 before.
+- **A separate `1900+` span at M7.5 was built first, then removed.** It needed
+  M7.5 in `MAGNITUDE_FLOORS`, which meant a seventh floor button, which widened
+  the *entire left column* — `.leftColumn` is `width: max-content`, so its widest
+  child sizes Magnitude, Window, History, Archive and Probe together. One span
+  that genuinely covers everything beat a second button.
+  - **Any new magnitude floor pays that column-width tax.** The floor row has no
+    `flex-wrap`, so it cannot absorb an extra button.
+  - M7.5 remains in `RECURRENCE_FLOORS` — different selector, different panel,
+    and there it genuinely changes the answer by moving the epoch to 1900.
+- **`all` now spans two floors' worth of record, so it says so.** Pre-1970 holds
+  only the M7.5+ deep tier: 262 marks against 26,767 after. Unlabelled, a
+  scrubber playback reads as seismicity exploding in 1970. `RangeControls` shows
+  `before 1970: M7.5+ only` as a *warning*, not a note, whenever the window
+  reaches past `ARCHIVE_START_YEAR`.
 - **The archive panel's copy was hardcoded to 1970** and reported "1970–present"
   over a fully-downloaded deep tier, which read as the download having failed.
   It names `DEEP_ARCHIVE_START_YEAR` now.
+
+**Antipode rings on the globe — shipped** (§5.3). Entering antipode mode now
+also draws 250/500/1000 km rings at the far end and marks any in-window hit with
+its magnitude and delay.
+
+- **The rings carry no statistical meaning and the code says so twice.** §5.3
+  keeps the registered test radius-free precisely so no constant has to be
+  guessed; these exist so a human can see "that one landed inside 250 km"
+  without measuring. Don't let them harden into a threshold.
+- Hits are **amber, not the chord's red** — red already means "this is the thing
+  being drawn", and a hit is a different kind of object. Keeping them distinct
+  stops a marker reading as an endpoint of the chord.
+- Drawn as `ellipse` rather than polylines so they follow the curve; a 1000 km
+  circle is wide enough that a chord across it shows at grazing angles.
+- **`EMPTY_HITS` is a module constant, not `[]` inline.** The hits arrive from an
+  async lookup, and a fresh array each render is a new identity — which would
+  re-run the layer effect, rebuild the chord and restart its animation on every
+  render while the request was in flight.
 
 **Antipodal window — shipped** (§5.3, the observational half of **H5**). In the
 inspector for any M6+ event: what the catalogue recorded within 1000 km of its
@@ -404,6 +434,49 @@ zone").
   "Pacific–Okhotsk", never "Pacific under Okhotsk". Test pins it.
 - A test asserts every plate code in the real dataset has a name, so a PB2002
   revision can't silently surface bare two-letter codes in the panel.
+
+**The 30-second rebuild — fixed.** Found by the user noticing the selection
+reticle "pulse as if it were a new selection about every 30 seconds". It was: the
+whole earthquake layer was being destroyed and rebuilt twice a minute, forever,
+and the reticle replaying its appear animation was the only visible symptom.
+
+The chain, which is worth being able to recognise again: `useNow` ticks →
+`useVisibleEarthquakes`' memo lists `nowMs` → the filtered array gets a **new
+identity** even though its contents are almost always identical → the
+event-driven overlay effect in `useGlobeLayers` is keyed on `events` → teardown
+and rebuild → `dataSources.add` → `dataSourceAdded` → `watchSelection` re-applies
+the selection to a brand-new entity → Cesium's `SelectionIndicator` animates.
+Cost per rebuild, from the numbers already measured in this file: **110 ms at
+30d/M2.5, 590 ms in the widest archive view** — the latter a visible hitch, on a
+timer, with nothing on screen having changed.
+
+- **The built set no longer reads a clock at all.** Its cutoff is
+  `loadedWindowStartMs`, captured by `loadForCurrentView` at the instant it
+  queried, so the array's identity changes when the *data* changes and at no
+  other time. A quiet poll already skips `load()` (`result.changed`), so during a
+  quiet stretch the layer now rebuilds **zero** times rather than 120 an hour.
+- **The displayed edge still moves continuously**, through `setTimeWindow` →
+  `applyVisibility`, which flips `show` flags instead of rebuilding. That split —
+  built set stable, window live — was always the documented design; the clock in
+  the memo had been quietly undoing it.
+- The built set therefore keeps a few events that have aged past the window
+  between loads. They are hidden, not drawn, so this is invisible; the trade is
+  a handful of dormant entities against a full rebuild twice a minute.
+- **`useEarthquakesUpToPlayhead` took over the live trailing edge**, which it had
+  been inheriting. Without that the event list and the legend's count would have
+  kept events the globe had already hidden — breaking "the list, the count and
+  the marks cannot disagree", which is the reason that projection exists.
+- **`displayWindow` is now the single definition of the visible span**, shared by
+  the viewer's `setTimeWindow` and that projection. They were separate
+  expressions that happened to match, and one of them was about to stop matching.
+  Tests assert the two callers agree on `startMs` across live/playhead/trailing.
+- **`useNow` was seven `setInterval`s, one per call site.** Seven timers at seven
+  arbitrary phases woke the app every ~4 s in staggered bursts. It is one shared
+  ticker behind `useSyncExternalStore` now, so every consumer also sees the
+  *same* instant — which matters the moment two of them compare answers.
+- The remaining timers are all deliberate: the shared 30 s clock, main's 5-minute
+  poll, `usePlayback`'s `requestAnimationFrame` (only while playing), the 50 ms
+  hover-pick throttle, and `first-paint.ts`'s one-shot fallback.
 
 **Next:** Phase 3 proper (solar/geomagnetic ingest), or aftershock *forecasting*
 (§5.9's model half, Phase 4) once the Python engine exists.

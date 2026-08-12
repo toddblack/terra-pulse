@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ARCHIVE_SPANS,
   MAGNITUDE_FLOORS,
@@ -435,5 +435,88 @@ describe('select', () => {
 
     expect(useEarthquakeStore.getState().selectedEventId).toBeNull();
     expect(useEarthquakeStore.getState().focusRequest).toBe(parked);
+  });
+});
+
+describe('loadedWindowStartMs', () => {
+  /**
+   * Why this is pinned.
+   *
+   * The globe's entity set is built from the events this cutoff selects, and
+   * `useGlobeLayers` keys its rebuild on that array's identity. When the cutoff
+   * came from `useNow` instead, it advanced every thirty seconds, gave the array
+   * a new identity, and rebuilt every Cesium entity — 110 ms at 30d/M2.5, 590 ms
+   * in the widest archive view, twice a minute, forever. It showed up as the
+   * selection reticle re-playing its appear animation on a thirty-second rhythm.
+   *
+   * So the rule is: this moves when the *data* is reloaded, and at no other
+   * time. The displayed edge still tracks the clock, but through
+   * `setTimeWindow`, which only flips visibility flags.
+   */
+  function stubBridge(events: unknown[] = []): { startUtc: string | undefined } {
+    const seen: { startUtc: string | undefined } = { startUtc: undefined };
+    vi.stubGlobal('window', {
+      terraPulse: {
+        earthquakes: {
+          query: (query: { startUtc?: string }) => {
+            seen.startUtc = query.startUtc;
+            return Promise.resolve(events);
+          },
+        },
+      },
+    });
+    return seen;
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('is null before anything has loaded', () => {
+    useEarthquakeStore.setState({ loadedWindowStartMs: null });
+    expect(useEarthquakeStore.getState().loadedWindowStartMs).toBeNull();
+  });
+
+  it('records the window start the query actually used', async () => {
+    const seen = stubBridge();
+    const before = windowStartMs(useEarthquakeStore.getState().windowHours);
+
+    await useEarthquakeStore.getState().load();
+
+    const recorded = useEarthquakeStore.getState().loadedWindowStartMs;
+    expect(recorded).not.toBeNull();
+    // Bracketed rather than equal: the clock advances between the two reads.
+    expect(recorded).toBeGreaterThanOrEqual(before);
+    expect(recorded).toBeLessThanOrEqual(
+      windowStartMs(useEarthquakeStore.getState().windowHours),
+    );
+    // And the query went back further still, by the overlap margin.
+    expect(Date.parse(seen.startUtc ?? '')).toBeLessThan(recorded ?? 0);
+  });
+
+  it('does not move as the clock does — only a load moves it', async () => {
+    stubBridge();
+    await useEarthquakeStore.getState().load();
+    const recorded = useEarthquakeStore.getState().loadedWindowStartMs;
+
+    // Everything that isn't a load: time passing, a selection, the playhead.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    useEarthquakeStore.getState().select('quake-1');
+    useEarthquakeStore.getState().seek(Date.now() - 3_600_000);
+
+    expect(useEarthquakeStore.getState().loadedWindowStartMs).toBe(recorded);
+  });
+
+  it('advances when the window changes, because that reloads', async () => {
+    stubBridge();
+    await useEarthquakeStore.getState().load();
+    const first = useEarthquakeStore.getState().loadedWindowStartMs ?? 0;
+
+    useEarthquakeStore.getState().setWindowHours(720);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const second = useEarthquakeStore.getState().loadedWindowStartMs ?? 0;
+    expect(second).toBeLessThan(first);
   });
 });

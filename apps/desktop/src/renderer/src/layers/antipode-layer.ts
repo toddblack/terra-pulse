@@ -1,5 +1,11 @@
 import * as Cesium from 'cesium';
-import type { BackdropTone, EarthquakeEvent, GlobeLayer } from '@terra-pulse/schema';
+import type {
+  AntipodalEvent,
+  BackdropTone,
+  EarthquakeEvent,
+  GlobeLayer,
+} from '@terra-pulse/schema';
+import { ANTIPODAL_RINGS_KM } from '@terra-pulse/schema';
 import { antipodeOf, chordProgress } from './antipode';
 
 /**
@@ -31,6 +37,16 @@ const CHORD_DURATION_MS = 900;
  */
 const CHORD_COLOR = '#ff3b30';
 
+/**
+ * Events recorded near the antipode inside the window.
+ *
+ * Amber rather than the chord's red: red already means "this is the thing being
+ * shown", and a hit is a different kind of object — something the catalogue
+ * happened to record there, not part of the geometry being drawn. Keeping them
+ * distinct stops the marker reading as an endpoint of the chord.
+ */
+const HIT_COLOR = Cesium.Color.fromCssColorString('#fbbf24');
+
 export function antipodeEntityId(eventId: string): string {
   return `${eventId}::antipode`;
 }
@@ -38,6 +54,12 @@ export function antipodeEntityId(eventId: string): string {
 export function createAntipodeLayer(
   event: EarthquakeEvent,
   _tone: BackdropTone,
+  /**
+   * What the catalogue recorded near this antipode inside H5's window, or an
+   * empty list. Passed in rather than fetched here so the layer stays pure
+   * Cesium and the IPC lives with the rest of the renderer's data loading.
+   */
+  hits: readonly AntipodalEvent[] = [],
   now: () => number = () => performance.now(),
 ): GlobeLayer {
   let viewer: Cesium.Viewer | null = null;
@@ -93,6 +115,11 @@ export function createAntipodeLayer(
 
     // The far end, revealed only once the chord reaches it — a marker sitting
     // there from the first frame would give away the ending.
+    const arrived = new Cesium.CallbackProperty(
+      () => chordProgress(now() - startedAt, CHORD_DURATION_MS) >= 1,
+      false,
+    );
+
     target_.entities.add({
       id: `${antipodeEntityId(event.id)}::point`,
       position: antipode,
@@ -101,12 +128,74 @@ export function createAntipodeLayer(
         color: Cesium.Color.TRANSPARENT,
         outlineColor: chordColor,
         outlineWidth: 2,
-        show: new Cesium.CallbackProperty(
-          () => chordProgress(now() - startedAt, CHORD_DURATION_MS) >= 1,
-          false,
-        ),
+        show: arrived,
       },
     });
+
+    /**
+     * Distance rings at the antipode — §5.3's 250/500/1000 km.
+     *
+     * **Readability only. These carry no statistical meaning**, and §5.3 is
+     * emphatic about it: the registered H5 test uses the whole distance
+     * distribution precisely so that no radius has to be guessed. They exist so
+     * a human can see "that hit was inside 250 km" without measuring.
+     *
+     * Drawn as ellipses rather than polylines so they follow the curve of the
+     * globe rather than cutting a chord across it — a 1000 km circle is wide
+     * enough for the difference to show at grazing angles.
+     */
+    for (const radiusKm of ANTIPODAL_RINGS_KM) {
+      target_.entities.add({
+        id: `${antipodeEntityId(event.id)}::ring-${String(radiusKm)}`,
+        position: antipode,
+        ellipse: {
+          semiMajorAxis: radiusKm * 1000,
+          semiMinorAxis: radiusKm * 1000,
+          material: Cesium.Color.TRANSPARENT,
+          outline: true,
+          // Fainter as they widen, so the innermost reads as the tightest claim
+          // and the outermost doesn't dominate the view.
+          outlineColor: chordColor.withAlpha(radiusKm <= 250 ? 0.55 : radiusKm <= 500 ? 0.35 : 0.2),
+          outlineWidth: 1,
+          height: 0,
+          show: arrived,
+        },
+      });
+    }
+
+    /**
+     * Any events the catalogue recorded there inside the window.
+     *
+     * Marked, not interpreted. Measured across 714 declustered M7+ triggers,
+     * these appear at 0.91× the rate the antipodes' own background predicts —
+     * i.e. exactly chance — so a marker here means "one happened", never "one
+     * was triggered". The panel carries the background rate that says so.
+     */
+    for (const hit of hits) {
+      target_.entities.add({
+        id: `${antipodeEntityId(event.id)}::hit-${hit.event.id}`,
+        position: Cesium.Cartesian3.fromDegrees(hit.event.longitude, hit.event.latitude),
+        point: {
+          pixelSize: 12,
+          color: Cesium.Color.TRANSPARENT,
+          outlineColor: HIT_COLOR,
+          outlineWidth: 2,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          show: arrived,
+        },
+        label: {
+          text: `M${hit.event.magnitude.toFixed(1)} +${hit.delayHours.toFixed(1)}h`,
+          font: '11px sans-serif',
+          fillColor: HIT_COLOR,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 3,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(0, -18),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          show: arrived,
+        },
+      });
+    }
   }
 
   return {
