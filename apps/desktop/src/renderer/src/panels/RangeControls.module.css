@@ -29,6 +29,25 @@
   gap: 0.25rem;
 }
 
+/**
+ * The magnitude floors, three per row instead of one long line.
+ *
+ * This row is what sized the whole left column. `.leftColumn` is
+ * `width: max-content`, so its widest child sets the width of Magnitude,
+ * Window, History, Archive and Probe together — and magnitude has both the most
+ * buttons and the widest labels (`M2.5`, `M4.5`, `M5.5` are four characters
+ * where the window tiers are two or three).
+ *
+ * A grid rather than `flex-wrap`, because equal columns keep the buttons the
+ * same width whether the current span offers six floors or three. Wrapping
+ * would size each to its own content and leave the rows visibly ragged.
+ */
+.magnitudeGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25rem;
+}
+
 .button {
   padding: 0.3125rem 0.5rem;
   border: none;

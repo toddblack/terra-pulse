@@ -71,11 +71,15 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.invoke('earthquakes:sequence', eventId),
 
     /**
-     * How often independent earthquakes have occurred near a point since 1970.
+     * How often independent earthquakes have occurred near a point.
      *
-     * Descriptive only — it reports gaps the catalogue recorded and never
-     * extrapolates to the next one. See PROJECT_PLAN §5.11 for why a 57-year
-     * record cannot speak to whether anywhere is "overdue".
+     * The record starts where the catalogue becomes complete at the requested
+     * floor — 1970 below M7.5, 1900 at or above it — and the result carries its
+     * own `epochYear` so the caller never has to assume.
+     *
+     * Descriptive only: it reports gaps the catalogue recorded and never
+     * extrapolates to the next one. See PROJECT_PLAN §5.11 for why neither 57
+     * nor 126 years can speak to whether anywhere is "overdue".
      */
     recurrence: (request: {
       latitude: number;

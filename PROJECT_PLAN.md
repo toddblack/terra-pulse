@@ -52,7 +52,7 @@ between global seismicity and solar/astronomical events.*
 ### Storage
 | Concern | Choice | Rationale |
 |---|---|---|
-| Event catalog cache | **SQLite** | Three layers: (0) **rolling cache, shipped** — `COVERAGE_TIERS` in `packages/schema`, currently 7d at M1+ and 30d at M2.5+, pruned to the longest tier on each backfill; (1) one-time backfill of **M4.5+ global, 1970–present** — **294,647 rows, ~62 MB measured** (an earlier ≈110k estimate here was wrong by 2.7×), the stats engine's browsing catalog, with **analysis restricted to the M5.5+ subset**; (2) on-demand cache for narrower/lower-magnitude queries, keyed by (window, magnitude, bbox) with TTL and size cap. |
+| Event catalog cache | **SQLite** | Three layers: (0) **rolling cache, shipped** — `COVERAGE_TIERS` in `packages/schema`, currently 7d at M1+ and 30d at M2.5+, pruned to the longest tier on each backfill; (1) one-time backfill in **two tiers** — **M4.5+ global, 1970–present** at **294,647 rows, ~62 MB measured** (an earlier ≈110k estimate here was wrong by 2.7×), plus a **deep tier of M7.5+ back to 1900** at just 262 rows, because that is where global completeness begins for events that size (§5.11). The stats engine's browsing catalog, with **analysis restricted to the M5.5+ subset** and the usable epoch set per-floor by `completeSinceYear`; (2) on-demand cache for narrower/lower-magnitude queries, keyed by (window, magnitude, bbox) with TTL and size cap. |
 | Spatial queries | SQLite's built-in **R-Tree** module | Fault-proximity and antipode-radius (bbox) queries without a Postgres server. Tried SpatiaLite first; the only available Windows binary is unmaintained and fails its own DLL init on a modern system (2016-era GEOS build) even after fixing the Windows DLL search-path issue. R-Tree ships inside SQLite core — no extension/binary to load at all — and covers what's actually needed. See Rejected Alternatives. |
 | Tier 1 backfill (shipped, download only) | **Year chunks, resumable, user-triggered** | Chunked by calendar year and recorded in `archive_chunks`; fixed boundaries are what makes resume line up with a previous run. Measured: busiest year at M4.5+ is 2011 at 9,584 events against FDSN's 20,000 cap, so one request per year and the paging loop is defensive only. The current year is never recorded complete — it is still accruing — so it refetches each run and covers Jan 1 → the rolling window. Verified live: per-year counts match the FDSN `count` endpoint exactly for 1970–1975. **The archive shares the `earthquakes` table**, so the globe layer, R-Tree and dedup need no union queries; the price is that every existing query inherits it — pruning had to become magnitude-aware, dedup and the poll signature had to gain bounds. Browsable via `ARCHIVE_SPANS` (§5.1). |
 | Schema migrations | **Numbered SQL steps, one transaction each** | Each migration commits with its own `schema_migrations` row or not at all — a partly-applied schema with no record of it would be re-run from the top on the next launch. `openDatabase` takes a `VACUUM INTO` snapshot to one rolling `<db>.backup` before any pending migration, and refuses to migrate if that snapshot fails. From migration 3 onward, schema changes to `earthquakes` use create-copy-drop-rename and carry `row_id` across explicitly, because reassigning it silently unlinks every row from the R-Tree. Migration 2's drop-and-recreate is history, not a template — see the note at the top of `migrations.ts`. |
@@ -680,10 +680,12 @@ they were being conflated.**
 - *"M6+ within 500 km of here occurred 29 times since 1970"* is the
   **instrumental catalogue**. Measured in decades.
 
-The archive is 57 years long. **It can never establish whether anywhere is
-overdue** — you cannot measure a 200-year recurrence from 57 years of data. That
-is the same category of limit as early warning in §11, not a matter of trying
-harder. Recurrence is also a property of a *fault*, not of a circle drawn around
+The archive reaches 1970 at moderate magnitudes and 1900 at M7.5+ — 57 and 126
+years. **Neither can establish whether anywhere is overdue**: a southern San
+Andreas recurrence of ~150–200 years is comparable to the whole record even at
+the deep tier, and you cannot measure an interval from a record barely longer
+than one of them. That is the same category of limit as early warning in §11,
+not a matter of trying harder. Recurrence is also a property of a *fault*, not of a circle drawn around
 a point, which is what makes fault association the right primitive rather than a
 radius search.
 
@@ -748,9 +750,11 @@ instrumental catalogue. In the inspector for a selected event, and in the fault
 probe for any clicked point.
 
 **This is the honest half of the question §5.10 split in two.** It reports gaps
-the catalogue recorded between 1970 and now. It does **not** say a region is due
-or overdue — that needs paleoseismology across millennia, and a 57-year record
-cannot substitute for it however carefully it is handled.
+the catalogue recorded, starting from wherever it becomes complete at the chosen
+floor — 1970 below M7.5, 1900 at or above it, which is why the panel prints its
+epoch alongside every answer. It does **not** say a region is due or overdue:
+that needs paleoseismology across millennia, and neither 57 nor 126 years can
+substitute for it however carefully it is handled.
 
 **Declustering is mandatory, and it is most of the answer.** A recurrence
 interval is a rate claim, so non-negotiable #2 applies. Measured on the real

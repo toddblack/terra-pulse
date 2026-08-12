@@ -38,6 +38,21 @@ interface EarthquakeState {
    * rather than keeping its own array.
    */
   events: EarthquakeEvent[];
+
+  /**
+   * The window start `events` was queried against — **not** a live clock.
+   *
+   * Fixed at load time on purpose. The globe builds its entity set from this
+   * cutoff, and a cutoff that tracked the clock would give that set a new
+   * identity every thirty seconds and rebuild every Cesium entity with it. The
+   * *displayed* trailing edge still moves continuously; it does so through
+   * `setTimeWindow`, which only flips visibility flags. See
+   * `useVisibleEarthquakes`.
+   *
+   * `null` until the first load, when there is nothing to filter anyway.
+   */
+  loadedWindowStartMs: number | null;
+
   status: LoadStatus;
   error: string | null;
   selectedEventId: string | null;
@@ -211,11 +226,21 @@ async function loadForCurrentView(
   set({ status: 'loading', error: null });
 
   try {
+    // Captured rather than recomputed, so consumers can filter against the same
+    // instant this query used instead of against a live clock. See
+    // `loadedWindowStartMs`.
+    const startMs = windowStartMs(windowHours);
+
     const events = await window.terraPulse.earthquakes.query({
-      startUtc: new Date(windowStartMs(windowHours) - QUERY_MARGIN_MS).toISOString(),
+      startUtc: new Date(startMs - QUERY_MARGIN_MS).toISOString(),
       minMagnitude,
     });
-    set({ events, status: 'ready', lastSyncedAt: new Date().toISOString() });
+    set({
+      events,
+      loadedWindowStartMs: startMs,
+      status: 'ready',
+      lastSyncedAt: new Date().toISOString(),
+    });
   } catch (error: unknown) {
     set({
       status: 'error',
@@ -226,6 +251,7 @@ async function loadForCurrentView(
 
 export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   events: [],
+  loadedWindowStartMs: null,
   status: 'idle',
   error: null,
   selectedEventId: null,

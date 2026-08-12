@@ -10,7 +10,7 @@ import { useGlobeStore } from '../state/useGlobeStore';
 import { useRecurrence } from './useRecurrence';
 import styles from './RegionalRecurrence.module.css';
 
-/** Years, at a precision that doesn't overstate what a 57-year record knows. */
+/** Years, at a precision that doesn't overstate what a few decades can know. */
 function years(value: number): string {
   if (value < 1) {
     const months = value * 12;
@@ -25,10 +25,12 @@ function years(value: number): string {
  *
  * ## What this says, and what it refuses to
  *
- * It reports gaps the catalogue actually recorded between 1970 and now. It does
- * **not** forecast, and it never says a region is "due" or "overdue". That claim
- * needs paleoseismology — trenching a fault to read ruptures across millennia —
- * and no amount of care applied to a 57-year record can substitute for it.
+ * It reports gaps the catalogue actually recorded, from whenever it became
+ * complete at the chosen floor — 1970 below M7.5, 1900 at or above it, which is
+ * why the panel prints its epoch. It does **not** forecast, and it never says a
+ * region is "due" or "overdue". That claim needs paleoseismology — trenching a
+ * fault to read ruptures across millennia — and neither 57 nor 126 years can
+ * substitute for it.
  *
  * Every number here is descriptive, which is what keeps it in Explore under
  * non-negotiable #1. Declustering is applied first, because a recurrence
@@ -36,12 +38,33 @@ function years(value: number): string {
  * Tokyo give a 0.06 y median gap against 0.32 y declustered, and the raw figure
  * is not a noisier version of the right answer — it answers a different question.
  */
+/**
+ * The framed form, for the location panel — which is not collapsible.
+ *
+ * The inspector uses `RegionalRecurrenceBody` inside a `CollapsibleSection`, so
+ * the two share the content and differ only in the frame.
+ */
 export function RegionalRecurrenceSection({
   point,
   heading = 'How often here',
 }: {
   point: { latitude: number; longitude: number };
   heading?: string;
+}) {
+  return (
+    <section className={styles.section} aria-labelledby="recurrence-heading">
+      <h3 id="recurrence-heading" className={styles.heading}>
+        {heading}
+      </h3>
+      <RegionalRecurrenceBody point={point} />
+    </section>
+  );
+}
+
+export function RegionalRecurrenceBody({
+  point,
+}: {
+  point: { latitude: number; longitude: number };
 }) {
   const radiusKm = useGlobeStore((state) => state.recurrenceRadiusKm);
   const minMagnitude = useGlobeStore((state) => state.recurrenceFloor);
@@ -56,11 +79,7 @@ export function RegionalRecurrenceSection({
   });
 
   return (
-    <section className={styles.section} aria-labelledby="recurrence-heading">
-      <h3 id="recurrence-heading" className={styles.heading}>
-        {heading}
-      </h3>
-
+    <>
       <div className={styles.controls}>
         <div className={styles.controlRow} role="group" aria-label="Region radius">
           {RECURRENCE_RADII_KM.map((km) => (
@@ -95,7 +114,7 @@ export function RegionalRecurrenceSection({
       {state.status === 'loading' && <p className={styles.note}>reading catalogue…</p>}
       {state.status === 'error' && <p className={styles.note}>couldn&rsquo;t read this region</p>}
       {state.status === 'ready' && <Body recurrence={state.recurrence} />}
-    </section>
+    </>
   );
 }
 

@@ -35,20 +35,18 @@ function hours(value: number): string {
  * The registered H5 test — declustered, completeness-weighted, KS against the
  * null — is an Analyze job and is not this.
  */
-export function AntipodalSection({ event }: { event: EarthquakeEvent }) {
+export function AntipodalBody({ event }: { event: EarthquakeEvent }) {
   const state = useAntipodal(event);
+  // Same as the sequence panel: the inspector already gates on eligibility, so
+  // this is defensive rather than a state anyone should see.
   if (state.status === 'idle') return null;
 
   return (
-    <section className={styles.section} aria-labelledby="antipodal-heading">
-      <h3 id="antipodal-heading" className={styles.heading}>
-        Near the antipode
-      </h3>
-
+    <>
       {state.status === 'loading' && <p className={styles.note}>reading catalogue…</p>}
       {state.status === 'error' && <p className={styles.note}>couldn&rsquo;t read the antipode</p>}
       {state.status === 'ready' && <Body window={state.window} />}
-    </section>
+    </>
   );
 }
 

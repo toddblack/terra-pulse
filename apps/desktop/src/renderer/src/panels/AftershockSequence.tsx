@@ -82,27 +82,26 @@ function describeStrip(bins: Sequence['summary']['bins']): string {
  * The live-event *forecast* §5.9 also describes is a different panel and
  * belongs in Analyze.
  */
-export function AftershockSequenceSection({ event }: { event: EarthquakeEvent }) {
+export function AftershockSequenceBody({ event }: { event: EarthquakeEvent }) {
   const state = useAftershockSequence(event);
 
+  // Unreachable in practice — the inspector gates on `hasSequencePanel`, which
+  // is the same eligibility test the hook uses — but the hook can still say
+  // idle, and rendering nothing is the honest answer to it.
   if (state.status === 'idle') return null;
 
   return (
-    <section className={styles.section} aria-labelledby="sequence-heading">
-      <h3 id="sequence-heading" className={styles.heading}>
-        What followed
-      </h3>
-
+    <>
       {state.status === 'loading' && <p className={styles.note}>reading catalogue…</p>}
       {state.status === 'error' && (
         <p className={styles.note}>couldn&rsquo;t read the sequence for this event</p>
       )}
-      {state.status === 'ready' && <SequenceBody sequence={state.sequence} />}
-    </section>
+      {state.status === 'ready' && <SequenceReport sequence={state.sequence} />}
+    </>
   );
 }
 
-function SequenceBody({ sequence }: { sequence: Sequence }) {
+function SequenceReport({ sequence }: { sequence: Sequence }) {
   const { summary, missingYears } = sequence;
   const { count, largest, largestAfterHours, exceededMainshock, elapsedFraction } = summary;
 

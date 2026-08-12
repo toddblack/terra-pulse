@@ -111,3 +111,56 @@ describe('location selection', () => {
     expect(useGlobeStore.getState().layerVisibility).toEqual(visibilityBefore);
   });
 });
+
+describe('inspector section expansion', () => {
+  beforeEach(() => {
+    useGlobeStore.setState({ expandedSections: {} });
+  });
+
+  it('starts with every section collapsed', () => {
+    // The default that keeps the panel clear of the time scrubber, and the
+    // default that means no section's IPC runs until it is asked for.
+    expect(useGlobeStore.getState().expandedSections).toEqual({});
+  });
+
+  it('opens an untouched section on the first toggle', () => {
+    // Absent has to read as collapsed. Comparing against `false` instead of
+    // negating would make the first click on every section a no-op.
+    useGlobeStore.getState().toggleSection('sequence');
+    expect(useGlobeStore.getState().expandedSections['sequence']).toBe(true);
+  });
+
+  it('closes again on the second toggle', () => {
+    useGlobeStore.getState().toggleSection('sequence');
+    useGlobeStore.getState().toggleSection('sequence');
+    expect(useGlobeStore.getState().expandedSections['sequence']).toBe(false);
+  });
+
+  it('keeps sections independent', () => {
+    // Not a true accordion: these answer different questions and comparing two
+    // at once is a reasonable thing to want.
+    useGlobeStore.getState().toggleSection('sequence');
+    useGlobeStore.getState().toggleSection('recurrence');
+
+    const { expandedSections } = useGlobeStore.getState();
+    expect(expandedSections['sequence']).toBe(true);
+    expect(expandedSections['recurrence']).toBe(true);
+  });
+
+  it('survives changing the selection, because it lives in the store', () => {
+    // The whole point of holding this here rather than in the panel: clicking
+    // through the event list must not re-collapse what you opened.
+    useGlobeStore.getState().toggleSection('recurrence');
+    useGlobeStore.getState().selectLocation(probed);
+    useGlobeStore.getState().selectLocation(null);
+
+    expect(useGlobeStore.getState().expandedSections['recurrence']).toBe(true);
+  });
+
+  it('leaves the layer toggles alone', () => {
+    // Shared store — a careless `set` here would replace rather than merge.
+    const visibilityBefore = useGlobeStore.getState().layerVisibility;
+    useGlobeStore.getState().toggleSection('fault');
+    expect(useGlobeStore.getState().layerVisibility).toEqual(visibilityBefore);
+  });
+});

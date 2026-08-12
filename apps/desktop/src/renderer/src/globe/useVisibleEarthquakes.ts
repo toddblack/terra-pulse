@@ -1,10 +1,7 @@
 import { useMemo } from 'react';
-import {
-  nextMagnitudeFloorAbove,
-  previousWindowHours,
-  type EarthquakeEvent,
-} from '@terra-pulse/schema';
+import { nextMagnitudeFloorAbove, type EarthquakeEvent } from '@terra-pulse/schema';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
+import { displayWindow } from './display-window';
 import { useNow } from './useNow';
 
 /**
@@ -27,13 +24,34 @@ export function filterEarthquakes(
    */
   maxMagnitudeExclusive: number | null = null,
 ): EarthquakeEvent[] {
-  const cutoffMs = now - windowHours * 60 * 60 * 1000;
+  return filterEarthquakesFrom(
+    events,
+    minMagnitude,
+    now - windowHours * 60 * 60 * 1000,
+    maxMagnitudeExclusive,
+  );
+}
 
+/**
+ * The same filter expressed as an absolute cutoff rather than a duration back
+ * from "now".
+ *
+ * This is the form the hook uses, because the cutoff it wants comes from the
+ * store — the instant the query ran — not from a clock it reads itself.
+ * `cutoffMs` of `null` applies no lower bound.
+ */
+export function filterEarthquakesFrom(
+  events: readonly EarthquakeEvent[],
+  minMagnitude: number,
+  cutoffMs: number | null,
+  maxMagnitudeExclusive: number | null = null,
+): EarthquakeEvent[] {
   return events.filter((event) => {
     if (event.magnitude < minMagnitude) return false;
     // Exclusive so adjacent bands tile without overlapping: an M2.5 belongs to
     // M2.5-4.5, never to M1-2.5 as well.
     if (maxMagnitudeExclusive !== null && event.magnitude >= maxMagnitudeExclusive) return false;
+    if (cutoffMs === null) return true;
     const timeMs = Date.parse(event.timeUtc);
     // An unparseable timestamp can't be placed in the window, so it's
     // excluded rather than silently shown outside the range the user picked.
@@ -48,22 +66,36 @@ export function filterEarthquakes(
  * playhead moves. Keeping the built set stable is the entire reason playback is
  * affordable: narrowing this array instead would rebuild every Cesium entity on
  * every tick.
+ *
+ * ## Why the cutoff comes from the store and not from `useNow`
+ *
+ * It used to come from `useNow`, and that quietly undid the paragraph above.
+ * Every thirty seconds the clock advanced, this memo recomputed, and even
+ * though the filtered *contents* were almost always identical the array got a
+ * **new identity** — which is what `useGlobeLayers`' event-driven effect is
+ * keyed on. So the earthquake layer tore down and rebuilt every entity twice a
+ * minute, forever: 110 ms at 30d/M2.5, 590 ms in the widest archive view. It
+ * was visible as the selection reticle re-playing its appear animation on a
+ * thirty-second rhythm, because the rebuild re-adds the data source and the
+ * selection has to be re-applied to the new entity.
+ *
+ * `loadedWindowStartMs` is the instant the query actually ran, so this changes
+ * when the *data* changes and not when the clock moves. Between loads the built
+ * set keeps a few events that have since aged past the window; they are
+ * harmless because they are hidden — the layer's `setTimeWindow` still tracks
+ * the live edge and only flips visibility flags, which is the cheap channel
+ * this split exists to protect.
  */
 export function useVisibleEarthquakes(): EarthquakeEvent[] {
   const events = useEarthquakeStore((state) => state.events);
   const minMagnitude = useEarthquakeStore((state) => state.minMagnitude);
-  const windowHours = useEarthquakeStore((state) => state.windowHours);
   const isolateBand = useEarthquakeStore((state) => state.isolateBand);
-  // Through `useNow` rather than `Date.now()`. The window cutoff was already
-  // reading the clock — via the default parameter, which hid it from both the
-  // linter and from re-rendering — so the trailing edge of the window silently
-  // froze until some unrelated state change happened to refresh it.
-  const nowMs = useNow();
+  const loadedWindowStartMs = useEarthquakeStore((state) => state.loadedWindowStartMs);
 
   return useMemo(() => {
     const ceiling = isolateBand ? nextMagnitudeFloorAbove(minMagnitude) : null;
-    return filterEarthquakes(events, minMagnitude, windowHours, nowMs, ceiling);
-  }, [events, minMagnitude, windowHours, isolateBand, nowMs]);
+    return filterEarthquakesFrom(events, minMagnitude, loadedWindowStartMs, ceiling);
+  }, [events, minMagnitude, loadedWindowStartMs, isolateBand]);
 }
 
 /**
@@ -110,10 +142,17 @@ export function useEarthquakesUpToPlayhead(): EarthquakeEvent[] {
     // Mirrors the window the layer is given, so the footnote's count matches
     // what is actually drawn. A count claiming 26,746 while a decade's worth is
     // on screen would be worse than no count.
-    const trailHours = trailingWindow ? previousWindowHours(windowHours) : null;
-    const endMs = playheadMs ?? nowMs;
-    const trailStartMs = trailHours === null ? null : endMs - trailHours * 3_600_000;
+    //
+    // **This is where the live trailing edge is applied now.** It used to be
+    // inherited from `useVisibleEarthquakes`, which no longer tracks the clock
+    // — so without it here the count and list would keep events the globe had
+    // already hidden. Literally the same function the viewer hands to
+    // `setTimeWindow`, so the two cannot drift.
+    //
+    // No end margin: that exists to keep a fresh mark from being hidden, and a
+    // future-dated event should not inflate a count.
+    const { startMs } = displayWindow(windowHours, playheadMs, trailingWindow, nowMs);
 
-    return narrowToPlayhead(windowEvents, playheadMs, trailStartMs);
+    return narrowToPlayhead(windowEvents, playheadMs, startMs);
   }, [windowEvents, playheadMs, windowHours, trailingWindow, nowMs]);
 }

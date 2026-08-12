@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type * as Cesium from 'cesium';
-import type { EarthquakeEvent, GlobeLayer } from '@terra-pulse/schema';
+import type { AntipodalEvent, EarthquakeEvent, GlobeLayer } from '@terra-pulse/schema';
 import {
   BASEMAP_REGISTRATIONS,
   OVERLAY_REGISTRATIONS,
@@ -28,6 +28,14 @@ interface UseGlobeLayersOptions {
    * them instead of through the registry.
    */
   antipodeEvent: EarthquakeEvent | null;
+  /**
+   * What the catalogue recorded near the antipode inside H5's window.
+   *
+   * Fetched by the viewer rather than here: this hook mounts layers, it does not
+   * load data. Empty until the lookup returns, which is why the layer treats it
+   * as decoration over the chord rather than something to wait for.
+   */
+  antipodeHits: readonly AntipodalEvent[];
   /**
    * The window layers should currently display, or `null` for "everything".
    *
@@ -147,6 +155,7 @@ export function useGlobeLayers({
   layerVisibility,
   events,
   antipodeEvent,
+  antipodeHits,
   timeWindow,
   viewerReadyToken,
 }: UseGlobeLayersOptions): void {
@@ -246,13 +255,17 @@ export function useGlobeLayers({
     const viewer = viewerRef.current;
     if (!viewer || !firstPaintReady || !antipodeEvent) return;
 
-    const layer = createAntipodeLayer(antipodeEvent, backdropTone);
+    const layer = createAntipodeLayer(antipodeEvent, backdropTone, antipodeHits);
     layer.mount(viewer);
 
     return () => {
       layer.unmount();
     };
-  }, [viewerRef, antipodeEvent, backdropTone, firstPaintReady, viewerReadyToken]);
+    // `antipodeHits` is a dependency on purpose: the lookup resolves after the
+    // chord is already drawn, and the rings and markers have to appear when it
+    // does. The rebuild is cheap — a handful of entities — and only happens
+    // once per entry into the mode.
+  }, [viewerRef, antipodeEvent, antipodeHits, backdropTone, firstPaintReady, viewerReadyToken]);
 
   // Fades the event marks while the chord is up, so 26,000 dots visible through
   // a translucent globe don't drown the one line that was asked for. Pushed to

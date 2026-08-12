@@ -52,15 +52,37 @@ const DEEP_KM = 70;
  * are nowhere near anything mapped. The distance leads, and the wording changes
  * with it, so the reader is never handed an association the data doesn't support.
  */
+/**
+ * The framed form, for the location panel — which is not collapsible and owns
+ * its own layout.
+ *
+ * The inspector uses `NearestFaultBody` inside a `CollapsibleSection` instead,
+ * so the two share the content and differ only in the frame around it.
+ */
 export function NearestFaultSection({
   point,
   depthKm,
   heading = 'Nearest mapped fault',
 }: {
   point: { latitude: number; longitude: number };
-  /** Event depth, when there is one. Drives the deep-event caveat. */
   depthKm?: number | null;
   heading?: string;
+}) {
+  return (
+    <section className={styles.section}>
+      <h3 className={styles.heading}>{heading}</h3>
+      <NearestFaultBody point={point} depthKm={depthKm} />
+    </section>
+  );
+}
+
+export function NearestFaultBody({
+  point,
+  depthKm,
+}: {
+  point: { latitude: number; longitude: number };
+  /** Event depth, when there is one. Drives the deep-event caveat. */
+  depthKm?: number | null;
 }) {
   // Keyed on the coordinates rather than the object, so an event re-arriving
   // from a poll with identical geometry doesn't re-run a 144,000-segment sweep.
@@ -75,15 +97,12 @@ export function NearestFaultSection({
 
   if (match === null || match.distanceKm > MAX_MEANINGFUL_KM) {
     return (
-      <section className={styles.section}>
-        <h3 className={styles.heading}>{heading}</h3>
-        <p className={styles.none}>
-          none mapped within {MAX_MEANINGFUL_KM} km
-          <span className={styles.sub}>
-            GEM maps active faults, not every structure — many earthquakes occur away from them
-          </span>
-        </p>
-      </section>
+      <p className={styles.none}>
+        none mapped within {MAX_MEANINGFUL_KM} km
+        <span className={styles.sub}>
+          GEM maps active faults, not every structure — many earthquakes occur away from them
+        </span>
+      </p>
     );
   }
 
@@ -94,9 +113,7 @@ export function NearestFaultSection({
   const deep = depthKm !== null && depthKm !== undefined && depthKm >= DEEP_KM;
 
   return (
-    <section className={styles.section}>
-      <h3 className={styles.heading}>{heading}</h3>
-
+    <>
       {/* Unnamed is the common case — only 44.6% of GEM faults carry a name,
           and just 21% of the traces nearest to real M6+ events do. Saying so
           plainly beats an empty line where a name should be. */}
@@ -149,6 +166,6 @@ export function NearestFaultSection({
           that far down — the distance above is horizontal only.
         </p>
       )}
-    </section>
+    </>
   );
 }

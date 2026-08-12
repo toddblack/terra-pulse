@@ -1,0 +1,121 @@
+/* The separator between sections, matching what the four section modules each
+   declared for themselves before this component existed. */
+.section {
+  margin-top: 0.875rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+}
+
+.heading {
+  margin: 0;
+}
+
+/* A full-width button so the whole header row is the hit target, not just the
+   words.
+
+   Open and closed are deliberately *not* distinguished by hue. The established
+   active language in this app — the recurrence chips, the antipode button — is
+   a tinted fill in a colour that means something (violet for that region,
+   red for the chord). A disclosure triangle means nothing beyond "there is more
+   here", so it gets neutral emphasis instead: closed is flat and dim, open is
+   filled, outlined and near-white. Borrowing a hue would imply a claim.
+
+   The border is present in both states and merely transparent when closed, so
+   opening a section doesn't shift the row by a pixel. */
+.toggle {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
+  margin: 0 -0.4rem;
+  background: none;
+  color: rgb(148 163 184);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
+}
+
+.toggle:hover {
+  background-color: rgb(255 255 255 / 8%);
+  color: rgb(203 213 225);
+}
+
+.toggle[aria-expanded='true'] {
+  border-color: rgb(255 255 255 / 18%);
+  background-color: rgb(255 255 255 / 10%);
+  color: rgb(226 232 240);
+  font-weight: 600;
+}
+
+.toggle[aria-expanded='true']:hover {
+  background-color: rgb(255 255 255 / 14%);
+}
+
+.toggle:focus-visible {
+  outline: 2px solid rgb(125 211 252);
+  outline-offset: 1px;
+}
+
+/* Sized in its own right, and centred, so rotating it can't nudge the title. */
+.chevron {
+  display: inline-flex;
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  align-items: center;
+  justify-content: center;
+  color: rgb(100 116 139);
+  font-size: 0.7rem;
+  line-height: 1;
+  transition:
+    transform 140ms ease-out,
+    color 120ms ease-out;
+}
+
+.toggle:hover .chevron {
+  color: rgb(148 163 184);
+}
+
+.toggle[aria-expanded='true'] .chevron {
+  color: rgb(226 232 240);
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toggle,
+  .chevron {
+    transition: none;
+  }
+}
+
+.title {
+  flex: 1;
+}
+
+/* The state said in words as well as in the mark. Rotation alone is a fine
+   convention but it is small and low-contrast at this size, and this is the
+   one place the panel tells you there is something behind the header. */
+.state {
+  flex: none;
+  color: rgb(100 116 139);
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.toggle[aria-expanded='true'] .state {
+  color: rgb(148 163 184);
+}
+
+.body {
+  margin-top: 0.5rem;
+}
