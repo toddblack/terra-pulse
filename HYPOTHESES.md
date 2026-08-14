@@ -1,6 +1,6 @@
 # HYPOTHESES.md — Pre-Registration Log
 
-**Last updated:** 2026-07-24
+**Last updated:** 2026-08-14
 
 ---
 
@@ -116,6 +116,30 @@ Applied to all hypotheses unless an entry overrides them.
 | **Tests in family** | 6 (2 trigger definitions × 3 lags) |
 | **Mechanism plausibility** | Low |
 | **Result** | — |
+
+**Source amendment, 2026-08-14 — Kp now read from GFZ Potsdam, not SWPC.**
+Recorded here rather than by editing the row above, per rule 3. **H4 has not
+been run**, so no result informed this and the test count is unchanged at 6.
+
+The registered phrase "SWPC planetary Kp" named NOAA's *estimated* planetary K
+index, derived from eight stations. The app now stores the definitive IAGA index
+from GFZ Potsdam, which publishes Kp from thirteen observatories and is the
+source SWPC and OMNI both ultimately derive from. This is the same registered
+quantity at better provenance, not a different one — but the original wording
+named a specific publisher, so the substitution is logged.
+
+Two consequences worth stating before the test runs:
+
+- **The trigger is unaffected.** GFZ writes Kp in thirds (`5.667`) where OMNI
+  wrote rounded tenths (`5.7`). The two forms differ by at most 0.033 and agree
+  *exactly* on the integers, and the registered trigger is Kp ≥ 6 — an integer.
+  No hour can change classification.
+- **The usable record grows from 1963 to 1932**, since GFZ reaches thirty-one
+  years further back than OMNI. Whether H4 actually uses the pre-1963 span is a
+  separate decision and is **not** registered here: the earthquake catalogue's
+  own M4.5 completeness floor begins in 1970, so extending the Kp axis alone
+  does not extend the testable overlap. Any use of the deeper span must be
+  registered as its own entry with its completeness handling stated.
 
 ### H4b — Local magnetometer disturbance and local seismicity
 

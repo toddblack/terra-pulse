@@ -1,0 +1,63 @@
+/* An inner section of the time scrubber rather than a panel of its own.
+   They share a time axis, so they are one thing: a spike here sits directly
+   above the playhead position that produced it, with no gap to misread. It also
+   keeps the bottom furniture to a single box, which matters because the
+   inspector's max-height is computed against the height of whatever sits down
+   here (see EarthquakeInspector.module.css). */
+.track {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-bottom: 0.15rem;
+  color: rgb(203 213 225);
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.title {
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+.peak {
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stormText {
+  color: rgb(248 113 113);
+}
+
+.plot {
+  position: relative;
+  height: 1.85rem;
+  border-bottom: 1px solid rgb(255 255 255 / 12%);
+}
+
+/* Kp 5 of 9 — NOAA's G1 storm level. */
+.stormLine {
+  position: absolute;
+  right: 0;
+  bottom: 55.5%;
+  left: 0;
+  border-top: 1px dashed rgb(255 255 255 / 14%);
+}
+
+.bar {
+  position: absolute;
+  bottom: 0;
+  border-radius: 1px 1px 0 0;
+  background-color: rgb(56 189 248 / 70%);
+}
+
+/* Storm-level hours get the app's existing "this is the notable one" red,
+   the same hue the recent-quake stroke uses. */
+.barStormy {
+  background-color: rgb(248 113 113 / 90%);
+}

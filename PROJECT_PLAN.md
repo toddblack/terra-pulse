@@ -831,7 +831,7 @@ earthquakes arriving.
 
 ## 6. Pre-Registered Hypotheses
 
-Maintained in `docs/HYPOTHESES.md`. Every hypothesis is written down *before*
+Maintained in `HYPOTHESES.md`. Every hypothesis is written down *before*
 running the analysis, with its parameters fixed. This is what separates
 discovery from the multiple-comparisons trap where testing enough combinations
 guarantees a "significant" result from pure noise.
@@ -953,8 +953,13 @@ server-side proxying of all third-party API calls.
 - **Milestone:** full visual exploration tool. **Reached.**
 
 ### Phase 3 — Solar & Geomagnetic Data
-- NOAA SWPC and NASA DONKI adapters
-- Solar emission + arrival layers (§5.6), auroral ovals
+- NOAA SWPC and NASA DONKI adapters — *SWPC OVATION done; DONKI not started*
+- ~~Auroral ovals~~ — **shipped.** OVATION Prime, polled every 5 min in main,
+  drawn as a transparent raster. Not persisted: it is a forecast of a transient.
+- **Geomagnetic main field (IGRF-14)** — **shipped**, not originally in this
+  phase's list. Offline, 1900–2030, follows the playhead. Note that it *cannot*
+  show solar storms: they perturb the external field by <1% of the main field.
+- Solar emission + arrival layers (§5.6)
 - INTERMAGNET / SuperMAG station layer with disturbance amplitude
 - Multi-track timeline panel — **Explore mode** (§5.5)
 - Click-a-quake → center timeline on it

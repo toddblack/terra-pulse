@@ -15,8 +15,13 @@ import { HoverTooltip } from './panels/HoverTooltip';
 import { useEarthquakeStore } from './state/useEarthquakeStore';
 import { playAlertSound } from './audio/alert-sound';
 import styles from './App.module.css';
+import { useAurora } from './panels/useAurora';
+import { SpaceWeatherArchive } from './panels/SpaceWeatherArchive';
 
 export default function App() {
+  // Keeps the live auroral grid current for the layer and its legend.
+  useAurora();
+
   const load = useEarthquakeStore((state) => state.load);
   const noteSynced = useEarthquakeStore((state) => state.noteSynced);
   const announceLargeEvent = useEarthquakeStore((state) => state.announceLargeEvent);
@@ -73,6 +78,7 @@ export default function App() {
       <div className={styles.leftColumn}>
         <RangeControls />
         <ArchivePanel />
+        <SpaceWeatherArchive />
         <FaultProbeToggle />
       </div>
       <LargeEventBanner />

@@ -9,6 +9,7 @@ function createFakeViewer(options?: { destroyed?: boolean }): Cesium.Viewer {
     imageryLayers: {
       addImageryProvider: vi.fn(() => fakeLayer),
       remove: vi.fn(() => true),
+      lowerToBottom: vi.fn(),
     },
   } as unknown as Cesium.Viewer;
 }
@@ -47,4 +48,17 @@ describe('osm basemap layer', () => {
     expect(() => layer.unmount()).not.toThrow();
     expect(viewer.imageryLayers.remove).not.toHaveBeenCalled();
   });
+});
+
+it('keeps the basemap at the bottom of the imagery stack', () => {
+  // `addImageryProvider` appends to the top, so a basemap mounted after a
+  // raster overlay would cover it. Reachable in practice: relief and seafloor
+  // share a backdrop tone, so switching between them remounts the basemap
+  // without remounting the overlays.
+  const layer = createOsmBasemap();
+  const viewer = createFakeViewer();
+
+  layer.mount(viewer);
+
+  expect(viewer.imageryLayers.lowerToBottom).toHaveBeenCalledOnce();
 });

@@ -2,6 +2,7 @@ import { ALERT_MIN_MAGNITUDE } from '@terra-pulse/schema';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { useNow } from '../globe/useNow';
 import styles from './MissedEventsPanel.module.css';
+import { formatAgoFrom } from './time-labels';
 
 /**
  * "What you missed" — the passive counterpart to the alert banner.
@@ -10,20 +11,11 @@ import styles from './MissedEventsPanel.module.css';
  * these events are, by definition, ones that happened while nobody was looking.
  */
 
-/** How long ago, at day resolution once past a day — precision would be noise. */
 function formatWhen(timeUtc: string, nowMs: number): string {
-  const ageMs = nowMs - Date.parse(timeUtc);
-  if (!Number.isFinite(ageMs)) return '';
-
-  const hours = Math.floor(ageMs / 3_600_000);
-  if (hours < 1) return 'just now';
-  if (hours < 24) return `${String(hours)}h ago`;
-
-  const days = Math.floor(hours / 24);
-  return days === 1 ? '1 day ago' : `${String(days)} days ago`;
+  return formatAgoFrom(timeUtc, nowMs) ?? '';
 }
 
-/** "since 3 days ago" reads better than an ISO timestamp nobody parses. */
+/** "since 3d" reads better than an ISO timestamp nobody parses. */
 function formatSince(sinceUtc: string, nowMs: number): string {
   return formatWhen(sinceUtc, nowMs).replace(' ago', '');
 }

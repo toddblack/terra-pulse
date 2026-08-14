@@ -78,6 +78,8 @@ export function CesiumViewer() {
   const selectLocation = useGlobeStore((state) => state.selectLocation);
   const setHover = useGlobeStore((state) => state.setHover);
   const location = useGlobeStore((state) => state.location);
+  const fieldQuantity = useGlobeStore((state) => state.fieldQuantity);
+  const auroraGrid = useGlobeStore((state) => state.auroraGrid);
 
   // Resolved from the loaded set rather than held in the store, so the chord
   // follows revisions to the event like every other view does.
@@ -171,6 +173,8 @@ export function CesiumViewer() {
     activeBasemapId,
     layerVisibility,
     events,
+    fieldQuantity,
+    auroraGrid,
     antipodeEvent,
     antipodeHits,
     timeWindow,

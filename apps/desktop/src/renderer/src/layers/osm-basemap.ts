@@ -22,6 +22,14 @@ export function createOsmBasemap(): GlobeLayer {
         maximumLevel: 19,
       });
       imageryLayer = viewer.imageryLayers.addImageryProvider(provider);
+      // Basemaps belong at the bottom of the imagery stack, always.
+      //
+      // `addImageryProvider` appends to the *top*, so without this a basemap
+      // mounted after a raster overlay covers it. That is reachable: relief and
+      // seafloor share a backdrop tone, so switching between them re-runs the
+      // basemap effect while leaving the overlay effect alone — the overlay
+      // would still be attached, still marked visible, and completely hidden.
+      viewer.imageryLayers.lowerToBottom(imageryLayer);
     },
     unmount() {
       // If the viewer itself has already been destroyed, everything on it

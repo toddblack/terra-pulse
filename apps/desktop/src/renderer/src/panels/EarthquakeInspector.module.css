@@ -45,14 +45,15 @@
      (`top: 50%` + `translateY(-50%)`), so its bottom edge sits at
      `(100vh - height) / 2` and every rem taken off the height buys only half a
      rem of clearance. The scrubber is ~5.7rem tall at `bottom: 1rem`, so its
-     top edge is ~6.7rem up; 8rem of clearance leaves a visible gap. That needs
-     a total height of `100vh - 16rem`, less this panel's own 1.875rem of
-     padding.
+     top edge is ~6.7rem up; 8rem of clearance leaves a visible gap. The
+     geomagnetic track now sits inside that same panel and adds ~2.7rem, so the
+     clearance is ~10.7rem and the total height `100vh - 21.4rem`, less this
+     panel's own 1.875rem of padding.
 
      Being centred is what makes this expensive — the clearance has to be paid
      at the top as well, where nothing is in the way. If the panel ever stops
      pointing at the centred event, revisit this along with it. */
-  max-height: calc(100vh - 18rem);
+  max-height: calc(100vh - 23rem);
   overflow-y: auto;
 }
 

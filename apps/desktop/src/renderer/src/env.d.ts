@@ -2,6 +2,9 @@
 
 import type {
   AftershockSequence,
+  AuroraGrid,
+  SpaceWeatherProgress,
+  SpaceWeatherSample,
   AntipodalWindow,
   ArchiveProgress,
   EarthquakeEvent,
@@ -37,6 +40,23 @@ declare global {
         }): Promise<RegionalRecurrence>;
         /** What was recorded near an event's antipode, plus the background rate. */
         antipodal(eventId: string): Promise<AntipodalWindow | null>;
+      };
+      aurora: {
+        /** The latest grid, or null before the first successful poll. */
+        latest(): Promise<AuroraGrid | null>;
+        /** Subscribe to new grids; returns an unsubscribe function. */
+        onUpdated(callback: (grid: AuroraGrid) => void): () => void;
+      };
+      spaceWeather: {
+        /** Kp and Dst over a half-open range. Bounded on both ends. */
+        query(request: { startUtc: string; endUtc: string }): Promise<SpaceWeatherSample[]>;
+        status(): Promise<SpaceWeatherProgress>;
+        /** Settles when the backfill finishes — follow onProgress instead. */
+        start(): Promise<SpaceWeatherProgress>;
+        cancel(): Promise<SpaceWeatherProgress>;
+        onProgress(callback: (progress: SpaceWeatherProgress) => void): () => void;
+        /** Fires when the rolling Kp poll stores something new. */
+        onUpdated(callback: () => void): () => void;
       };
       archive: {
         status(): Promise<ArchiveProgress>;

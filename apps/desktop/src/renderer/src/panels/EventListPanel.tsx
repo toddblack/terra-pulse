@@ -5,6 +5,8 @@ import { useEarthquakesUpToPlayhead } from '../globe/useVisibleEarthquakes';
 import { totalHeightPx, visibleRange } from './event-list-window';
 import { formatRange } from './RangeControls';
 import styles from './EventListPanel.module.css';
+import { formatAgoFrom } from './time-labels';
+import { useNow } from '../globe/useNow';
 
 /**
  * A browsable list of exactly what the globe is drawing.
@@ -17,20 +19,16 @@ import styles from './EventListPanel.module.css';
 
 type SortMode = 'time' | 'magnitude';
 
-/** Compact and absolute. A relative age on 26,000 rows is unreadable. */
-function formatWhen(timeUtc: string): string {
+/**
+ * The exact instant, for the row's `title`.
+ *
+ * The visible label is relative — see below — so this is where precision lives
+ * for anyone who wants it.
+ */
+function formatExact(timeUtc: string): string {
   const ms = Date.parse(timeUtc);
   if (!Number.isFinite(ms)) return '';
-
-  const date = new Date(ms);
-  const iso = date.toISOString();
-  const day = iso.slice(0, 10);
-  const time = iso.slice(11, 16);
-
-  // Year is only interesting once the view spans more than one, and the
-  // archive views always do. Dropping it in live views buys room for the place.
-  const thisYear = new Date().getUTCFullYear();
-  return date.getUTCFullYear() === thisYear ? `${day.slice(5)} ${time}` : day;
+  return `${new Date(ms).toISOString().slice(0, 16).replace('T', ' ')} UTC`;
 }
 
 function sortEvents(events: readonly EarthquakeEvent[], mode: SortMode): EarthquakeEvent[] {
@@ -52,6 +50,10 @@ export function EventListPanel() {
   const isolateBand = useEarthquakeStore((state) => state.isolateBand);
 
   const events = useEarthquakesUpToPlayhead();
+  // Through the shared clock rather than `Date.now()`: reading a clock during
+  // render is impure, and nothing re-renders when one ticks, so the ages would
+  // silently freeze until some unrelated state change refreshed them.
+  const nowMs = useNow();
   const [sortMode, setSortMode] = useState<SortMode>('time');
   const sorted = useMemo(() => sortEvents(events, sortMode), [events, sortMode]);
 
@@ -193,7 +195,9 @@ export function EventListPanel() {
                 >
                   <span className={styles.magnitude}>M{event.magnitude.toFixed(1)}</span>
                   <span className={styles.place}>{event.place}</span>
-                  <span className={styles.when}>{formatWhen(event.timeUtc)}</span>
+                  <span className={styles.when} title={formatExact(event.timeUtc)}>
+                    {formatAgoFrom(event.timeUtc, nowMs) ?? ''}
+                  </span>
                 </button>
               ))}
             </div>

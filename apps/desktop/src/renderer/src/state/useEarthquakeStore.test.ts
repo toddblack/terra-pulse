@@ -4,6 +4,7 @@ import {
   MAGNITUDE_FLOORS,
   archiveSpanHours,
   minMagnitudeForWindow,
+  playbackSpeedsForWindow,
 } from '@terra-pulse/schema';
 import {
   DEFAULT_MIN_MAGNITUDE,
@@ -518,5 +519,55 @@ describe('loadedWindowStartMs', () => {
 
     const second = useEarthquakeStore.getState().loadedWindowStartMs ?? 0;
     expect(second).toBeLessThan(first);
+  });
+});
+
+describe('playback speed follows the window', () => {
+  beforeEach(() => {
+    useEarthquakeStore.setState({
+      windowHours: DEFAULT_WINDOW_HOURS,
+      minMagnitude: DEFAULT_MIN_MAGNITUDE,
+      playbackSpeed: DEFAULT_PLAYBACK_SPEED,
+      preArchiveView: null,
+      trailingWindow: false,
+    });
+    vi.stubGlobal('window', {
+      terraPulse: { earthquakes: { query: () => Promise.resolve([]) } },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('raises the speed on entering an archive span', () => {
+    // The failure this prevents: at 6 h/s the 130-year span takes 52.8 hours to
+    // play, so the playhead looks frozen and the layer under it looks broken.
+    const widest = Math.max(...ARCHIVE_SPANS.map(archiveSpanHours));
+    useEarthquakeStore.getState().setWindowHours(widest);
+
+    const { playbackSpeed } = useEarthquakeStore.getState();
+    expect(playbackSpeedsForWindow(widest)).toContain(playbackSpeed);
+    expect(widest / playbackSpeed).toBeLessThanOrEqual(900);
+  });
+
+  it('restores a usable speed on leaving the archive', () => {
+    // The restore path sets the window directly rather than through
+    // `setWindowHours`, so without its own adjustment it would leave a
+    // years-per-second rate on a 72-hour window.
+    const widest = Math.max(...ARCHIVE_SPANS.map(archiveSpanHours));
+    useEarthquakeStore.getState().toggleArchiveSpan(widest);
+    useEarthquakeStore.getState().toggleArchiveSpan(widest);
+
+    const { windowHours, playbackSpeed } = useEarthquakeStore.getState();
+    expect(windowHours).toBe(DEFAULT_WINDOW_HOURS);
+    expect(playbackSpeedsForWindow(windowHours)).toContain(playbackSpeed);
+  });
+
+  it('keeps a speed the new window can still use', () => {
+    // Changing span must not silently discard a preference that still works.
+    useEarthquakeStore.setState({ playbackSpeed: 24 });
+    useEarthquakeStore.getState().setWindowHours(720);
+    expect(useEarthquakeStore.getState().playbackSpeed).toBe(24);
   });
 });

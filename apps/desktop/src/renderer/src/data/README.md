@@ -285,3 +285,69 @@ segment is **346 km**, which would sag **2.4 km** underground. The vendor
 script splits any chord over **50 km** along the great circle, capping sag at
 **49 m** for **+1.6% vertices**. The script throws if that ever stops working,
 and a test asserts the 50 km cap against the shipped data.
+
+---
+
+## `igrf-coefficients.json` — 20 KB, 195 coefficients × 27 epochs
+
+Earth's main magnetic field: the 14th generation International Geomagnetic
+Reference Field, Schmidt semi-normalised Gauss coefficients to degree 13.
+
+Written by `scripts/vendor-igrf.mjs`.
+
+## Source
+
+<https://www.ngdc.noaa.gov/IAGA/vmod/coeffs/igrf14coeffs.txt>
+
+Produced by IAGA Working Group V-MOD and released January 2025. **Public
+domain** — IGRF carries no licence conditions and no attribution requirement,
+unlike the CC-BY-SA datasets above. It is cited here because it is the
+definitive reference for the field, not because a licence compels it.
+
+## Why the 2030 epoch is materialised at vendor time
+
+Upstream ships 26 five-year epochs from 1900.0 to 2025.0 plus a final column of
+**secular variation** in nT/year for 2025–2030. That last column is a rate, not
+a value, so every consumer would otherwise need a branch: interpolate below
+2025, extrapolate above it.
+
+The script turns it into an ordinary epoch — `2025 + 5 × SV` — so the runtime
+does plain linear interpolation across 27 epochs with nothing to get wrong.
+
+This is not an invention. IAGA publish the same model in SHC format with 2030
+already present, and the derived values match it **coefficient for coefficient,
+worst discrepancy 2.8 × 10⁻¹⁴ nT** — floating-point noise. Verified against
+`SHC_files/IGRF14.SHC` from IAGA's own `pyIGRF14` distribution. The plain-text
+file is fetched instead because it is a stable URL rather than a zip member.
+
+## Why nothing is truncated
+
+All 13 degrees are kept. A degree-1 truncation is the textbook dipole and is
+cheap, but the reason this layer is worth drawing at all is the regional
+structure — the **South Atlantic Anomaly** above everything else — and that
+lives entirely in the higher degrees. The whole model is smaller than one
+basemap tile, so there is nothing to buy by cutting it.
+
+## The date range is load-bearing
+
+1900 to 2030, and **IGRF is definitive back to 1900** — the same year the deep
+earthquake archive starts. That is what lets the field layer follow the
+playhead across the entire record rather than being a snapshot of today.
+
+Outside that span the model **clamps rather than extrapolates**, and says so
+through `igrfCoverage`. Running secular variation forward for decades produces
+confident nonsense, and before 1900 there is no trend to run.
+
+## Validation
+
+`igrf.test.ts` pins the implementation to **IAGA's own 12 published test
+values** (from `tests/tests_igrf14.py` in the pyIGRF14 distribution), spanning
+1900 to 2030. Agreement is within **0.01 nT**, which is the resolution of the
+published values themselves — a relative error of 3 × 10⁻¹⁰ against a
+~30,000 nT field.
+
+The harmonic synthesis and Legendre recursion are a deliberate port of that
+reference implementation rather than an independent derivation. A
+spherical-harmonic expansion that is subtly wrong still produces a smooth,
+entirely plausible-looking field, so matching the reference is worth more than
+matching the mathematics from memory.

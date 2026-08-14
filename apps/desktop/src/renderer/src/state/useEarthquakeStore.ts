@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import {
   minMagnitudeForWindow,
+  playbackSpeedForWindow,
   type EarthquakeEvent,
   type MissedEvents,
 } from '@terra-pulse/schema';
@@ -22,13 +23,15 @@ export const DEFAULT_MIN_MAGNITUDE = 4.5;
 export const DEFAULT_WINDOW_HOURS = 72;
 
 /**
- * Playback speed options, in simulated hours per real second.
+ * The starting playback speed, in simulated hours per real second.
  *
- * At 6 h/s a 72-hour window replays in 12 seconds, which is long enough to
- * follow a sequence and short enough to rerun on a whim. 24 h/s is for skimming
- * four days; 1 h/s is for watching a single aftershock sequence unfold.
+ * At 6 h/s the default 72-hour window replays in 12 seconds — long enough to
+ * follow a sequence, short enough to rerun on a whim.
+ *
+ * **The set of speeds on offer is no longer fixed.** It comes from
+ * `playbackSpeedsForWindow`, because a ladder sized for a 30-day window cannot
+ * cross a 130-year span in under 13 hours. See the note in `packages/schema`.
  */
-export const PLAYBACK_SPEEDS_HOURS_PER_SECOND = [1, 6, 24] as const;
 export const DEFAULT_PLAYBACK_SPEED = 6;
 
 interface EarthquakeState {
@@ -344,6 +347,11 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
     set((state) => ({
       windowHours,
       minMagnitude: Math.max(state.minMagnitude, minMagnitudeForWindow(windowHours)),
+      // The speed ladder is span-dependent for the same reason the floor is: at
+      // 6 h/s the 130-year span takes 52.8 hours to play, so a speed carried
+      // over from a live tier leaves the playhead apparently frozen. Keeps the
+      // current choice when the new window can still use it.
+      playbackSpeed: playbackSpeedForWindow(windowHours, state.playbackSpeed),
       selectedEventId: null,
       antipodeEventId: null,
       playheadMs: null,
@@ -375,13 +383,18 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
         minMagnitude: DEFAULT_MIN_MAGNITUDE,
         trailingWindow: false,
       };
-      set({
+      set((current) => ({
         ...restored,
+        // This path sets the window directly rather than through
+        // `setWindowHours`, so the speed has to be brought back with it — or
+        // returning from the archive would leave a years-per-second rate on a
+        // 72-hour window and cross it in a blink.
+        playbackSpeed: playbackSpeedForWindow(restored.windowHours, current.playbackSpeed),
         preArchiveView: null,
         selectedEventId: null,
         playheadMs: null,
         isPlaying: false,
-      });
+      }));
       void useEarthquakeStore.getState().load();
       return;
     }

@@ -29,3 +29,4 @@ export { queryAntipodalWindow } from './antipodal-queries';
 // matching nodeIntegration: false) can import them without ever pulling in
 // this package's node:sqlite-dependent source.
 export type { EarthquakeQuery, BoundingBox } from '@terra-pulse/schema';
+export * from './space-weather-queries';

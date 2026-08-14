@@ -1,6 +1,7 @@
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { useNow } from '../globe/useNow';
 import styles from './LargeEventBanner.module.css';
+import { formatAgoFrom } from './time-labels';
 
 /**
  * Announces a large earthquake that has just arrived — PROJECT_PLAN §5.8.
@@ -12,15 +13,7 @@ import styles from './LargeEventBanner.module.css';
 
 /** Coarse, because the poll runs every few minutes and precision would lie. */
 function formatAge(timeUtc: string, nowMs: number): string {
-  const ageMs = nowMs - Date.parse(timeUtc);
-  if (!Number.isFinite(ageMs)) return '';
-  if (ageMs < 60_000) return 'just now';
-
-  const minutes = Math.floor(ageMs / 60_000);
-  if (minutes < 60) return `${String(minutes)} min ago`;
-
-  const hours = Math.floor(minutes / 60);
-  return hours === 1 ? '1 hr ago' : `${String(hours)} hr ago`;
+  return formatAgoFrom(timeUtc, nowMs) ?? '';
 }
 
 export function LargeEventBanner() {

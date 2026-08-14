@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import type { FieldQuantity } from '../layers/igrf';
+import type { AuroraGrid } from '@terra-pulse/schema';
 import {
   DEFAULT_BASEMAP_ID,
   backdropToneFor,
@@ -76,6 +78,27 @@ interface GlobeState {
   hover: HoverState | null;
 
   /**
+   * Which scalar the geomagnetic field layer draws.
+   *
+   * Held here rather than inside the layer so it survives the layer being
+   * unmounted and remounted — toggling the overlay off and on should not
+   * silently reset you to intensity.
+   *
+   * Intensity is the default because it is the view that shows the South
+   * Atlantic Anomaly, which is the most legible thing the field does.
+   */
+  fieldQuantity: FieldQuantity;
+
+  /**
+   * The latest auroral grid from main, or null before the first poll lands.
+   *
+   * Held here rather than in the layer so the panel and the layer read the same
+   * object — the legend prints the observation time, and a legend describing a
+   * different grid than the one drawn would be worse than no legend.
+   */
+  auroraGrid: AuroraGrid | null;
+
+  /**
    * Which inspector sections are expanded, by section id.
    *
    * Missing means collapsed, which is the default for every section. The
@@ -104,6 +127,8 @@ interface GlobeState {
   setRecurrenceFloor: (floor: number) => void;
   setHover: (hover: HoverState | null) => void;
   toggleSection: (id: string) => void;
+  setFieldQuantity: (quantity: FieldQuantity) => void;
+  setAuroraGrid: (grid: AuroraGrid | null) => void;
 }
 
 export const useGlobeStore = create<GlobeState>((set) => ({
@@ -115,6 +140,8 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   recurrenceFloor: DEFAULT_RECURRENCE_FLOOR,
   hover: null,
   expandedSections: {},
+  fieldQuantity: 'intensity',
+  auroraGrid: null,
 
   setActiveBasemap: (id) => set({ activeBasemapId: id }),
 
@@ -140,6 +167,10 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   setRecurrenceFloor: (recurrenceFloor) => set({ recurrenceFloor }),
 
   setHover: (hover) => set({ hover }),
+
+  setFieldQuantity: (fieldQuantity) => set({ fieldQuantity }),
+
+  setAuroraGrid: (auroraGrid) => set({ auroraGrid }),
 
   /**
    * Absent means collapsed, so the first click on an untouched section opens

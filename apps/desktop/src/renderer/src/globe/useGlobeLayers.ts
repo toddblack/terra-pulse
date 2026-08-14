@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type * as Cesium from 'cesium';
-import type { AntipodalEvent, EarthquakeEvent, GlobeLayer } from '@terra-pulse/schema';
+import type { AntipodalEvent, AuroraGrid, EarthquakeEvent, GlobeLayer } from '@terra-pulse/schema';
 import {
   BASEMAP_REGISTRATIONS,
   OVERLAY_REGISTRATIONS,
@@ -9,6 +9,9 @@ import {
   type BasemapId,
   type OverlayRegistration,
 } from '../layers/registry';
+import { isGeomagneticFieldLayer } from '../layers/geomagnetic-field';
+import { isAuroraLayer } from '../layers/aurora-layer';
+import type { FieldQuantity } from '../layers/igrf';
 import { INITIAL_FIRST_PAINT, observeTileQueue } from './first-paint';
 import { createAntipodeLayer } from '../layers/antipode-layer';
 
@@ -20,6 +23,10 @@ interface UseGlobeLayersOptions {
   activeBasemapId: BasemapId;
   layerVisibility: Record<string, boolean>;
   events: readonly EarthquakeEvent[];
+  /** Which scalar the geomagnetic field layer should draw. */
+  fieldQuantity: FieldQuantity;
+  /** The latest auroral grid, or null before the first poll. */
+  auroraGrid: AuroraGrid | null;
   /**
    * The event whose antipode chord is on screen, or `null`.
    *
@@ -154,6 +161,8 @@ export function useGlobeLayers({
   activeBasemapId,
   layerVisibility,
   events,
+  fieldQuantity,
+  auroraGrid,
   antipodeEvent,
   antipodeHits,
   timeWindow,
@@ -276,6 +285,24 @@ export function useGlobeLayers({
       layer.setDimmed?.(antipodeEvent !== null);
     }
   }, [antipodeEvent, events]);
+
+  // Same push-don't-rebuild channel: the field layer repaints one texture,
+  // rather than the registry tearing down and recreating every static overlay
+  // — which a `LayerContext` field would have done, faults included.
+  useEffect(() => {
+    for (const layer of mountedLayersRef.current) {
+      if (isGeomagneticFieldLayer(layer)) layer.setQuantity(fieldQuantity);
+    }
+  }, [fieldQuantity, layerVisibility]);
+
+  // Same channel for the aurora. Pushed rather than passed through
+  // `LayerContext`, because a new grid every five minutes must not tear down
+  // and rebuild 13,696 fault polylines alongside it.
+  useEffect(() => {
+    for (const layer of mountedLayersRef.current) {
+      if (isAuroraLayer(layer)) layer.setGrid(auroraGrid);
+    }
+  }, [auroraGrid, layerVisibility]);
 
   // --- Playhead: pushed to whatever is mounted, no rebuild ----------------
   //

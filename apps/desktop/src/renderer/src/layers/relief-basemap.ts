@@ -44,6 +44,14 @@ export function createReliefBasemap(): GlobeLayer {
         credit: new Cesium.Credit('NASA EOSDIS GIBS / Blue Marble shaded relief + bathymetry'),
       });
       imageryLayer = viewer.imageryLayers.addImageryProvider(provider);
+      // Basemaps belong at the bottom of the imagery stack, always.
+      //
+      // `addImageryProvider` appends to the *top*, so without this a basemap
+      // mounted after a raster overlay covers it. That is reachable: relief and
+      // seafloor share a backdrop tone, so switching between them re-runs the
+      // basemap effect while leaving the overlay effect alone — the overlay
+      // would still be attached, still marked visible, and completely hidden.
+      viewer.imageryLayers.lowerToBottom(imageryLayer);
     },
     unmount() {
       // See osm-basemap.ts: if the viewer's already destroyed, it already
