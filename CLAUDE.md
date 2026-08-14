@@ -1,6 +1,6 @@
 # CLAUDE.md — Terra Pulse
 
-Working context for Claude Code. Read `docs/PROJECT_PLAN.md` for the full
+Working context for Claude Code. Read `PROJECT_PLAN.md` for the full
 architecture; this file is the operating brief.
 
 ---
@@ -478,7 +478,447 @@ timer, with nothing on screen having changed.
   poll, `usePlayback`'s `requestAnimationFrame` (only while playing), the 50 ms
   hover-pick throttle, and `first-paint.ts`'s one-shot fallback.
 
-**Next:** Phase 3 proper (solar/geomagnetic ingest), or aftershock *forecasting*
+## Phase 3 — Solar & Geomagnetic. Started.
+
+**Geomagnetic field layer (IGRF-14) — shipped.** Earth's main magnetic field as
+a raster over the globe, with three views and no network dependency at all.
+
+- **It is computed, not fetched.** 195 Gauss coefficients at 27 epochs is 20 KB
+  vendored; evaluating it is a few hundred flops. No key, no service, nothing to
+  rate-limit, nothing that can be offline.
+- **It reaches 1900 — the same year the deep archive starts.** IGRF is definitive
+  back to 1900, so the layer follows the *existing playhead* across the whole
+  126-year record rather than being a snapshot. Scrubbing animates real secular
+  variation: the north dip pole leaving Canada, the South Atlantic Anomaly
+  deepening. Outside 1900–2030 it **clamps and says so** (`igrfCoverage`) rather
+  than extrapolating, because running secular variation forward decades produces
+  confident nonsense.
+- **The algorithm is a deliberate port of IAGA's reference implementation**
+  (`pyIGRF14`, itself a reduction of chaosmagpy), not an independent derivation.
+  A spherical-harmonic expansion that is subtly wrong still produces a smooth,
+  entirely plausible field — so matching the reference is worth more than
+  matching the maths from memory. Pinned to **IAGA's own 12 published test
+  values** spanning 1900–2030, agreeing to **0.01 nT**, which is the resolution
+  of the published values themselves. Worst observed deviation 0.0067 nT.
+- **`sampleFieldGrid` hoists per-row work and that is load-bearing.** The
+  Legendre table depends only on latitude and the trig table only on longitude.
+  Called per point, a 360×181 grid builds 65,160 of each; hoisted, 181 and 360.
+  **38 ms** for the full grid, against roughly 40× that naive — the difference
+  between a scrub that moves and one that doesn't. A test pins both the timing
+  and the agreement with the unhoisted path.
+- **A raster, not entities.** 65,160 cells as Cesium entities would be 2.4× the
+  widest archive view (already measured at 590 ms) to draw what is fundamentally
+  an image. One canvas → one `SingleTileImageryProvider` → one texture. This
+  Cesium version's single-tile provider takes a URL, so it goes via
+  `canvas.toDataURL()`.
+- **Repaint is guarded on a quantised key** (`quantity:year.x`). The playhead
+  moves continuously and the field does not, so without it the layer would
+  resample and re-encode a PNG every animation frame during playback. The new
+  imagery layer is attached *before* the old one is removed, so the globe never
+  flashes bare mid-scrub.
+- **Never a rainbow, and that was the skill's call not mine.** Conventional
+  geomagnetic charts use one; it invents boundaries in smooth data and is
+  unreadable under colour blindness. Intensity is magnitude → **sequential blue,
+  strictly monotonic in OKLab lightness** (0.905→0.338). Declination and
+  inclination have a meaningful zero → **diverging blue↔red with a neutral grey
+  midpoint**, where the neutral band *is* the agonic line and the magnetic
+  equator. Validated, not eyeballed: poles separate at CVD ΔE 19.2 (light) and
+  23.6 (dark) against a floor of 8.
+- **The domain is fixed across dates, deliberately.** Rescaling to each date's
+  own min/max would renormalise the colours on every scrub tick and hide exactly
+  what the layer exists to show. Measured over 1900–2030: intensity runs
+  21,909–69,432 nT, so the domain is 20,000–70,000 and clamping never bites.
+- **The quantity is not in `LayerContext` and not on `GlobeLayer`.** In the
+  context it would rebuild every static overlay per click, faults included —
+  the cost `consumesEvents` exists to avoid. On the shared interface it would
+  drag a one-layer concern into the schema package. `isGeomagneticFieldLayer`
+  narrows instead, and the push goes down the same channel as `setDimmed`.
+- **Two bugs the user found by switching the layer on, both invisible to tests
+  until they existed:**
+  - **`mount()` set `visible = false`.** `useGlobeLayers` toggles overlays by
+    mounting and unmounting and **never calls `setVisible`** — mounted *is*
+    visible, as the note on `mountOverlays` says. The raster attached with
+    `show = false` and nothing ever turned it on, so the layer drew nothing
+    while looking entirely healthy. The only visible symptom was the *other*
+    overlays flashing as the static group rebuilt.
+  - **Basemaps were not pinned to the bottom of the imagery stack.**
+    `addImageryProvider` appends to the top, so a basemap mounted after a raster
+    overlay covers it. Reachable, and quietly: **relief and seafloor share
+    `tone: 'dark'`**, so switching between them re-runs the basemap effect but
+    *not* the overlay effect (whose deps carry `backdropTone`, not
+    `activeBasemapId`) — leaving the field raster attached, marked visible, and
+    completely buried. All three basemaps now `lowerToBottom` on mount, which is
+    where a basemap belongs anyway and protects any future imagery overlay.
+- **The field layer was rebuilt around pre-rendered frames, after three failed
+  attempts at doing it live. This is the entry worth reading before touching
+  it.** The first design built a fresh raster on every playhead tick — compute
+  grid, paint canvas, encode PNG, decode asynchronously, construct provider, add
+  layer, remove old. It produced three bugs in succession, each hidden behind
+  the last:
+  1. the layer attached with `show = false` (mount ≠ visible);
+  2. the old raster was dropped when the new one was *requested*, not when it
+     had decoded, leaving a gap that a busy main thread never closed;
+  3. a sequence guard that discarded **every** frame, because under playback a
+     newer load was always *requested* before the previous one finished — which
+     is why it looked frozen on the first frame and then snapped to live at the
+     end, when requests stopped and the last load finally had no successor.
+  4. and then, with the frames pre-rendered, an **even flicker throughout
+     playback** — because `show` is not a cheap flag. In
+     `GlobeSurfaceTileProvider`, `_onLayerShownOrHidden` routes a hide straight
+     to `_onLayerRemoved`: hiding an imagery layer **destroys its tile imagery**
+     and showing it again re-creates the skeletons and re-uploads the texture.
+     Selection moves **`alpha`** instead, which `addDrawCommandsForTile` reads
+     during compositing — `if (imagery.imageryLayer.alpha === 0.0) continue;`,
+     **before** texture units are counted. So a frame at alpha 0 stays resident
+     and costs nothing to draw. Every frame now keeps `show = true` for its whole
+     life and only alpha moves. **This one was settled by reading Cesium's
+     source rather than reasoning about it — the three guesses before it were
+     all wrong.**
+  **The lesson is not any of those four fixes.** It is that Cesium's
+  `ImageryLayer` is not built to be swapped several times a second, and patching
+  a pipeline that fights its own substrate just moves the failure. Frames are now
+  rendered once, added as imagery layers with `show = false`, and playback flips
+  an alpha — the same idea as the earthquake layer's visibility flags, and the project's
+  own rule: **built set stable, visibility live.** The throttle, the sequence
+  token and the swap ordering all deleted; there is nothing on the frame path to
+  reload, decode or starve.
+  - **Grid resolution halved to 2 degrees on measurement**: 47.4 ms/frame at 1°
+    against **7.1 ms at 2°** — a 6.7x saving, better than the 4x the area
+    implies because the Legendre table is per-row. Cost: 402 nT deviation on a
+    50,000 nT scale (0.8%, 7% of one ramp step). Free, because IGRF is degree 13
+    and its shortest wavelength is ~27° — 2° sampling is an order of magnitude
+    past what the model can resolve.
+  - 66 frames at ~65 KB is ~4 MB of VRAM and a **~0.5 s** background warm-up.
+  - The build **yields once before its first frame**, because `mountOverlays`
+    calls `mount` then `setTimeWindow` synchronously — building immediately
+    rendered the first frame for today rather than for the playhead.
+  - It picks the nearest unbuilt frame **per iteration** rather than ordering the
+    queue once, so scrubbing during warm-up re-aims at what is being looked at.
+- **The earlier symptoms, kept because the diagnosis technique generalises.**
+  The user noticed the field reappearing "in gaps of earthquakes populating the
+  globe" — the tell that this was main-thread starvation rather than a logic
+  error, and what pointed at the async decode.
+  - `usePlayback` seeks every **50 ms**, so the playhead asked for 20 repaints a
+    second against a **38 ms** grid sample. Repaints are now throttled to
+    **150 ms with a trailing edge** — the trailing edge is what guarantees the
+    final playhead position is drawn rather than whichever frame won the race. A
+    quantity change bypasses it, because a deferred response to a button press
+    reads as a dead button.
+  - **The real one: the old raster was dropped when the new one was *requested*,
+    not when it had decoded.** `addImageryProvider` is **not** synchronous — the
+    PNG behind it still has to load — so there was always a gap with the old
+    layer removed and the new one empty. Idle, the decode lands in a frame and
+    the gap is invisible; under playback the earthquake layer's `applyVisibility`
+    and Cesium's rendering starve the callback past the next repaint and the gap
+    never closes. Now it uses `SingleTileImageryProvider.fromUrl`, which resolves
+    **after** the image loads, and swaps only then — worst case one stale frame
+    instead of an empty globe. A sequence token discards loads superseded while
+    in flight, since they finish out of order under load.
+  - **Any layer that rebuilds an imagery provider per frame has this problem.**
+  - The test for this was **vacuous on the first attempt** and worth remembering
+    why: it asserted against a fresh mount, where there is no previous layer to
+    remove, so it passed with the bug reintroduced. It now mounts, settles, and
+    only then holds the *second* load open.
+- **Two encoding bugs found by looking at the output, not by testing it.** Both
+  produced arithmetically correct rasters that were wrong on screen:
+  - **The declination domain was the definitional range, `[-180, 180]`, and that
+    made the layer look broken.** Measured at 2026, median |D| is **13.1°** and
+    **77% of the surface is within 30°** — which on a ±180 scale is 7% off
+    centre, i.e. grey. Only the magnetic poles, where D genuinely sweeps the
+    full circle, took any colour. Now ±30 **clamped**, which puts that 77%
+    across the whole ramp; near-neutral cells fell from most of the globe to
+    **14.6%**. `FieldScale.clamped` makes the legend say `≤`/`≥`, because a
+    clamped end is a floor, not a measurement. **Set a domain from the
+    distribution, never from the definition.**
+  - **The diverging midpoint was the palette's *dark chart surface*
+    (`#383835`), which inverted the ramp's salience.** That value exists so
+    zero disappears into a dark chart background — but this raster sits on the
+    globe, and both arms run light near the centre out to dark at the poles. A
+    dark midpoint therefore made lightness go dark → light → dark, punching a
+    notch through zero: the magnetic equator rendered as a **black line** and
+    the agonic lines as dark seams, making the neutral band the loudest thing
+    on screen when it should be the quietest. The midpoint is a light neutral on
+    both backdrops now, and a test pins lightness as monotonic from each pole in
+    to zero. **A palette's per-mode surface colour is not automatically the
+    right midpoint for an overlay that isn't drawn on that surface.**
+- **The scrubber looked broken and was correct physics.** Over the default 72 h
+  window the field moves **1.1 nT** against a 50,000 nT scale; over 1900→2026 it
+  moves **13,732 nT**. Nothing on screen said which year was drawn, so the layer
+  read as inert. The legend now names the year and says the field changes over
+  decades — the fix was a caption, not code.
+- **The field legend is a section of `DepthLegend`**, appearing only while the
+  layer is on, exactly as the plate-boundary and fault keys already did. Its
+  ramp is drawn as discrete steps rather than a CSS gradient so that what the
+  legend shows is literally what the encoding produces — a gradient would
+  interpolate in sRGB between the ends and quietly disagree with the raster.
+- **Intensity uses viridis, not the palette's single blue, and not a rainbow.**
+  The blue was correct and unreadable — one hue is one visual dimension, and the
+  South Atlantic Anomaly came out as a pale smudge. The user asked about the
+  full-spectrum maps they'd seen elsewhere, so all four were rendered and
+  measured in OKLab lightness:
+
+  | ramp | monotonic | L range | biggest step |
+  |---|---|---|---|
+  | blue | yes | 0.91 → 0.34 | 0.049 |
+  | viridis | yes | 0.29 → 0.92 | 0.088 |
+  | cividis | yes | 0.26 → 0.92 | 0.082 |
+  | turbo (rainbow) | **no** | 0.25 → **0.37** | 0.199 |
+
+  Turbo's lightness rises *and* falls, which manufactures contour bands the data
+  doesn't contain, and its net range is 0.25→0.37 — brightness carries almost
+  nothing, so hue does the work alone and it fails in greyscale, print and CVD.
+  Viridis is multi-hue **and** monotonic, which is the combination worth having.
+  **A deliberate departure from the palette's "sequential = one hue" rule, taken
+  on that rule's own rationale.** Don't revert without re-reading the table.
+- **How fast the field actually moves**, since "is this thing working" is a fair
+  question: median **41 nT/yr**, p90 87, max 128 — about 0.08% of the ramp per
+  year, so it takes decades. The dip pole is the dramatic part: 70.5°N 96°W in
+  1900 → 81.0°N 110°W in 2000 → **85.5°N 135°E in 2026**, i.e. out of Canada,
+  over the pole, heading for Siberia.
+- Sanity check worth keeping: the model's 2025 intensity minimum lands at
+  **lat −25.9, lon −60.5 at 22,073 nT** — the South Atlantic Anomaly, exactly
+  where it belongs.
+
+**Playback speeds now scale with the window — and this was an archive-wide bug,
+not a field-layer one.** The ladder was `[1, 6, 24]` h/s, correct for the 30-day
+window it was written for and never revisited when archive spans shipped:
+
+    30d    12min   2min    30s     <- as designed
+    1y     2.4h    24min   6min
+    10y    24.4h   4.1h    61min
+    130y   316h    52.8h   13.2h   <- two days at the default
+
+So playback across the archive wasn't slow, it was unusable — and it looked like
+whatever layer you were watching had frozen. `playbackSpeedsForWindow` now offers
+the speeds that cross the current window in 5 s to 15 min, **derived from a
+ladder rather than tabulated**, so adding a span can't leave it stale. Same
+mechanism and same reason as `magnitudeFloorsForWindow`. `setWindowHours` keeps a
+still-valid choice and otherwise re-picks; the archive-exit path needed its own
+adjustment because it sets the window directly rather than going through it.
+This fixes earthquake playback over the archive too.
+
+**Reconnaissance that shaped the rest of the phase:** SWPC's JSON products are a
+**rolling window, not an archive** — Kp is 7 days at 3-hourly, GOES X-ray 7 days
+at 1-minute (4.6 MB). They can drive live views and can never drive H1/H3/H4,
+which are decade-scale rate correlations. Deep Kp exists at GFZ Potsdam (to
+1932) as a *separate* source. NOAA's OVATION auroral product is live and ideal
+for the next layer: a 360×181 grid of aurora probability, same raster shape as
+the field, with an observation time and a ~1 h forecast.
+
+**Auroral oval (OVATION Prime) — shipped.** The live counterpart to the IGRF
+layer, and the answer to "why don't solar storms show up on the magnetic field".
+
+- **They can't, and the numbers say why.** IGRF is the *main* field from the
+  geodynamo; it has no term for the Sun. A storm perturbs the *external* field:
+  ~100 nT typical, 589 nT for Quebec 1989, an estimated 850–1750 nT for
+  Carrington — **0.2% to 3.5%** of a 50,000 nT main field, lasting hours. Even a
+  civilisation-scale storm is invisible on that ramp. The same storm drags the
+  auroral oval from the polar cap down over populated latitudes, which is
+  enormous. One event, and only one of the two layers can show it.
+- **Not persisted, deliberately.** Everything else stored here is a *record*;
+  this is a forecast of a transient, superseded every five minutes. Caching it
+  would add 65 KB a poll — 19 MB a day — for data no view can ask for again. The
+  consequence is stated in the UI: nothing until the first poll, nothing
+  offline. A stale oval presented as current is worse than an empty globe.
+- **Transparency carries meaning here, and it is the one place it does.** About
+  70% of cells are zero on a quiet grid (measured 45,284 of 65,160 live). Those
+  are absences, not small values; painting them with the ramp's low end would
+  wash the planet faintly green and imply a global phenomenon. The IGRF layer
+  does the **opposite** with uniform alpha, because a magnetic field is never
+  absent. Alpha fades in only across the bottom few percent — a hard cut at the
+  threshold would draw a contour belonging to the threshold rather than the data.
+- **Green is literal, not decorative:** 557.7 nm atomic oxygen. It also keeps
+  the two space-weather rasters apart when both are on. Monotonic in OKLab
+  lightness (0.17 → 0.96), same rule as the field ramp.
+- **The adapter transposes twice, and both matter.** The product runs longitude
+  0–359 from the prime meridian and latitude south-first; an image needs -180
+  first and north first. Getting the longitude wrong puts the Pacific over
+  Africa and still looks like a plausible aurora. Verified live: activity
+  58,898 north / 95,939 south / **646** in the tropics — polar, as it must be.
+- **`AURORA_MAX_PROBABILITY` is 60, not 100 and not the observed maximum.**
+  Scaling to 100 compresses ordinary nights into the bottom third; scaling to
+  the observed peak renormalises every poll and makes "brighter than last time"
+  unreadable. Saturation should mean exceptional, not Tuesday.
+- **`setTimeWindow` is a deliberate no-op.** There is no archive of past grids,
+  so scrubbing to 1975 cannot show the aurora of 1975 — and silently leaving the
+  current oval up while the playhead sits in the past would misrepresent it. The
+  legend says "live only — does not follow the scrubber" whenever the playhead
+  is elsewhere.
+- The async swap **is** allowed here, unlike on the field layer: this changes
+  every five minutes, not several times a second. The one rule carried over is
+  removing the old raster only after the replacement has decoded.
+- Its tests are **fixture-based, not live**. The adapter was checked once against
+  the real product; adding a second pair of network tests would have made
+  `pnpm test` non-deterministic the way the EMSC ones already do.
+
+**Earthquake poll back to 60 s, with two guards.** It was 60 s, then 5 minutes
+because rebuilds hitched while rotating, and is now 60 s again — the user wanted
+the freshest catalogue and the reasons for backing off had mostly gone.
+
+- **The rebuild rate is bounded by how often earthquakes happen, not by how
+  often we ask.** At the M1+ ingest floor the catalogue gains an event every
+  three to five minutes, so a faster poll mostly makes the same rebuilds
+  prompter. What it genuinely costs is *batching* — several events that arrived
+  together used to land in one rebuild.
+- The two things that made it safe again: the **timer-driven rebuild is gone**
+  (a quiet poll now rebuilds nothing, because the renderer only reloads on
+  `result.changed`), and `catalogSignature` is scoped to the live window.
+- **EMSC is polled every fifth tick, not every tick.** It is a gap-filler, not
+  the primary source, and it is *slow* — an FDSN database query measured at over
+  five seconds for a single record, which is why its own tests trip vitest's
+  default timeout. USGS is a CDN read that costs nothing, so the two sources get
+  the cadence each deserves. The invariant — EMSC no oftener than every five
+  minutes — is pinned against the *product* of the interval and the divisor, so
+  it survives someone changing the base rate.
+- **An overlap guard, which 5 minutes never needed.** A poll could not outlast a
+  five-minute interval; it can easily outlast sixty seconds. Without the guard a
+  slow run would let the next start on top of it, piling up against the same
+  database and the same alerter.
+
+**Kp and Dst history track — shipped.** The scrubber-following half of space
+weather, and the answer to "the aurora doesn't animate": these do.
+
+- **Two sources, split by index: GFZ Potsdam for Kp (1932), NASA OMNI2 for Dst
+  (1963).** The table stores them independently, so a row legitimately carries
+  Kp and no Dst for thirty-one years' worth of hours.
+- **The "GFZ is unreachable" diagnosis was wrong twice, and the second wrong
+  answer is the one worth remembering.** First it was blamed on DNS; then, more
+  confidently, on a TCP-level egress block covering GFZ's whole address range,
+  supposedly a build-sandbox restriction. Both were inferred from `curl`
+  failing. `curl` is the broken thing: it returns **error 43** against GFZ while
+  returning 200 against USGS, because this box's build uses the Schannel TLS
+  backend. Node's `fetch` — the runtime the app actually uses — retrieves the
+  5.5 MB file in **634 ms**, and always could have. **Check a source with the
+  runtime that will actually fetch it before concluding anything about the
+  network**; a second tool's failure is not corroboration when both tools are
+  the same tool.
+- **Verified against ground truth before anything was built on it:** the March
+  1989 Quebec storm parses as **Dst -589 nT at 1989-03-14T01:00Z** with **Kp 9**
+  the evening before — the documented values — and a year file yields exactly
+  8,760 samples with no fill values leaking. **Both sources agree on it**, which
+  is how the GFZ column map was checked: GFZ puts Kp 9 in the last interval of
+  03-13 and the first of 03-14, straddling OMNI's Dst minimum.
+- **The fill values are width-matched sentinels, not zero**: 99999 for OMNI's
+  five-digit Dst, `-1.000` for GFZ's Kp. Read as data they become a +99999 nT
+  excursion and a Kp below the bottom of the scale. GFZ's is at least
+  unmistakable — Kp is bounded 0–9, so a negative cannot be a measurement —
+  whereas OMNI's old `99` for Kp*10 sat *inside* the plausible range as 9.9 and
+  would pass any check a chart applies. GFZ's fill appears only on the current
+  day in the nowcast, where later intervals have not happened yet.
+- **SWPC's Dst is deliberately not ingested.** SWPC publishes one, and it is
+  **Geospace model output** at one-minute cadence, whereas OMNI carries the
+  Kyoto observatory-derived index. Same name, same unit, different quantities —
+  and Dst is registered data for H4, so blending them would leave no way to tell
+  which any hour came from.
+- **SWPC's Kp is now out too, on the same argument.** It used to fill the recent
+  tail, justified here as "genuinely the same planetary index". It isn't quite:
+  SWPC publishes NOAA's *estimate* from eight stations, GFZ the definitive IAGA
+  index from thirteen. That distinction was tolerable only while GFZ looked
+  unreachable. GFZ serves its own 30-day nowcast file — **8 KB**, byte-identical
+  in format to the 5.5 MB archive — so the tail now comes from the same
+  publisher as the history. Logged as a source amendment in `HYPOTHESES.md`,
+  since H4 named SWPC by name.
+- **Kp is one request; Dst is 63.** GFZ's archive file is the whole 1932-onward
+  record in a single ~5.5 MB read: 829,416 hourly samples, measured at 2.6 s to
+  fetch and parse and **812 ms** to insert. OMNI is still a year-file loop and
+  is effectively all of the ~184 MB the panel warns about. The backfill runs Kp
+  first because it is nearly free, and `SpaceWeatherProgress.phase` names which
+  half is running — a single bar driven by years would sit at zero through the
+  Kp phase and then jump.
+- **Resume needs no bookkeeping table, unlike the earthquake archive.** There,
+  "did 1974 finish?" cannot be answered from the events — a quiet year and an
+  unfetched year look identical. Here the hour is the primary key and every year
+  has ~8,760 of them, so `spaceWeatherYearsPresent` *is* the record. The current
+  year is always refetched, because it isn't finished and recent Dst is
+  provisional.
+- **That query is asked per index, and it is load-bearing.** It used to mean
+  "does this year hold any sample?", a fair proxy while one source carried both
+  indices. Kp's single request puts samples in *every* year from 1932 — so a Dst
+  loop asking the old question would skip all 63 OMNI years and never fetch Dst
+  again, with no error and a backfill that reports complete in seconds.
+- **`parseOmniHourly` deliberately discards OMNI's Kp column**, and this is
+  structural rather than tidiness. `insertSpaceWeather` coalesces with
+  `excluded` winning, and the backfill fetches GFZ first and then loops the OMNI
+  years — so an OMNI sample carrying Kp would overwrite GFZ's thirds with OMNI's
+  rounded tenths for every hour from 1963 on, undoing the switch on the very run
+  that performed it. Reordering the phases would hide that, not remove it.
+- **The two Kp encodings differ by at most 0.033 and agree exactly on the
+  integers**, which is where every threshold in the app and in `HYPOTHESES.md`
+  sits (display emphasis 5, H4's trigger 6). So rows left from the OMNI era are
+  imprecise, never misclassified — which is why no migration was needed.
+- **The GFZ file carries four more columns we don't ingest, and one of them is
+  the reason to remember this.** `ap`/`Ap` is the **linear** equivalent of Kp,
+  and it is the one that may be averaged — Kp is quasi-logarithmic, so a mean Kp
+  is not a meaningful quantity. Nothing needs it yet because the track takes the
+  *extreme* of each bucket rather than the mean, but any Phase 4 rate work that
+  wants a mean geomagnetic level must use ap, not Kp. Also there: sunspot number
+  from 1932 and F10.7 solar flux from 1947. Neither appears in any registered
+  hypothesis — H3 is solar wind speed and Bz — so they are Explore material if
+  anything. Note the **sunspot column is CC BY-NC 4.0** while the rest of the
+  file is CC BY 4.0; ingesting it would put a non-commercial term on a dataset
+  that otherwise has none.
+- **Null never overwrites a value** (`COALESCE(excluded.x, x)`): a later pass
+  carrying Kp but not Dst must not erase a Dst we already have.
+- **Downsampling takes the extreme of each bucket, never the mean.** A storm is
+  a spike a few hours long; averaging a decade into 300 buckets flattens every
+  storm in the record into the background and produces a chart whose entire
+  subject is missing.
+- **Kp sizes the bars, Dst only colours them.** Kp is bounded 0-9 so a fixed
+  scale is honest; Dst is unbounded below, and one -589 nT hour would flatten
+  every other bar in the record — which is exactly the hour you want to see in
+  context.
+- **Bars are positioned by timestamp, never by array index.** Gaps are common
+  (OMNI has them; a partial backfill has whole missing years) and index spacing
+  would close them silently, drawing a continuous record that does not exist.
+- **OVATION emits a seam at the equator, and it is theirs not ours.** Measured
+  live: latitudes 0, -1 and -2 carry values of 1-4 across ~90% of longitudes
+  while every row from +1 to +40 and -3 to -40 is exactly zero. It drew as a
+  faint green line right around the globe. Suppressed below
+  `AURORA_MIN_LATITUDE` (20 degrees) rather than by raising the visibility
+  threshold, because real aurora at the oval's edge also has low values and
+  raising the floor would clip the phenomenon itself. Dropped at the *call site*
+  in the encoding, not in the adapter, which stays faithful to its source per
+  non-negotiable #7.
+- The track lives **inside the scrubber's panel**, not above it, so they share
+  one time axis and one box — the inspector's `max-height` is computed against
+  the height of whatever sits down there, and a second panel would have cost it
+  twice over.
+- `KP_STORM_THRESHOLD` is 5 (NOAA G1) for **display emphasis only**. H4's
+  registered trigger is **Kp >= 6**. Keeping them apart is non-negotiable #3: a
+  display threshold drifting into the analysis is a free parameter chosen after
+  seeing the data. A test pins the separation.
+
+**Relative times are one helper now, app-wide** (`panels/time-labels.ts`). They
+were five separate formatters — event list, hover tooltip, legend freshness,
+large-event banner, missed-events digest — each with its own ladder and
+abbreviations, so the same elapsed time could read "5d ago" in one place and
+"120 hr ago" in another, and the scrubber rendered a 130-year span as
+**"47483d ago"**.
+
+- **One number, one unit, never compound.** `45s / 12m / 3h / 5d / 3w / 7mo /
+  4.0y`. The label exists to be read at a glance and compared down 26 list rows;
+  "1y 2mo 3d ago" does neither. Precision lives elsewhere — the inspector prints
+  the exact UTC instant, and the list row carries it in `title`.
+- **Thresholds cross where the smaller unit stops reading, not at the exact
+  conversion.** Days run to 14 before becoming weeks, because nobody thinks in
+  "2w" for 8 days; weeks run to 8 before becoming months. Years keep one decimal
+  below a decade and drop it above, where the fraction is noise.
+- **The event list switched from absolute to relative**, reversing an earlier
+  note that said "a relative age on 26,000 rows is unreadable". That was true of
+  a days-only ladder — `47483d` — and stops being true once years are in it.
+- `formatAgoFrom` returns **null** for an unparseable input rather than a label,
+  so a bad timestamp shows nothing instead of "just now".
+
+**Next in Phase 3:** solar wind speed and Bz (H3's registered data), then the
+multi-track timeline (§5.5) proper.
+
+
+
+**Why the aurora cannot animate, so it isn't re-attempted:** SWPC publishes only
+`ovation_aurora_latest.json`. There is no archived grid product — checked. The
+oval is a nowcast, and the layer says so whenever the playhead is elsewhere.
+
+**Also next:** Phase 3 proper (solar/geomagnetic ingest), or aftershock *forecasting*
 (§5.9's model half, Phase 4) once the Python engine exists.
 Measured first: raw M6+ gaps near Tokyo have a 0.06 y median against 0.32 y
 declustered, so **declustering is not optional for a rate claim** (non-negotiable
@@ -841,7 +1281,7 @@ These are architectural decisions, not preferences. Do not quietly change them.
    aftershock sequences that will masquerade as signal. Gardner-Knopoff
    minimum.
 3. **No free parameters chosen after seeing results.** Search radii, lag
-   windows, magnitude bins — all fixed in `docs/HYPOTHESES.md` before the test
+   windows, magnitude bins — all fixed in `HYPOTHESES.md` before the test
    runs. Every hypothesis gets an entry with parameters and a date.
 4. **Multiple-comparison correction is mandatory.** Benjamini-Hochberg FDR
    across the full test matrix. Always report how many tests were run.
@@ -937,5 +1377,5 @@ Plain, direct language in comments and docs. No corporate voice. Explain the
 needs to know why a correction is applied, not just that it is.
 
 When something in the plan turns out to be wrong, update
-`docs/PROJECT_PLAN.md` rather than working around it silently. The plan is
+`PROJECT_PLAN.md` rather than working around it silently. The plan is
 meant to change; it is not meant to drift out of sync with the code.

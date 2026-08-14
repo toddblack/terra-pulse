@@ -68,21 +68,49 @@ const INGEST_MIN_MAGNITUDE = Math.min(...ingestPasses().map((pass) => pass.minMa
  * How often the background poll runs.
  *
  * The summary feeds are CDN-cached with `Cache-Control: max-age=60`, so 60s is
- * the *fastest* useful rate — this used to poll at exactly that, on the
- * reasoning that anything slower threw away real freshness.
+ * the fastest rate that can return anything new — polling faster would just
+ * re-read the same cached bytes.
  *
- * That reasoning only counted one side. Every poll that finds new events
- * rebuilds the earthquake layer, and a rebuild lands as a visible hitch if it
- * happens while the user is rotating the globe. Once a minute, that's often
- * enough to be intrusive during ordinary use. Five minutes is quiet enough not
- * to interrupt, and no earthquake becomes less interesting for having been on
- * screen four minutes later.
+ * **This has been 60s, then 5 minutes, and is now 60s again.** The move to five
+ * minutes was made because every poll that finds new events rebuilds the
+ * earthquake layer, and a rebuild lands as a visible hitch while rotating the
+ * globe. Two things changed since:
  *
- * The freshness that matters is on demand, not on a timer: the legend shows
- * how stale the data is and offers a Refresh button, so anyone who wants this
- * second's catalogue can have it without the app twitching all day.
+ * - The **timer-driven** rebuild is gone. `useVisibleEarthquakes` used to key
+ *   its memo on a 30-second clock, so the layer was rebuilt twice a minute
+ *   whether or not anything had arrived. A quiet poll now rebuilds nothing at
+ *   all, because the renderer only reloads when `result.changed`.
+ * - `catalogSignature` is scoped to the live window rather than scanning the
+ *   whole 306k-row table, so a finished archive download no longer flips it.
+ *
+ * And the arithmetic was never as bad as it looked: **the rebuild rate is
+ * bounded by how often earthquakes happen, not by how often we ask.** At the
+ * M1+ ingest floor the catalogue gains an event every three to five minutes, so
+ * a faster poll mostly makes the same rebuilds prompter. It does lose some
+ * batching — five events that arrived together used to land in one rebuild —
+ * which is the real, and modest, cost.
  */
-const POLL_INTERVAL_MS = 5 * 60_000;
+export const POLL_INTERVAL_MS = 60_000;
+
+/**
+ * EMSC is polled once every this many ticks, not every tick.
+ *
+ * It is a **gap-filler**, not the primary source: USGS reports everything at
+ * M6+, and EMSC exists to catch smaller regional events USGS is slower on. It is
+ * also *slow* — an FDSN database query rather than a static file, measured at
+ * over five seconds for a single record, which is why its own tests trip
+ * vitest's default timeout whenever the service is busy.
+ *
+ * So the two sources get the cadence each deserves: USGS every minute because
+ * it is a CDN read that costs nothing, EMSC every five because hammering a slow
+ * public query service every minute would be both impolite and pointless.
+ */
+export const EMSC_POLL_EVERY_N_TICKS = 5;
+
+/** Whether a given tick should also ask EMSC. Tick 0 — launch — always does. */
+export function shouldPollEmsc(tickIndex: number): boolean {
+  return tickIndex % EMSC_POLL_EVERY_N_TICKS === 0;
+}
 
 /**
  * Feed bucket labels are approximate — a "2.5_day" response was observed
@@ -186,7 +214,11 @@ async function backfillEarthquakes(db: DatabaseSync): Promise<EarthquakeSyncResu
  * An empty response is a normal quiet period, not an error and not a signal to
  * clear anything — the upsert simply has nothing to do.
  */
-async function pollOnce(db: DatabaseSync, alerter?: LargeEventAlerter): Promise<EarthquakeSyncResult> {
+async function pollOnce(
+  db: DatabaseSync,
+  alerter?: LargeEventAlerter,
+  includeEmsc = true,
+): Promise<EarthquakeSyncResult> {
   const before = catalogSignature(db, liveWindowStart());
 
   const usgsEvents = await fetchEarthquakeFeed('1.0_day');
@@ -199,14 +231,16 @@ async function pollOnce(db: DatabaseSync, alerter?: LargeEventAlerter): Promise<
   // and at M6+ USGS reports everything anyway.
   alerter?.consider(usgsEvents);
 
-  try {
-    const emscEvents = await fetchEmscEarthquakes({
-      startUtc: new Date(Date.now() - 24 * 60 * 60 * 1000),
-      minMagnitude: INGEST_MIN_MAGNITUDE,
-    });
-    insertEmscFillingGaps(db, atOrAboveFloor(emscEvents));
-  } catch (error: unknown) {
-    console.error('EMSC poll failed; continuing with USGS only', error);
+  if (includeEmsc) {
+    try {
+      const emscEvents = await fetchEmscEarthquakes({
+        startUtc: new Date(Date.now() - 24 * 60 * 60 * 1000),
+        minMagnitude: INGEST_MIN_MAGNITUDE,
+      });
+      insertEmscFillingGaps(db, atOrAboveFloor(emscEvents));
+    } catch (error: unknown) {
+      console.error('EMSC poll failed; continuing with USGS only', error);
+    }
   }
 
   const after = catalogSignature(db, liveWindowStart());
@@ -235,13 +269,28 @@ export function startEarthquakePolling(
   alerter?: LargeEventAlerter,
 ): () => void {
   let stopped = false;
+  let inFlight = false;
+  let ticks = 0;
 
   const tick = () => {
-    pollOnce(db, alerter).then(
+    // **Skip rather than overlap.** At five minutes a poll could not outlast its
+    // own interval; at sixty seconds it can — EMSC alone has been measured over
+    // five seconds and is unbounded when the service is struggling. Without this
+    // a slow run would let the next one start on top of it, and they would pile
+    // up against the same database and the same alerter.
+    if (inFlight) return;
+    inFlight = true;
+
+    const includeEmsc = shouldPollEmsc(ticks);
+    ticks += 1;
+
+    pollOnce(db, alerter, includeEmsc).then(
       (result) => {
+        inFlight = false;
         if (!stopped) onResult(result);
       },
       (error: unknown) => {
+        inFlight = false;
         console.error('Earthquake poll failed (will retry)', error);
       },
     );
@@ -257,7 +306,8 @@ export function startEarthquakePolling(
   // month of old news structurally unannounceable (PROJECT_PLAN §5.8).
   //
   // The extra request is one CDN-cached feed fetch against a `max-age=60`
-  // endpoint, alongside a backfill already in flight.
+  // endpoint, alongside a backfill already in flight. `ticks` starts at 0, so
+  // this first run includes EMSC.
   tick();
 
   const interval = setInterval(tick, POLL_INTERVAL_MS);

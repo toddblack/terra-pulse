@@ -73,3 +73,41 @@
   accent-color: rgb(14 165 233);
   cursor: pointer;
 }
+
+/* Sub-controls belonging to an overlay row — currently the magnetic field's
+   three views. Indented to the checkbox's text, so it reads as belonging to the
+   row above rather than as a peer of it. */
+.subGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0.3rem 0 0.15rem 1.55rem;
+}
+
+.subButton {
+  padding: 0.15rem 0.4rem;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 0.25rem;
+  background: none;
+  color: rgb(148 163 184);
+  font: inherit;
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+
+.subButton:hover {
+  background-color: rgb(255 255 255 / 8%);
+  color: rgb(203 213 225);
+}
+
+.subButtonActive,
+.subButtonActive:hover {
+  border-color: rgb(57 135 229 / 60%);
+  background-color: rgb(57 135 229 / 22%);
+  color: rgb(219 234 254);
+}
+
+.subButton:focus-visible {
+  outline: 2px solid rgb(125 211 252);
+  outline-offset: 1px;
+}

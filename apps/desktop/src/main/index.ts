@@ -15,6 +15,12 @@ import {
   registerEarthquakeIpcHandlers,
   startEarthquakePolling,
 } from './ipc/earthquakes';
+import { registerAuroraIpcHandlers, startAuroraPolling } from './ipc/aurora';
+import {
+  createSpaceWeatherController,
+  registerSpaceWeatherIpcHandlers,
+  startKpPolling,
+} from './ipc/space-weather';
 import { registerExternalLinkIpcHandlers } from './ipc/external-links';
 import { applyTileIdentity } from './tile-identity';
 
@@ -244,6 +250,37 @@ app
 
     const stopPolling = startEarthquakePolling(db, notifyRenderer, alerter);
     app.on('will-quit', stopPolling);
+
+    // Space weather. Separate from the earthquake poll because it answers a
+    // different question on a different cadence, and because a SWPC outage must
+    // not stop the catalogue updating.
+    registerAuroraIpcHandlers();
+    const stopAuroraPolling = startAuroraPolling((grid) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('aurora:updated', grid);
+      }
+    });
+    app.on('will-quit', stopAuroraPolling);
+
+    // Kp and Dst. The rolling Kp tail runs always — it is an 8 KB read from
+    // GFZ's nowcast file. The deep backfill is user-triggered, because its Dst
+    // half is 63 OMNI year-files at ~184 MB.
+    const spaceWeather = createSpaceWeatherController(db, (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('space-weather:progress', progress);
+      }
+    });
+    registerSpaceWeatherIpcHandlers(db, spaceWeather);
+
+    const stopKpPolling = startKpPolling(db, () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('space-weather:updated');
+      }
+    });
+    app.on('will-quit', stopKpPolling);
+    app.on('will-quit', () => {
+      spaceWeather.cancel();
+    });
 
     // A backfill mid-flight would keep issuing requests and writing to a
     // database that's about to close.

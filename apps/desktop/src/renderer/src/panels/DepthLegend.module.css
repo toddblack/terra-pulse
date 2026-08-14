@@ -268,3 +268,28 @@
   color: rgb(120 135 155);
   font-size: 0.625rem;
 }
+
+/* The magnetic field ramp: discrete steps rather than a CSS gradient, so what
+   the legend shows is literally what the encoding produces. A gradient would
+   interpolate in sRGB between the two ends and quietly disagree with the
+   raster, which steps through the published palette. */
+.fieldRamp {
+  display: flex;
+  overflow: hidden;
+  height: 0.5rem;
+  border-radius: 0.125rem;
+  margin-top: 0.25rem;
+}
+
+.fieldRampStep {
+  flex: 1;
+}
+
+.fieldScaleRow {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.2rem;
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}

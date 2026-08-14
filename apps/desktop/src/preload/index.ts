@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AftershockSequence,
+  AuroraGrid,
+  SpaceWeatherSample,
   AntipodalWindow,
   ArchiveProgress,
   EarthquakeEvent,
@@ -96,6 +98,64 @@ contextBridge.exposeInMainWorld('terraPulse', {
      */
     antipodal: (eventId: string): Promise<AntipodalWindow | null> =>
       ipcRenderer.invoke('earthquakes:antipodal', eventId),
+  },
+  aurora: {
+    /**
+     * The most recent grid main has, or null before the first successful poll.
+     *
+     * Not persisted anywhere — it is a forecast of a transient, superseded every
+     * five minutes. Offline, this stays null and the layer draws nothing rather
+     * than presenting a stale oval as current.
+     */
+    latest: (): Promise<AuroraGrid | null> => ipcRenderer.invoke('aurora:latest'),
+
+    /** Subscribes to each new grid. Returns an unsubscribe function. */
+    onUpdated: (callback: (grid: AuroraGrid) => void): (() => void) => {
+      const listener = (_event: unknown, grid: AuroraGrid) => {
+        callback(grid);
+      };
+      ipcRenderer.on('aurora:updated', listener);
+      return () => {
+        ipcRenderer.removeListener('aurora:updated', listener);
+      };
+    },
+  },
+  spaceWeather: {
+    /**
+     * Kp and Dst over a half-open range.
+     *
+     * Bounded on both ends deliberately — the full backfill is ~550,000 hourly
+     * rows, and handing that across IPC is the mistake `earthquakes:refresh`
+     * already made once.
+     */
+    query: (request: { startUtc: string; endUtc: string }): Promise<SpaceWeatherSample[]> =>
+      ipcRenderer.invoke('space-weather:query', request),
+
+    status: (): Promise<unknown> => ipcRenderer.invoke('space-weather:status'),
+    /** Settles when the whole backfill finishes — follow onProgress instead. */
+    start: (): Promise<unknown> => ipcRenderer.invoke('space-weather:start'),
+    cancel: (): Promise<unknown> => ipcRenderer.invoke('space-weather:cancel'),
+
+    onProgress: (callback: (progress: unknown) => void): (() => void) => {
+      const listener = (_event: unknown, progress: unknown) => {
+        callback(progress);
+      };
+      ipcRenderer.on('space-weather:progress', listener);
+      return () => {
+        ipcRenderer.removeListener('space-weather:progress', listener);
+      };
+    },
+
+    /** Fires when the rolling Kp poll stores something new. */
+    onUpdated: (callback: () => void): (() => void) => {
+      const listener = () => {
+        callback();
+      };
+      ipcRenderer.on('space-weather:updated', listener);
+      return () => {
+        ipcRenderer.removeListener('space-weather:updated', listener);
+      };
+    },
   },
   archive: {
     status: (): Promise<ArchiveProgress> => ipcRenderer.invoke('archive:status'),

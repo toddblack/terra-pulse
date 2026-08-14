@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import type { BackdropTone } from '@terra-pulse/schema';
+import { useNow } from '../globe/useNow';
 import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { useEarthquakesUpToPlayhead } from '../globe/useVisibleEarthquakes';
@@ -17,7 +19,14 @@ import {
   magnitudePixelSize,
   recentHaloColorHex,
 } from '../layers/earthquake-encoding';
+import { GEOMAGNETIC_FIELD_LAYER_ID } from '../layers/geomagnetic-field';
+import { AURORA_LAYER_ID } from '../layers/aurora-layer';
+import { auroraLegendStops } from '../layers/aurora-encoding';
+import { AURORA_MAX_PROBABILITY, auroraIsStale, auroraPeak } from '@terra-pulse/schema';
+import { FIELD_SCALES, fieldLegendStops } from '../layers/field-encoding';
+import { IGRF_FIRST_YEAR, IGRF_LAST_YEAR, decimalYear, igrfCoverage } from '../layers/igrf';
 import styles from './DepthLegend.module.css';
+import { formatAgoFrom, formatDuration } from './time-labels';
 
 // Sample magnitudes for the size ramp — spans the range the scale actually
 // covers, so the reader can eyeball a mark on the globe against it.
@@ -35,17 +44,7 @@ function formatWindow(hours: number): string {
  */
 function formatFreshness(lastSyncedAt: string | null): string {
   if (lastSyncedAt === null) return 'not yet synced';
-
-  const ageMs = Date.now() - new Date(lastSyncedAt).getTime();
-  if (!Number.isFinite(ageMs) || ageMs < 0) return 'just now';
-
-  const ageMinutes = Math.floor(ageMs / 60_000);
-  if (ageMinutes < 1) return 'just now';
-  if (ageMinutes === 1) return '1 min ago';
-  if (ageMinutes < 60) return `${ageMinutes} min ago`;
-
-  const ageHours = Math.floor(ageMinutes / 60);
-  return ageHours === 1 ? '1 hr ago' : `${ageHours} hr ago`;
+  return formatAgoFrom(lastSyncedAt, Date.now()) ?? 'not yet synced';
 }
 
 export function DepthLegend() {
@@ -84,6 +83,8 @@ export function DepthLegend() {
   const boundariesVisible = isLayerOn('plate-boundaries');
   const subductionVisible = isLayerOn('subduction-zones');
   const faultsVisible = isLayerOn('active-faults');
+  const fieldVisible = isLayerOn(GEOMAGNETIC_FIELD_LAYER_ID);
+  const auroraVisible = isLayerOn(AURORA_LAYER_ID);
 
   if (collapsed) {
     return (
@@ -273,6 +274,10 @@ export function DepthLegend() {
         </div>
       )}
 
+      {fieldVisible && <FieldKey tone={backdropTone} />}
+
+      {auroraVisible && <AuroraKey />}
+
       <p className={styles.footnote}>
         {status === 'loading'
           ? 'Loading…'
@@ -312,6 +317,160 @@ export function DepthLegend() {
           </span>
         )}
       </p>
+    </div>
+  );
+}
+
+/**
+ * The magnetic field key.
+ *
+ * Exists because the layer was unreadable without it — a blue wash with no
+ * units, no scale and no indication of *when* it was. Three things it has to
+ * say, in order of how badly they were missed:
+ *
+ * 1. **Which year is drawn.** The layer follows the playhead, and over the
+ *    default 72-hour window the field moves 1.1 nT against a 50,000 nT scale —
+ *    invisible, so the scrubber reads as broken. Naming the year makes the
+ *    layer's behaviour legible, and the note says where change is actually
+ *    visible.
+ * 2. **What the colours mean**, with units.
+ * 3. **Where the scale stops.** Declination's ramp is clamped at 30 degrees, so
+ *    its ends are a floor and a ceiling rather than measurements, and the
+ *    labels carry the sign.
+ */
+function FieldKey({ tone }: { tone: BackdropTone }) {
+  const quantity = useGlobeStore((state) => state.fieldQuantity);
+  const playheadMs = useEarthquakeStore((state) => state.playheadMs);
+  const nowMs = useNow();
+
+  const scale = FIELD_SCALES[quantity];
+  const stops = fieldLegendStops(quantity, tone, 5);
+
+  const year = decimalYear(new Date(playheadMs ?? nowMs));
+  const { covered, clampedYear } = igrfCoverage(year);
+
+  const format = (value: number): string =>
+    quantity === 'intensity'
+      ? `${Math.round(value / 1000).toString()}k`
+      : `${value > 0 ? '+' : ''}${Math.round(value).toString()}`;
+
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+
+  return (
+    <div className={styles.section}>
+      <h2 className={styles.heading}>Magnetic field · {Math.floor(clampedYear)}</h2>
+
+      <div className={styles.fieldRamp} aria-hidden="true">
+        {stops.map((stop) => (
+          <span
+            key={stop.value}
+            className={styles.fieldRampStep}
+            style={{ backgroundColor: stop.color }}
+          />
+        ))}
+      </div>
+
+      <div className={styles.fieldScaleRow}>
+        <span>
+          {scale.clamped ? '≤' : ''}
+          {format(first?.value ?? 0)}
+        </span>
+        <span>{scale.unit}</span>
+        <span>
+          {scale.clamped ? '≥' : ''}
+          {format(last?.value ?? 0)}
+        </span>
+      </div>
+
+      <p className={styles.note}>
+        {scale.label}
+        {scale.diverging ? (
+          <>
+            {' '}· neutral band is{' '}
+            {quantity === 'declination' ? 'where a compass points true north' : 'the magnetic equator'}
+          </>
+        ) : null}
+      </p>
+
+      {/* The answer to "why does the scrubber do nothing". */}
+      <p className={styles.note}>
+        {covered
+          ? 'changes over decades — scrub a History span to see it move'
+          : `outside ${IGRF_FIRST_YEAR.toString()}–${IGRF_LAST_YEAR.toString()}; showing ${Math.floor(clampedYear).toString()}`}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The aurora key.
+ *
+ * Three things it has to carry, and the last two are the point:
+ *
+ * 1. What the greens mean — probability of visible aurora.
+ * 2. **When the reading is from.** This is the only live layer in the app.
+ *    Everything else is a catalogue that is true whenever you look at it; this
+ *    is a forecast of a transient, and one twenty minutes old may describe a
+ *    storm that has already moved.
+ * 3. **That it does not follow the playhead.** There is no archive of past
+ *    grids, so scrubbing to 1975 cannot show the aurora of 1975 — and leaving
+ *    the current oval on screen while the playhead sits in the past, unlabelled,
+ *    would be a straightforward lie about what is being drawn.
+ */
+function AuroraKey() {
+  const grid = useGlobeStore((state) => state.auroraGrid);
+  const playheadMs = useEarthquakeStore((state) => state.playheadMs);
+  const nowMs = useNow();
+
+  if (!grid) {
+    return (
+      <div className={styles.section}>
+        <h2 className={styles.heading}>Aurora</h2>
+        {/* Not cached to disk — it is a forecast of a transient, superseded
+            every five minutes. Offline this stays empty rather than showing an
+            oval from whenever the app last had a connection. */}
+        <p className={styles.note}>waiting for the first reading from NOAA SWPC</p>
+      </div>
+    );
+  }
+
+  const stale = auroraIsStale(grid, nowMs);
+  const peak = auroraPeak(grid);
+  const observed = new Date(grid.observedAtUtc);
+
+  return (
+    <div className={styles.section}>
+      <h2 className={styles.heading}>Aurora · peak {peak}%</h2>
+
+      <div className={styles.fieldRamp} aria-hidden="true">
+        {auroraLegendStops().map((stop) => (
+          <span
+            key={stop.value}
+            className={styles.fieldRampStep}
+            style={{ backgroundColor: stop.color }}
+          />
+        ))}
+      </div>
+
+      <div className={styles.fieldScaleRow}>
+        <span>low</span>
+        <span>chance of visible aurora</span>
+        <span>{AURORA_MAX_PROBABILITY}%+</span>
+      </div>
+
+      <p className={styles.note}>
+        {stale
+          ? `reading is ${formatDuration(nowMs - observed.getTime())} old — may be out of date`
+          : `observed ${formatDuration(nowMs - observed.getTime())} ago · forecast for ${new Date(
+              grid.forecastForUtc,
+            ).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`}
+      </p>
+
+      {/* Only worth saying while the playhead is actually elsewhere. */}
+      {playheadMs !== null && (
+        <p className={styles.note}>live only — does not follow the scrubber</p>
+      )}
     </div>
   );
 }

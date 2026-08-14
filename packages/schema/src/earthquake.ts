@@ -314,3 +314,83 @@ export interface BoundingBox {
   minLat: number;
   maxLat: number;
 }
+
+/**
+ * Playback speeds, in simulated hours per real second.
+ *
+ * ## Why this is a ladder rather than three constants
+ *
+ * The old set was `[1, 6, 24]`, chosen when the longest window was 30 days —
+ * where it is exactly right: 30d plays through in 12 min / 2 min / 30 s. Then
+ * the archive spans shipped and nothing here moved with them. Measured
+ * playthrough times at those speeds:
+ *
+ *     30d    12min   2min    30s     <- fine, what it was designed for
+ *     1y     2.4h    24min   6min
+ *     10y    24.4h   4.1h    61min
+ *     130y   316h    52.8h   13.2h   <- two days at the default
+ *
+ * So playback across the archive was not slow, it was unusable — the playhead
+ * genuinely moves, it just takes days to cross the span. It looked like a bug
+ * in whatever layer you happened to be watching.
+ *
+ * The ladder runs from an hour per second to a decade per second. Which three
+ * are *offered* depends on the window, exactly as `magnitudeFloorsForWindow`
+ * decides which floors are offered — same idea, same reason: an option that
+ * cannot produce a sensible result should not be on screen.
+ */
+export const PLAYBACK_SPEED_LADDER = [1, 6, 24, 168, 720, 8766, 43_830, 87_660] as const;
+
+/** Shortest and longest playthrough worth offering, in real seconds. */
+const MIN_PLAYTHROUGH_SECONDS = 5;
+const MAX_PLAYTHROUGH_SECONDS = 900;
+
+/**
+ * The speeds worth offering for a window: those that cross it in between five
+ * seconds and fifteen minutes.
+ *
+ * Derived rather than tabulated, so adding an archive span cannot leave the
+ * speed control stale — which is the failure this replaces.
+ */
+export function playbackSpeedsForWindow(windowHours: number): number[] {
+  const offered = PLAYBACK_SPEED_LADDER.filter((speed) => {
+    const seconds = windowHours / speed;
+    return seconds >= MIN_PLAYTHROUGH_SECONDS && seconds <= MAX_PLAYTHROUGH_SECONDS;
+  });
+
+  // A window outside the ladder's reach still needs controls; fall back to the
+  // fastest available rather than rendering an empty group.
+  if (offered.length === 0) {
+    return [PLAYBACK_SPEED_LADDER[PLAYBACK_SPEED_LADDER.length - 1] ?? 1];
+  }
+  return [...offered];
+}
+
+/**
+ * A speed as a human-readable rate.
+ *
+ * "8766h/s" is technically what the ladder holds and tells a reader nothing;
+ * "1y/s" is the same number in the unit the span is actually measured in.
+ */
+export function playbackSpeedLabel(hoursPerSecond: number): string {
+  if (hoursPerSecond >= 8766) {
+    const years = hoursPerSecond / 8766;
+    return `${years % 1 === 0 ? years.toString() : years.toFixed(1)}y/s`;
+  }
+  if (hoursPerSecond >= 720) return `${Math.round(hoursPerSecond / 720).toString()}mo/s`;
+  if (hoursPerSecond >= 168) return `${Math.round(hoursPerSecond / 168).toString()}w/s`;
+  if (hoursPerSecond >= 24) return `${Math.round(hoursPerSecond / 24).toString()}d/s`;
+  return `${hoursPerSecond.toString()}h/s`;
+}
+
+/**
+ * The speed to use for a window, given what was already selected.
+ *
+ * Keeps the current choice when it is still offered, so changing span doesn't
+ * silently reset a preference; otherwise takes the middle of what is offered.
+ */
+export function playbackSpeedForWindow(windowHours: number, current: number): number {
+  const offered = playbackSpeedsForWindow(windowHours);
+  if (offered.includes(current)) return current;
+  return offered[Math.floor(offered.length / 2)] ?? current;
+}

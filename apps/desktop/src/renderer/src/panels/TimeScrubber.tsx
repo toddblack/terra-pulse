@@ -1,12 +1,14 @@
 import { useMemo } from 'react';
+import { playbackSpeedLabel, playbackSpeedsForWindow } from '@terra-pulse/schema';
 import {
-  PLAYBACK_SPEEDS_HOURS_PER_SECOND,
   useEarthquakeStore,
   windowStartMs,
 } from '../state/useEarthquakeStore';
 import { useEarthquakesUpToPlayhead } from '../globe/useVisibleEarthquakes';
 import { useNow } from '../globe/useNow';
+import { SpaceWeatherTrack } from './SpaceWeatherTrack';
 import styles from './TimeScrubber.module.css';
+import { formatAgo } from './time-labels';
 
 /**
  * Playhead label. Shows a clock time plus how far back that is, because
@@ -17,14 +19,21 @@ function formatPlayhead(playheadMs: number, nowMs: number): string {
     hour: '2-digit',
     minute: '2-digit',
   });
-  const hoursAgo = Math.round((nowMs - playheadMs) / (60 * 60 * 1000));
+  const elapsed = nowMs - playheadMs;
+  if (elapsed <= 0) return `${clock} · now`;
 
-  if (hoursAgo <= 0) return `${clock} · now`;
-  if (hoursAgo < 24) return `${clock} · ${hoursAgo}h ago`;
+  // Past a week the clock time stops meaning anything — nobody is tracking
+  // 14:20 on a day in 1974 — so the date replaces it.
+  if (elapsed >= 7 * 24 * 60 * 60 * 1000) {
+    const date = new Date(playheadMs).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+    return `${date} · ${formatAgo(elapsed)}`;
+  }
 
-  const days = Math.floor(hoursAgo / 24);
-  const hours = hoursAgo % 24;
-  return `${clock} · ${days}d ${hours}h ago`;
+  return `${clock} · ${formatAgo(elapsed)}`;
 }
 
 export function TimeScrubber() {
@@ -51,6 +60,9 @@ export function TimeScrubber() {
 
   return (
     <div id="time-scrubber" className={styles.scrubber}>
+      {/* Shares this panel's width so its time axis is the scrubber's. */}
+      <SpaceWeatherTrack />
+
       <div className={styles.controls}>
         <button
           type="button"
@@ -72,7 +84,7 @@ export function TimeScrubber() {
         </div>
 
         <div className={styles.speeds} role="group" aria-label="Playback speed">
-          {PLAYBACK_SPEEDS_HOURS_PER_SECOND.map((speed) => (
+          {playbackSpeedsForWindow(windowHours).map((speed) => (
             <button
               key={speed}
               type="button"
@@ -84,9 +96,11 @@ export function TimeScrubber() {
               }
               onClick={() => setPlaybackSpeed(speed)}
               aria-pressed={speed === playbackSpeed}
-              title={`${speed} simulated hours per second`}
+              title={`${speed} simulated hours per second — crosses this window in ${Math.round(
+                windowHours / speed,
+              ).toString()}s`}
             >
-              {speed}h/s
+              {playbackSpeedLabel(speed)}
             </button>
           ))}
         </div>
@@ -124,7 +138,7 @@ export function TimeScrubber() {
       />
 
       <div className={styles.axis}>
-        <span>{windowHours >= 24 ? `${Math.round(windowHours / 24)}d ago` : `${windowHours}h ago`}</span>
+        <span>{formatAgo(windowHours * 60 * 60 * 1000)}</span>
         <span>now</span>
       </div>
     </div>

@@ -259,4 +259,38 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    id: 6,
+    name: 'space_weather',
+    // Hourly Kp and Dst, from 1963. Unlike the auroral oval — which is a
+    // nowcast nobody archives, and so is never written to disk — these are
+    // records: true when measured and true forever after, and the data H4 is
+    // registered against.
+    //
+    // ## Why both columns are nullable, independently
+    //
+    // Kp and Dst come from different observatory networks with different
+    // reporting lags, and OMNI carries real gaps. A missing hour has to stay
+    // missing: filling it with zero would read as "quiet", which is a
+    // measurement nobody made, and it would bias any rate computed over it.
+    //
+    // ## Why the hour is the primary key
+    //
+    // Both indices are defined per UTC hour, so the hour *is* the identity.
+    // That makes re-ingest idempotent — a year refetched because its data was
+    // provisional overwrites rather than duplicating — with no surrogate id and
+    // no dedupe pass.
+    //
+    // Adds only, so the create-copy-drop-rename pattern at the top of this file
+    // doesn't apply.
+    sql: `
+      CREATE TABLE space_weather (
+        time_utc TEXT PRIMARY KEY,
+        kp REAL,
+        dst INTEGER
+      );
+
+      CREATE INDEX idx_space_weather_time ON space_weather (time_utc);
+    `,
+  },
 ];

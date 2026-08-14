@@ -11,6 +11,8 @@ import { createEarthquakeLayer } from './earthquake-layer';
 import { createPlateBoundariesLayer } from './plate-boundaries';
 import { createSubductionZonesLayer } from './subduction-zones';
 import { createActiveFaultsLayer } from './active-faults';
+import { createGeomagneticFieldLayer } from './geomagnetic-field';
+import { createAuroraLayer } from './aurora-layer';
 
 /**
  * The single source of truth for which layers exist.
@@ -124,6 +126,30 @@ export const OVERLAY_REGISTRATIONS: readonly OverlayRegistration[] = [
     category: 'overlay',
     defaultVisible: false,
     create: (context) => createActiveFaultsLayer(context.backdropTone),
+  },
+  {
+    id: 'geomagnetic-field',
+    label: 'Magnetic field (IGRF)',
+    category: 'overlay',
+    // Off by default: it is a full-globe raster, and a data surface covering
+    // the whole planet should be something you asked for rather than the first
+    // thing you see.
+    defaultVisible: false,
+    // Computed from a vendored model, not from the catalogue — so a poll must
+    // not rebuild it. It does follow the playhead, but through `setTimeWindow`,
+    // which is the cheap channel.
+    create: (context) => createGeomagneticFieldLayer(context.backdropTone),
+  },
+  {
+    id: 'aurora',
+    label: 'Aurora (live)',
+    category: 'overlay',
+    // Off by default like the field: a full-globe overlay should be asked for.
+    defaultVisible: false,
+    // Its data arrives from main's space-weather poll, not the catalogue, so it
+    // must not be rebuilt when earthquakes land. The grid is pushed in through
+    // `setGrid` — the same push-don't-rebuild channel the field quantity uses.
+    create: () => createAuroraLayer(),
   },
 ];
 
