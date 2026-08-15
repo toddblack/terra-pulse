@@ -184,7 +184,7 @@ export function createSpaceWeatherController(
  * name, same units, different quantity — the same trap that keeps SWPC's
  * modelled Dst out of this app. Now that GFZ publishes its own tail there is no
  * reason to blend an estimate into a definitive series, least of all one that
- * H4 is registered against.
+ * H4c is registered against.
  */
 export function startKpPolling(
   db: DatabaseSync,

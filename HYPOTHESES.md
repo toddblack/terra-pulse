@@ -108,38 +108,68 @@ Applied to all hypotheses unless an entry overrides them.
 | Field | Value |
 |---|---|
 | **Registered** | 2026-07-24 |
-| **Status** | Not yet run |
+| **Status** | **Superseded by H4c on 2026-08-14 — never run** |
 | **Statement** | Elevated planetary geomagnetic activity is followed by an elevated global M5.0+ rate. |
 | **Index source** | SWPC planetary Kp; Kyoto Dst |
 | **Trigger threshold** | Kp ≥ 6 **or** Dst ≤ −100 nT (registered as two separate trigger definitions) |
 | **Lag windows** | 0–24h, 24–48h, 48–72h (3 windows) |
+| **Tests in family** | 6 — **withdrawn unrun**, see the matrix note |
+| **Mechanism plausibility** | Low |
+| **Result** | — (never run) |
+
+**Withdrawn because its named data source is no longer what the app stores.**
+Every registered parameter above is left exactly as written, per rule 3 — only
+`Status`, which is the field that tracks lifecycle rather than a registered
+parameter, has moved. The replacement is H4c immediately below.
+
+There is **no result here to hide**: H4 was never run, so rule 5 is not in play.
+Its 6 tests transfer to H4c rather than adding to the matrix; see the note under
+the Total Test Matrix for why that is not a way of quietly shrinking the
+denominator.
+
+### H4c — Global geomagnetic disturbance (GFZ Kp)
+
+| Field | Value |
+|---|---|
+| **Registered** | 2026-08-14 |
+| **Status** | Not yet run |
+| **Supersedes** | H4, withdrawn unrun on the same date |
+| **Statement** | Elevated planetary geomagnetic activity is followed by an elevated global M5.0+ rate. |
+| **Index source** | **GFZ Potsdam planetary Kp** (the definitive IAGA index); Kyoto Dst via NASA OMNI2 |
+| **Trigger threshold** | Kp ≥ 6 **or** Dst ≤ −100 nT (registered as two separate trigger definitions) |
+| **Lag windows** | 0–24h, 24–48h, 48–72h (3 windows) |
+| **Time range** | 1963-01-01 onward — the span where *both* indices exist |
 | **Tests in family** | 6 (2 trigger definitions × 3 lags) |
 | **Mechanism plausibility** | Low |
 | **Result** | — |
 
-**Source amendment, 2026-08-14 — Kp now read from GFZ Potsdam, not SWPC.**
-Recorded here rather than by editing the row above, per rule 3. **H4 has not
-been run**, so no result informed this and the test count is unchanged at 6.
+**Why this exists.** H4 named "SWPC planetary Kp", which is NOAA's *estimated*
+index from eight stations. The app now stores the definitive IAGA index from GFZ
+Potsdam, published from thirteen observatories and the source SWPC and OMNI both
+ultimately derive from. Same registered quantity, better provenance — but the
+original wording named a publisher, so it is replaced rather than edited.
 
-The registered phrase "SWPC planetary Kp" named NOAA's *estimated* planetary K
-index, derived from eight stations. The app now stores the definitive IAGA index
-from GFZ Potsdam, which publishes Kp from thirteen observatories and is the
-source SWPC and OMNI both ultimately derive from. This is the same registered
-quantity at better provenance, not a different one — but the original wording
-named a specific publisher, so the substitution is logged.
+**Nothing here was chosen after seeing a result.** H4 was never run. The change
+was forced by an ingest decision (GFZ became reachable, and mixing an estimate
+into a definitive series is the same trap that keeps SWPC's modelled Dst out of
+this app), not by anything the data showed.
 
-Two consequences worth stating before the test runs:
+Three parameters worth stating explicitly, since rule 2 requires it:
 
-- **The trigger is unaffected.** GFZ writes Kp in thirds (`5.667`) where OMNI
-  wrote rounded tenths (`5.7`). The two forms differ by at most 0.033 and agree
-  *exactly* on the integers, and the registered trigger is Kp ≥ 6 — an integer.
-  No hour can change classification.
-- **The usable record grows from 1963 to 1932**, since GFZ reaches thirty-one
-  years further back than OMNI. Whether H4 actually uses the pre-1963 span is a
-  separate decision and is **not** registered here: the earthquake catalogue's
-  own M4.5 completeness floor begins in 1970, so extending the Kp axis alone
-  does not extend the testable overlap. Any use of the deeper span must be
-  registered as its own entry with its completeness handling stated.
+- **The trigger cannot have moved.** GFZ writes Kp in thirds (`5.667`) where
+  OMNI wrote rounded tenths (`5.7`). The two differ by at most 0.033 and agree
+  *exactly* on the integers — and the trigger is Kp ≥ 6, an integer. No hour in
+  the record can change classification between the two encodings. Verified
+  against the stored series: 28 distinct Kp values, all on the GFZ scale.
+- **The time range is 1963 onward, and is registered here rather than left
+  implied.** GFZ carries Kp back to 1932, but Dst begins in 1963, and one of the
+  two trigger definitions needs Dst. Running the Kp arm over a longer span than
+  the Dst arm would make the two arms answer over different epochs while sharing
+  a denominator.
+- **The pre-1963 Kp span is deliberately not claimed.** Using it would need its
+  own entry with its own completeness handling: the earthquake catalogue's M4.5
+  completeness begins in 1970 and M5.5 is the only floor flat since then, so a
+  longer Kp axis does not by itself buy testable overlap.
 
 ### H4b — Local magnetometer disturbance and local seismicity
 
@@ -212,11 +242,24 @@ not as a discovery.
 | H1 | 4 |
 | H2 | 2 |
 | H3 | 4 |
-| H4 | 6 |
+| ~~H4~~ | 0 — withdrawn unrun 2026-08-14, replaced by H4c |
+| H4c | 6 |
 | H4b | 2 |
 | H5 | 1 |
 | H6 | 2 |
 | **Total** | **21** |
+
+**Why the total did not move when H4c was added.** H4c is not a new question —
+it is H4 with a corrected data source, registered because rule 3 forbids editing
+a registered parameter. Counting both would put 27 in the denominator and make
+**every other hypothesis in this file harder to pass** in exchange for a
+provenance fix, which is a real cost paid for nothing.
+
+The condition that makes this legitimate, and the one to check before ever doing
+it again: **H4 was never run.** No p-value was computed under it, so nothing is
+being dropped from the correction — there is no result, not a discarded one.
+A family that *has* been run keeps its tests in the denominator forever, whatever
+happens to it afterwards; that is rule 5, and it is not what happened here.
 
 At an uncorrected threshold of p < 0.05, roughly **1 false positive is expected
 from noise alone** across this matrix. FDR correction is applied across all 21.

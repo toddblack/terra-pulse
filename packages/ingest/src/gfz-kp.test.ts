@@ -41,7 +41,7 @@ describe('parseGfzKp', () => {
 
   it('keeps integer Kp exact, which is what every threshold sits on', () => {
     // The two conventions disagree by at most 0.033 and agree exactly on the
-    // integers. KP_STORM_THRESHOLD is 5 and H4's registered trigger is 6, so a
+    // integers. KP_STORM_THRESHOLD is 5 and H4c's registered trigger is 6, so a
     // database still holding OMNI-era rows is imprecise but never misclassified.
     const kp = parseGfzKp(QUEBEC_13).map((sample) => sample.kp);
     expect(kp).toContain(9);

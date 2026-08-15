@@ -16,8 +16,8 @@ const at = (hour: number, kp: number | null, dst: number | null): SpaceWeatherSa
 });
 
 describe('storm thresholds', () => {
-  it('keeps the display threshold clear of H4s registered trigger', () => {
-    // H4 tests Kp >= 6. This is 5 (NOAA G1) and exists only for emphasis on the
+  it('keeps the display threshold clear of H4cs registered trigger', () => {
+    // H4c tests Kp >= 6. This is 5 (NOAA G1) and exists only for emphasis on the
     // track. A display threshold drifting into the analysis is exactly the
     // free-parameter-after-the-fact non-negotiable #3 forbids.
     expect(KP_STORM_THRESHOLD).toBeLessThan(6);
