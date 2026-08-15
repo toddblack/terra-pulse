@@ -30,6 +30,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The hovered interval's numbers. Brighter than the resting caption because
+   the reader asked for these specifically — values lead, labels follow. */
+.readout {
+  color: rgb(226 232 240);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .stormText {
   color: rgb(248 113 113);
 }
@@ -40,13 +49,38 @@
   border-bottom: 1px solid rgb(255 255 255 / 12%);
 }
 
-/* Kp 5 of 9 — NOAA's G1 storm level. */
+.plot:focus-visible {
+  outline: 1px solid rgb(148 163 184 / 60%);
+  outline-offset: 1px;
+}
+
+/* Kp 5 of 9 — NOAA's G1 storm level. Dashed, unlike the solid time ticks:
+   one is an annotation the reader measures against, the other is the axis. */
 .stormLine {
   position: absolute;
   right: 0;
   bottom: 55.5%;
   left: 0;
   border-top: 1px dashed rgb(255 255 255 / 14%);
+}
+
+/* Time gridlines. Hairline, solid, and well below the data in weight — they
+   exist to locate a spike, not to be looked at. */
+.tickLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: rgb(255 255 255 / 7%);
+}
+
+/* The hover column. Brighter than a gridline and dimmer than any mark. */
+.guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: rgb(226 232 240 / 32%);
 }
 
 .bar {
@@ -57,7 +91,42 @@
 }
 
 /* Storm-level hours get the app's existing "this is the notable one" red,
-   the same hue the recent-quake stroke uses. */
+   the same hue the recent-quake stroke uses. On the bar this means the interval
+   *sat* at storm level, which is rarer and louder than merely touching it. */
 .barStormy {
   background-color: rgb(248 113 113 / 90%);
+}
+
+.barHovered {
+  background-color: rgb(125 211 252 / 95%);
+}
+
+/* The interval's worst hour. Same hue as the bar because it is the same
+   measurement — two statistics of one series, not two series — carried at
+   higher opacity to hold its own at 2px tall against a full column. */
+.cap {
+  position: absolute;
+  height: 2px;
+  border-radius: 1px;
+  background-color: rgb(56 189 248 / 95%);
+}
+
+.capStormy {
+  background-color: rgb(248 113 113);
+}
+
+.axis {
+  position: relative;
+  height: 0.7rem;
+}
+
+/* The horizontal transform is set per tick — centred, except at the ends where
+   a centred label overhangs the track. See TrackTick.anchor. */
+.tick {
+  position: absolute;
+  top: 0;
+  color: rgb(100 116 139);
+  font-size: 0.5625rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }

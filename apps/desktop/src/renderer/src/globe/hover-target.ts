@@ -19,6 +19,16 @@ export interface HoverTarget {
   title: string;
   /** One line of supporting detail, or null when there is nothing to add. */
   detail: string | null;
+  /**
+   * When it happened, for the things that happened at a time.
+   *
+   * The **instant**, not a formatted age. Turning it into "3h ago" needs a
+   * clock, and reading one here would freeze the answer at the moment the
+   * pointer moved — so the tooltip formats it against `useNow`, which is also
+   * the rule the rest of the app follows. Null for faults and plate
+   * boundaries, which are features rather than events.
+   */
+  timeUtc: string | null;
 }
 
 /** Magnitude and place — what a reader wants before deciding to click. */
@@ -31,6 +41,7 @@ export function describeEarthquake(event: EarthquakeEvent): HoverTarget {
     // Place can be long ("281 km SSE of Kamaishi, Japan"); the tooltip's CSS
     // truncates rather than wrapping to three lines under the pointer.
     detail: `${event.place} · ${depth}`,
+    timeUtc: event.timeUtc,
   };
 }
 
@@ -53,6 +64,8 @@ export function describeFault(fault: FaultRecord): HoverTarget {
     kind: 'fault',
     title: fault.n ?? 'Unnamed fault',
     detail: parts.length > 0 ? parts.join(' · ') : null,
+    // A mapped trace is not an event and has no "ago".
+    timeUtc: null,
   };
 }
 
@@ -67,6 +80,7 @@ export function describeBoundary(pair: string, boundaryClass: string): HoverTarg
     kind: 'boundary',
     title: plateBoundaryLabel(pair),
     detail: plateClassLabel(boundaryClass),
+    timeUtc: null,
   };
 }
 

@@ -50,6 +50,13 @@ describe('describeEarthquake', () => {
   it('keeps one decimal on magnitude', () => {
     expect(describeEarthquake(quake({ magnitude: 7 })).title).toBe('M7.0');
   });
+
+  it('carries the instant, not a formatted age', () => {
+    // Formatting here would need a clock, and the answer would then freeze at
+    // the moment the pointer last moved. The tooltip formats it against
+    // `useNow` instead, which is also the rule the rest of the app follows.
+    expect(describeEarthquake(quake()).timeUtc).toBe('2026-01-01T00:00:00.000Z');
+  });
 });
 
 describe('describeFault', () => {
@@ -82,6 +89,13 @@ describe('describeFault', () => {
 
   it('does not mistake a zero slip rate for a missing one', () => {
     expect(describeFault({ z: 0, p: [], s: 0 }).detail).toBe('0 mm/yr');
+  });
+
+  it('has no age, because a mapped trace is not an event', () => {
+    // The tooltip renders nothing rather than "just now" — a fault has no
+    // instant to be a duration from.
+    expect(describeFault({ z: 0, p: [], s: 0 }).timeUtc).toBeNull();
+    expect(describeBoundary('PA\\OK', 'SUB').timeUtc).toBeNull();
   });
 });
 
