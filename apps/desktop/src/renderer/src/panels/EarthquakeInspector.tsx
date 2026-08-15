@@ -8,6 +8,8 @@ import { CollapsibleSection } from './CollapsibleSection';
 import { NearestFaultBody } from './NearestFault';
 import { RegionalRecurrenceBody } from './RegionalRecurrence';
 import { hasSequencePanel } from './useAftershockSequence';
+import { useNow } from '../globe/useNow';
+import { formatAgoFrom } from './time-labels';
 import styles from './EarthquakeInspector.module.css';
 
 function formatUtc(iso: string): string {
@@ -36,8 +38,13 @@ export function EarthquakeInspector() {
   const hideAntipode = useEarthquakeStore((state) => state.hideAntipode);
   const antipodeEventId = useEarthquakeStore((state) => state.antipodeEventId);
   const antipodeActive = event !== null && antipodeEventId === event.id;
+  // Wall clock, not the playhead — the same basis as the event list and the
+  // hover tooltip, so the three cannot disagree about one event's age.
+  const nowMs = useNow();
 
   if (selectedEventId === null || event === null) return null;
+
+  const age = formatAgoFrom(event.timeUtc, nowMs);
 
   const openUsgsPage = () => {
     void window.terraPulse.shell.openExternal(event.url);
@@ -57,6 +64,17 @@ export function EarthquakeInspector() {
             {/* Magnitude types are not interchangeable — mb, mww, ml and md
                 are measured differently, so the panel always says which. */}
             <span className={styles.magnitudeType}>{event.magnitudeType}</span>
+            {/* Age rides with the magnitude rather than the close button's
+                corner: it belongs to the event's identity, and muted text
+                beside a × reads as button chrome and invites misclicks. */}
+            {age !== null && (
+              <span className={styles.headerAge}>
+                <span className={styles.headerSeparator} aria-hidden="true">
+                  ·
+                </span>
+                {age}
+              </span>
+            )}
           </div>
           <button
             id="inspector-close"
@@ -75,6 +93,9 @@ export function EarthquakeInspector() {
           <div className={styles.field}>
             <dt className={styles.term}>Origin time</dt>
             <dd className={styles.value}>
+              {/* No age here — it lives in the header, with the magnitude and
+                  place it identifies the event alongside. Repeating it two
+                  lines apart in a panel this short is noise, not redundancy. */}
               {formatUtc(event.timeUtc)}
               <span className={styles.subValue}>{formatLocal(event.timeUtc)}</span>
             </dd>

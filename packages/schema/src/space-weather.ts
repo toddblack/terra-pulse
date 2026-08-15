@@ -81,48 +81,104 @@ export function isStormy(sample: SpaceWeatherSample): boolean {
 }
 
 /**
- * Reduces a series to at most `buckets` points for drawing.
+ * One drawn interval — a span of hours reduced to the two numbers worth showing.
+ *
+ * Two, not one, because either alone misleads at width. The peak alone paints a
+ * decade as permanently stormy: every bucket reports its worst hour, so a track
+ * of quiet years with one storm each looks identical to a track of continuous
+ * disturbance. The typical alone loses the storms entirely, which is the thing
+ * the track exists to show.
+ */
+export interface SpaceWeatherBucket {
+  /** First hour in the bucket — what the mark is positioned by. */
+  timeUtc: string;
+  /** Highest Kp in the span. Null when no hour in it reported one. */
+  peakKp: number | null;
+  /** Median Kp — the level the span mostly sat at. */
+  typicalKp: number | null;
+  /** Most negative Dst in the span, which is the disturbed direction. */
+  peakDst: number | null;
+  /** Hours actually holding a sample, so a readout can say how much it covers. */
+  hours: number;
+}
+
+/**
+ * Reduces a series to at most `buckets` intervals for drawing.
  *
  * A decade is ~87,600 hourly samples against a track a few hundred pixels wide,
- * so something has to give. This takes the **extreme** of each bucket rather
- * than the mean, because a storm is a spike a few hours long: averaging a
- * decade into 300 buckets would flatten every storm in the record into the
- * background and produce a chart whose whole subject is missing.
+ * so something has to give.
  *
- * "Extreme" means the largest Kp and the *most negative* Dst, since that is the
- * direction each index moves when disturbed.
+ * ## Never the mean — and the median is not a loophole
+ *
+ * Averaging a decade into 300 buckets would flatten every storm in the record
+ * into the background, producing a chart whose whole subject is missing. That
+ * is why the peak is carried.
+ *
+ * There is a second and independent reason the mean is out: **Kp is
+ * quasi-logarithmic**, so the arithmetic mean of two Kp values is not a
+ * meaningful quantity at all. The linear equivalent is `ap`, which is what any
+ * future analysis wanting an average level must use.
+ *
+ * The median is fine, and precisely because it is an **order statistic** — it
+ * selects an observed value rather than computing a new one, so it never does
+ * arithmetic the index doesn't support. For an even count it takes the lower of
+ * the two middle values rather than splitting them, which keeps the answer on
+ * Kp's own 28-value scale instead of inventing a reading between two rungs.
  */
 export function downsampleSpaceWeather(
   samples: readonly SpaceWeatherSample[],
   buckets: number,
-): SpaceWeatherSample[] {
+): SpaceWeatherBucket[] {
   if (buckets <= 0 || samples.length === 0) return [];
-  if (samples.length <= buckets) return [...samples];
 
-  const out: SpaceWeatherSample[] = [];
-  const size = samples.length / buckets;
+  const out: SpaceWeatherBucket[] = [];
+  const size = samples.length / Math.min(buckets, samples.length);
 
-  for (let b = 0; b < buckets; b += 1) {
+  for (let b = 0; b < Math.min(buckets, samples.length); b += 1) {
     const start = Math.floor(b * size);
     const end = Math.min(Math.floor((b + 1) * size), samples.length);
     if (end <= start) continue;
 
-    let kp: number | null = null;
-    let dst: number | null = null;
+    let peakKp: number | null = null;
+    let peakDst: number | null = null;
+    const kpValues: number[] = [];
 
     for (let i = start; i < end; i += 1) {
       const sample = samples[i];
       if (!sample) continue;
-      if (sample.kp !== null && (kp === null || sample.kp > kp)) kp = sample.kp;
-      if (sample.dst !== null && (dst === null || sample.dst < dst)) dst = sample.dst;
+      if (sample.kp !== null) {
+        kpValues.push(sample.kp);
+        if (peakKp === null || sample.kp > peakKp) peakKp = sample.kp;
+      }
+      if (sample.dst !== null && (peakDst === null || sample.dst < peakDst)) {
+        peakDst = sample.dst;
+      }
     }
 
-    // The bucket is labelled with its first hour, so a point's position on the
-    // axis is a time that actually exists rather than an interpolated midpoint.
-    out.push({ timeUtc: samples[start]?.timeUtc ?? '', kp, dst });
+    out.push({
+      // The bucket is labelled with its first hour, so a mark's position on the
+      // axis is a time that actually exists rather than an interpolated midpoint.
+      timeUtc: samples[start]?.timeUtc ?? '',
+      peakKp,
+      typicalKp: lowerMedian(kpValues),
+      peakDst,
+      hours: end - start,
+    });
   }
 
   return out;
+}
+
+/**
+ * The lower of the two middle values, or the middle one for an odd count.
+ *
+ * Deliberately not the mean of the middle pair: see the note above on Kp being
+ * quasi-logarithmic. This always returns a value that was actually observed.
+ */
+function lowerMedian(values: readonly number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor((sorted.length - 1) / 2)] ?? null;
 }
 
 /**

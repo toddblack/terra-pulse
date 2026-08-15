@@ -1,4 +1,6 @@
 import { useGlobeStore } from '../state/useGlobeStore';
+import { useNow } from '../globe/useNow';
+import { formatAgoFrom } from './time-labels';
 import styles from './HoverTooltip.module.css';
 
 /**
@@ -14,7 +16,14 @@ import styles from './HoverTooltip.module.css';
  */
 export function HoverTooltip() {
   const hover = useGlobeStore((state) => state.hover);
+  // Measured from the wall clock rather than the playhead, matching the event
+  // list — the two describe the same events and must not disagree. Never
+  // `Date.now()` in render: nothing re-renders when a clock ticks.
+  const nowMs = useNow();
+
   if (hover === null) return null;
+
+  const age = formatAgoFrom(hover.target.timeUtc, nowMs);
 
   // Flip before the tooltip would overflow. 260px is its max width plus the
   // offset; measuring the real element would need a layout pass per mouse move.
@@ -34,7 +43,14 @@ export function HoverTooltip() {
       // pointer movement.
       aria-hidden="true"
     >
-      <span className={styles.title}>{hover.target.title}</span>
+      {/* Title left, age right. The age is short and fixed-width-ish, so it
+          sits opposite rather than after the title — which keeps it in the same
+          place whatever the magnitude, and leaves the long place string a full
+          line of its own below. */}
+      <span className={styles.head}>
+        <span className={styles.title}>{hover.target.title}</span>
+        {age !== null && <span className={styles.age}>{age}</span>}
+      </span>
       {hover.target.detail !== null && (
         <span className={styles.detail}>{hover.target.detail}</span>
       )}

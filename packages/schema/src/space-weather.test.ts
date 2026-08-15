@@ -46,9 +46,14 @@ describe('storm thresholds', () => {
 });
 
 describe('downsampleSpaceWeather', () => {
-  it('returns the series untouched when it already fits', () => {
-    const samples = [at(0, 1, -5), at(1, 2, -8)];
-    expect(downsampleSpaceWeather(samples, 10)).toEqual(samples);
+  it('gives every sample its own bucket when the series already fits', () => {
+    const buckets = downsampleSpaceWeather([at(0, 1, -5), at(1, 2, -8)], 10);
+    expect(buckets).toHaveLength(2);
+    expect(buckets[0]?.peakKp).toBe(1);
+    expect(buckets[0]?.typicalKp).toBe(1);
+    expect(buckets[1]?.peakDst).toBe(-8);
+    // A one-hour bucket has nothing to summarise, so both marks coincide.
+    expect(buckets[1]?.hours).toBe(1);
   });
 
   it('keeps the extreme of each bucket, not the mean', () => {
@@ -60,16 +65,49 @@ describe('downsampleSpaceWeather', () => {
     withSpike[7] = at(7, 9, -589);
 
     const [first, second] = downsampleSpaceWeather(withSpike, 2);
-    expect(first?.kp).toBe(9);
-    expect(first?.dst).toBe(-589);
+    expect(first?.peakKp).toBe(9);
+    expect(first?.peakDst).toBe(-589);
     // The quiet half stays quiet.
-    expect(second?.kp).toBe(1);
-    expect(second?.dst).toBe(-5);
+    expect(second?.peakKp).toBe(1);
+    expect(second?.peakDst).toBe(-5);
+  });
+
+  it('carries a typical alongside the peak, so one spike does not paint the span', () => {
+    // The failure this fixes: with the peak alone, a decade of quiet years each
+    // containing one storm draws identically to a decade of continuous
+    // disturbance. The typical is what separates them.
+    const quiet = Array.from({ length: 20 }, (_, i) => at(i, 1, -5));
+    const withSpike = [...quiet];
+    withSpike[7] = at(7, 9, -589);
+
+    const [first] = downsampleSpaceWeather(withSpike, 2);
+    expect(first?.peakKp).toBe(9);
+    expect(first?.typicalKp).toBe(1);
+  });
+
+  it('takes a median that was actually observed, never a mean', () => {
+    // Kp is quasi-logarithmic, so the mean of two Kp values is not a meaningful
+    // quantity — ap is the linear equivalent. The median is an order statistic:
+    // it selects a reading rather than computing a new one.
+    const even = downsampleSpaceWeather([at(0, 1, null), at(1, 8, null)], 1);
+    // Not 4.5, which is neither observed nor a legal Kp.
+    expect(even[0]?.typicalKp).toBe(1);
+
+    const odd = downsampleSpaceWeather([at(0, 1, null), at(1, 8, null), at(2, 2, null)], 1);
+    expect(odd[0]?.typicalKp).toBe(2);
+  });
+
+  it('keeps the median on Kp own scale', () => {
+    // Every value it can return is one of the 28 published Kp values, because
+    // it only ever selects one of its inputs.
+    const samples = [at(0, 0.333, null), at(1, 0.667, null), at(2, 3.333, null), at(3, 4, null)];
+    const typical = downsampleSpaceWeather(samples, 1)[0]?.typicalKp;
+    expect(samples.some((s) => s.kp === typical)).toBe(true);
   });
 
   it('takes the most negative Dst, because that is the disturbed direction', () => {
     const samples = [at(0, null, 20), at(1, null, -300), at(2, null, 10)];
-    expect(downsampleSpaceWeather(samples, 1)[0]?.dst).toBe(-300);
+    expect(downsampleSpaceWeather(samples, 1)[0]?.peakDst).toBe(-300);
   });
 
   it('labels a bucket with a time that actually exists', () => {
@@ -88,8 +126,8 @@ describe('downsampleSpaceWeather', () => {
   it('survives a series where one index is entirely missing', () => {
     const samples = Array.from({ length: 50 }, (_, i) => at(i % 24, null, -i));
     const buckets = downsampleSpaceWeather(samples, 5);
-    expect(buckets.every((b) => b.kp === null)).toBe(true);
-    expect(buckets.every((b) => b.dst !== null)).toBe(true);
+    expect(buckets.every((b) => b.peakKp === null && b.typicalKp === null)).toBe(true);
+    expect(buckets.every((b) => b.peakDst !== null)).toBe(true);
   });
 
   it('handles the empty and degenerate cases', () => {

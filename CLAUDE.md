@@ -863,6 +863,55 @@ weather, and the answer to "the aurora doesn't animate": these do.
   a spike a few hours long; averaging a decade into 300 buckets flattens every
   storm in the record into the background and produces a chart whose entire
   subject is missing.
+- **Each interval now draws twice — a bar for the typical, a cap for the peak —
+  because the extreme alone lies at width.** Every bucket reporting its worst
+  hour makes a decade of quiet years with one storm each look *identical* to a
+  decade of continuous disturbance. The gap between bar and cap is the
+  interval's variability, read directly; at short windows a bucket is one hour,
+  the two coincide, and the track degenerates to what it drew before.
+  - The cap is a **2px line, not a taller bar**, so a track of brief storms
+    doesn't read as one long one — it adds a line's ink instead of a column's.
+  - **Same hue for both**: they are two statistics of one measurement, not two
+    series. The cap carries higher opacity only to hold its own at 2px.
+  - The bar turns red when the interval *sat* at storm level and the cap when it
+    merely touched it — a rarer and louder claim than the other.
+- **The typical is a median, and the mean is barred twice over.** Once for the
+  flattening above; and independently because **Kp is quasi-logarithmic**, so
+  the arithmetic mean of two Kp values is not a meaningful quantity at all (`ap`
+  is the linear equivalent). A median is an **order statistic** — it selects an
+  observed reading rather than computing a new one — so it never does arithmetic
+  the index doesn't support. For an even count it takes the lower of the two
+  middles rather than splitting them, which keeps the answer on Kp's own
+  28-value scale instead of inventing a rung.
+- **`bucketsForWidth` is one per 3px, not 2.** A 2px mark with a 1px gap.
+  Touching was survivable when a bar was a solid column; with caps, neighbouring
+  ones merge into a continuous line that reads as a plotted series.
+- **The axis ticks land on calendar boundaries, not on even divisions of the
+  window** — a label reading `1994` is worth more than `12 Mar 1994 04:17`. So
+  the first tick is rarely at x = 0 and the count varies as the window slides,
+  which is correct: the axis describes the calendar, not the viewport. Months
+  and years step by calendar rather than by a duration, or "every 3 months"
+  becomes "every 91.3 days" and drifts off the boundaries.
+- **Three axis bugs found by sweeping every real window at five widths**, none
+  of which any unit test would have suggested. Worth re-running that sweep after
+  touching the ladder:
+  - A 48-hour window drew **`12:00 00:00 12:00 00:00`** — two identical labels
+    with nothing to say which day either belonged to. Midnight on an hour axis
+    now names the day. Times still repeat *between* dated midnights, which is
+    right and conventional; the invariant is that no two **adjacent** ticks read
+    the same.
+  - The ladder jumped 2 days to 7, so a **week on a narrow track got one tick**
+    (7/2 overshoots a 3-tick budget, 7/7 is a single label). There is a 3-day
+    rung now.
+  - End labels overhung the track by up to **9px**, centred on ticks at x≈0 and
+    x≈1. `TrackTick.anchor` anchors the two ends inward. After the fixes: worst
+    label slack **52px**, worst overhang **−1px**, zero adjacent duplicates.
+- **Hover is a nearest-x column, not per-bar hit testing.** A bar is 2px wide and
+  there are up to 300 of them, so requiring the pointer to land on one leaves
+  most of the track dead. The reader aims at a *time*. The readout replaces the
+  header caption rather than floating near the cursor — the panel is short and a
+  floating tooltip would clip against its edge — and the same values are reachable
+  by keyboard, since 300 focus stops is not a real alternative.
 - **Kp sizes the bars, Dst only colours them.** Kp is bounded 0-9 so a fixed
   scale is honest; Dst is unbounded below, and one -589 nT hour would flatten
   every other bar in the record — which is exactly the hour you want to see in
@@ -895,6 +944,31 @@ abbreviations, so the same elapsed time could read "5d ago" in one place and
 "120 hr ago" in another, and the scrubber rendered a 130-year span as
 **"47483d ago"**.
 
+- **Seven consumers now**: the five above plus the **hover tooltip's top-right
+  age** and the **inspector's header**. All measure from the wall clock via
+  `useNow`, *not* from the playhead — they describe the same events and a reader
+  comparing a tooltip against a list row must not find them disagreeing.
+  - In the inspector the age sits **beside the magnitude, not under Origin
+    time**, where it was first put. Magnitude, place and age are the three
+    facts that identify an event conversationally — "M6.2 near Kamaishi, three
+    hours ago" — so they belong together above the fold, visible whichever
+    sections are expanded; the field list is for precise values you go looking
+    for. It also matches the tooltip's reading order, so clicking a mark keeps
+    the same three facts in the same places.
+  - **Not in the header's right-hand corner**, which belongs to the close
+    button: muted text beside a `×` reads as button chrome and invites
+    misclicks. And it is *moved*, not duplicated — the same value twice in a
+    panel this short is noise.
+  - Adding `useNow` to the inspector re-renders it every 30 s, which in this
+    codebase is a question worth asking rather than assuming: the collapsible
+    sections each own an IPC hook, and recurrence alone is 32–294 ms of O(n²)
+    declustering. Checked — every section's effect is keyed on primitives
+    (`eventId`, `key`, lat/lon, radius, floor), none of which a clock tick
+    touches, so nothing refetches. Keep it that way if a section grows a
+    dependency.
+  - `HoverTarget` carries `timeUtc`, the **instant, not a formatted age**.
+    Formatting it in `describeEarthquake` would need a clock and would freeze
+    the answer at the moment the pointer last moved.
 - **One number, one unit, never compound.** `45s / 12m / 3h / 5d / 3w / 7mo /
   4.0y`. The label exists to be read at a glance and compared down 26 list rows;
   "1y 2mo 3d ago" does neither. Precision lives elsewhere — the inspector prints

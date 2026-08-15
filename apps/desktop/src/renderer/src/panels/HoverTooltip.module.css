@@ -29,10 +29,29 @@
   border-left: 2px solid rgb(167 139 250);
 }
 
+/* Baseline-aligned so "M5.6" and "3h ago" sit on the same line despite the
+   size difference, and gapped so a long title can never run into the age. */
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .title {
   display: block;
   font-size: 0.75rem;
   font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Muted, like the detail line: it is context for the headline, not the
+   headline. `flex: none` so it keeps its width and the title yields first. */
+.age {
+  flex: none;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
   line-height: 1.25;
 }
 
