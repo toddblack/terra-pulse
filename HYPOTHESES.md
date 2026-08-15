@@ -103,6 +103,41 @@ Applied to all hypotheses unless an entry overrides them.
 | **Mechanism plausibility** | Low |
 | **Result** | — |
 
+**Open — two registration questions raised by the ingest, 2026-08-15. Not yet
+resolved, and H3 must not be run until they are.** Both were forced by measuring
+the data, not by any result; H3 has never been run.
+
+1. **No time range is registered, and the data demands one.** H3's onset needs
+   *sustained speed for six hours*, so what governs is unbroken six-hour
+   windows. Measured on the real OMNI record: **16.9%** intact in 1993, 24.8%
+   in 1994, **97.6% in 1995** — a 5.8x swing driven by whether a spacecraft sat
+   at L1. Coverage is not monotonic either: 92% in 1980, collapsing to 32-42%
+   across 1985-1994 after ISEE-3 left, recovering from 1995. Running H3 over the
+   full record would find far more onsets after 1995 for purely instrumental
+   reasons. **Proposed: 1995-01-01 onward**, registered explicitly.
+2. **The historical source is OMNI, which H3 does not name.** H3 says "SWPC
+   solar wind speed (DSCOVR/ACE/IMAP)". SWPC serves only the last seven days, so
+   the history has to come from NASA's OMNI2 — the same spacecraft, cross-
+   normalised and time-shifted to the bow shock nose. The live tail uses SWPC's
+   *propagated* product specifically so both halves mean the same thing.
+
+Also to be handled by whatever entry runs this, whether or not it changes the
+registration:
+
+- **Missing wind is biased toward the largest events**, so it cannot be treated
+  as missing-at-random. Around the 2003 Halloween storm, 2003-10-29 and 10-30
+  carry **no speed at all** for 48 straight hours while Dst reads -350 and -383;
+  **82% of that year's missing hours are those four days.** ACE's plasma
+  instrument saturates on solar energetic particles exactly when the wind is
+  most extreme. A gap read as "no stream" drops the strongest candidates from
+  the sample — the error runs *against* finding an effect, but it is still an
+  error. Dst and Kp remain present through these hours and can distinguish a
+  quiet spell from a blinded sensor.
+
+Resolving these follows the H4 → H4c precedent: registered parameters are not
+edited, so this becomes a new entry that supersedes H3 unrun, with H3's 4 tests
+transferring rather than adding to the matrix.
+
 ### H4 — Global geomagnetic disturbance
 
 | Field | Value |

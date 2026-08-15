@@ -1,7 +1,19 @@
 import { DST_START_YEAR, type SpaceWeatherSample } from '@terra-pulse/schema';
 
 /**
- * **Dst** from NASA's OMNI2 hourly dataset — the Kyoto WDC index, back to 1963.
+ * **Dst, solar wind speed and IMF Bz** from NASA's OMNI2 hourly dataset,
+ * back to 1963.
+ *
+ * The wind fields cost nothing to add: they are columns 17 and 25 of the same
+ * 55-field row this adapter was already downloading for Dst and discarding.
+ *
+ * ## OMNI is time-shifted to the bow shock nose, and that governs the live tail
+ *
+ * OMNI does not publish raw L1 measurements — it propagates them to the bow
+ * shock nose. Any adapter filling the recent gap must therefore use SWPC's
+ * *propagated* product rather than its raw real-time stream, or the series
+ * silently changes meaning partway along. Same rule that keeps SWPC's modelled
+ * Dst and NOAA's estimated Kp out of this app; see `swpc-solar-wind.ts`.
  *
  * Verified against ground truth before use: the March 1989 Quebec storm shows
  * as **Dst -589 nT at 1989-03-14 01:00 UT** with **Kp 9** the evening before,
@@ -35,6 +47,16 @@ const OMNI2_YEAR_URL = (year: number): string =>
 const FIELD_YEAR = 0;
 const FIELD_DAY_OF_YEAR = 1;
 const FIELD_HOUR = 2;
+/**
+ * Bz in **GSM**, one column past Bz in GSE — and they are not interchangeable.
+ * GSM is referenced to Earth's magnetic dipole, so a southward Bz there means
+ * field antiparallel to Earth's, which is the reconnection condition that
+ * drives storms. Taking column 15 instead would give a plausible-looking series
+ * that answers a different question.
+ */
+const FIELD_BZ_GSM = 16;
+const FIELD_DENSITY = 23;
+const FIELD_WIND_SPEED = 24;
 const FIELD_DST = 40;
 
 /** The narrowest row we will accept before giving up on a line. */
@@ -50,6 +72,17 @@ const MIN_FIELDS = 45;
  * recorded.
  */
 const DST_FILL = 99999;
+/**
+ * The wind fills, each width-matched to its own field like Dst's.
+ *
+ * `9999` km/s is eleven times the fastest wind ever recorded and `999.9` nT is
+ * roughly a hundred times the strongest IMF, so neither survives a sanity check
+ * — but only if one is applied. Read straight through they are ordinary
+ * numbers in a numeric column.
+ */
+const WIND_SPEED_FILL = 9999;
+const DENSITY_FILL = 999.9;
+const BZ_FILL = 999.9;
 
 /** Downloads and parses one year. */
 export async function fetchOmniYear(
@@ -93,18 +126,35 @@ export function parseOmniHourly(text: string): SpaceWeatherSample[] {
       continue;
     }
 
-    const dstRaw = Number(fields[FIELD_DST]);
-    if (!Number.isFinite(dstRaw) || dstRaw === DST_FILL) continue;
+    const dst = readField(fields[FIELD_DST], DST_FILL);
+    const windSpeed = readField(fields[FIELD_WIND_SPEED], WIND_SPEED_FILL);
+    const density = readField(fields[FIELD_DENSITY], DENSITY_FILL);
+    const bzGsm = readField(fields[FIELD_BZ_GSM], BZ_FILL);
+
+    // Dropped only when the row carries *nothing* this adapter reads. Rows with
+    // one field and not another are the normal case rather than an oddity: Dst
+    // is near-complete from 1963 while the solar wind is 32-42% present through
+    // 1985-1994, so most of that decade is Dst-only.
+    if (dst === null && windSpeed === null && bzGsm === null && density === null) continue;
 
     samples.push({
       timeUtc: hourFromDayOfYear(year, dayOfYear, hour),
       // Never a value: GFZ owns this column. A number here would overwrite it.
       kp: null,
-      dst: dstRaw,
+      dst,
+      windSpeed,
+      density,
+      bzGsm,
     });
   }
 
   return samples;
+}
+
+/** A numeric field, or null when it is absent or carries its fill sentinel. */
+function readField(raw: string | undefined, fill: number): number | null {
+  const value = Number(raw);
+  return Number.isFinite(value) && value !== fill ? value : null;
 }
 
 /**

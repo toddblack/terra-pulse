@@ -111,7 +111,11 @@ export function SpaceWeatherArchive() {
 
       {!running && isEmpty(progress) && (
         <p className={styles.note}>
-          hourly Kp from {KP_START_YEAR}, Dst from {DST_START_YEAR} · {EXPECTED_SIZE}
+          {/* Solar wind rides the same OMNI files as Dst, so it adds nothing to
+              the download — but it is worth naming, because it is the only
+              reason someone with a complete Dst archive would run this again. */}
+          hourly Kp from {KP_START_YEAR}, Dst and solar wind from {DST_START_YEAR} ·{' '}
+          {EXPECTED_SIZE}
         </p>
       )}
 

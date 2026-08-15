@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { SpaceWeatherBucket, SpaceWeatherSample } from '@terra-pulse/schema';
 import {
   bucketsForWidth,
+  GEOMAGNETIC_SPEC,
   layoutTrack,
   nearestBarIndex,
   peakOf,
+  SOLAR_WIND_SPEC,
   ticksForWidth,
   trackTicks,
 } from './space-weather-track';
@@ -16,6 +18,10 @@ const at = (hour: number, kp: number | null, dst: number | null): SpaceWeatherSa
   timeUtc: new Date(Date.UTC(2020, 0, 1, hour)).toISOString(),
   kp,
   dst,
+  // The track draws Kp and Dst; the wind fields ride the same rows.
+  windSpeed: null,
+  density: null,
+  bzGsm: null,
 });
 
 /** A bucket at a given hour of 2020-01-01. */
@@ -25,11 +31,15 @@ const bucket = (
   peakKp: number | null,
   peakDst: number | null = null,
   hours = 1,
+  wind: { typical?: number | null; peak?: number | null; bz?: number | null } = {},
 ): SpaceWeatherBucket => ({
   timeUtc: new Date(Date.UTC(2020, 0, 1, hour)).toISOString(),
   typicalKp,
   peakKp,
   peakDst,
+  typicalWindSpeed: wind.typical ?? null,
+  peakWindSpeed: wind.peak ?? null,
+  peakBzGsm: wind.bz ?? null,
   hours,
 });
 
@@ -101,6 +111,9 @@ describe('layoutTrack', () => {
       typicalKp: 5,
       peakKp: 5,
       peakDst: null,
+      typicalWindSpeed: null,
+      peakWindSpeed: null,
+      peakBzGsm: null,
       hours: 1,
     };
     expect(layoutTrack([outside, bucket(3, 1, 1)], START, END, 0.01)).toHaveLength(1);
@@ -112,6 +125,9 @@ describe('layoutTrack', () => {
       typicalKp: 5,
       peakKp: 5,
       peakDst: null,
+      typicalWindSpeed: null,
+      peakWindSpeed: null,
+      peakBzGsm: null,
       hours: 1,
     };
     expect(layoutTrack([broken], START, END, 0.01)).toHaveLength(0);
@@ -119,6 +135,76 @@ describe('layoutTrack', () => {
 
   it('returns nothing for a zero-length window', () => {
     expect(layoutTrack([bucket(0, 1, 1)], START, START, 0.01)).toEqual([]);
+  });
+});
+
+describe('layoutTrack with the solar wind spec', () => {
+  it('sizes bars against the fixed 1000 km/s scale, not against Kp', () => {
+    const bars = layoutTrack(
+      [bucket(0, null, null, null, 1, { typical: 500, peak: 1000 })],
+      START,
+      END,
+      0.01,
+      SOLAR_WIND_SPEC,
+    );
+    expect(bars[0]?.typicalHeight).toBeCloseTo(0.5, 5);
+    expect(bars[0]?.peakHeight).toBe(1);
+  });
+
+  it('clamps above the scale rather than overflowing the row', () => {
+    // 1189 km/s is the fastest hour in the sampled record and sits above the
+    // ceiling. Clipping 0.035% of hours is the documented price of the scale.
+    const [bar] = layoutTrack(
+      [bucket(0, null, null, null, 1, { typical: 1189, peak: 1189 })],
+      START,
+      END,
+      0.01,
+      SOLAR_WIND_SPEC,
+    );
+    expect(bar?.typicalHeight).toBe(1);
+  });
+
+  it('emphasises a fast stream at the display threshold', () => {
+    const [brief] = layoutTrack(
+      [bucket(0, null, null, null, 1, { typical: 380, peak: 620 })],
+      START,
+      END,
+      0.01,
+      SOLAR_WIND_SPEC,
+    );
+    // Touched fast, did not sit there — the cap marks it, the bar does not.
+    expect(brief?.peakStormy).toBe(true);
+    expect(brief?.typicalStormy).toBe(false);
+  });
+
+  it('carries the most southward Bz as the secondary, never the maximum', () => {
+    // Southward is the geoeffective direction. Reporting the maximum would
+    // headline the least interesting hour of every interval.
+    const [bar] = layoutTrack(
+      [bucket(0, null, null, null, 1, { typical: 400, peak: 400, bz: -18 })],
+      START,
+      END,
+      0.01,
+      SOLAR_WIND_SPEC,
+    );
+    expect(bar?.secondary).toBe(-18);
+  });
+
+  it('lands on the same x positions as the geomagnetic row', () => {
+    // The two rows are read down a column, so a shared bucketing is the whole
+    // point — different positions would compare different hours.
+    const buckets = [bucket(0, 3, 5, -20, 1, { typical: 400, peak: 700 }), bucket(12, 2, 2)];
+    const geo = layoutTrack(buckets, START, END, 0.01, GEOMAGNETIC_SPEC);
+    const wind = layoutTrack(buckets, START, END, 0.01, SOLAR_WIND_SPEC);
+    expect(wind.map((b) => b.x)).toEqual(geo.map((b) => b.x));
+  });
+
+  it('gives an unmeasured hour no height rather than a floor', () => {
+    // Most of 1985-1994 has Dst and no wind. Zero height is what "not measured"
+    // has to look like; a minimum bar would draw a slow wind that nobody saw.
+    const [bar] = layoutTrack([bucket(0, 3, 5, -20)], START, END, 0.01, SOLAR_WIND_SPEC);
+    expect(bar?.typicalHeight).toBe(0);
+    expect(bar?.typical).toBeNull();
   });
 });
 
@@ -299,6 +385,16 @@ describe('peakOf', () => {
   });
 
   it('handles an empty series', () => {
-    expect(peakOf([])).toEqual({ kp: null, dst: null });
+    expect(peakOf([])).toEqual({ kp: null, dst: null, windSpeed: null, bzGsm: null });
+  });
+
+  it('takes each quantity in its own disturbed direction', () => {
+    // Kp and speed go up, Dst and Bz go down. Taking the maximum of the latter
+    // two would headline the calmest hour of the window.
+    const windy: SpaceWeatherSample[] = [
+      { timeUtc: '2020-01-01T00:00:00.000Z', kp: 3, dst: -20, windSpeed: 400, density: 5, bzGsm: 4 },
+      { timeUtc: '2020-01-01T01:00:00.000Z', kp: 7, dst: -5, windSpeed: 820, density: 2, bzGsm: -14 },
+    ];
+    expect(peakOf(windy)).toEqual({ kp: 7, dst: -20, windSpeed: 820, bzGsm: -14 });
   });
 });

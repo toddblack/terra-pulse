@@ -959,7 +959,14 @@ server-side proxying of all third-party API calls.
 - **Geomagnetic main field (IGRF-14)** — **shipped**, not originally in this
   phase's list. Offline, 1900–2030, follows the playhead. Note that it *cannot*
   show solar storms: they perturb the external field by <1% of the main field.
-- Solar emission + arrival layers (§5.6)
+- ~~Solar wind speed + IMF Bz ingest~~ — **shipped.** Free from the OMNI2 files
+  the Dst backfill already downloads; SWPC's *propagated* product for the live
+  tail, so both halves are referenced to the bow shock nose. Stored, no UI yet.
+  Coverage is **not monotonic** — 92% in 1980, 32-42% across 1985-94, 98-100%
+  from 1995 — and missing hours cluster on the biggest storms, because ACE's
+  plasma instrument saturates. See the open registration questions under H3.
+- Solar emission + arrival layers (§5.6) — magnetopause standoff (Shue et al.
+  1998) is now unblocked: it needs exactly speed, density and Bz.
 - INTERMAGNET / SuperMAG station layer with disturbance amplitude
 - Multi-track timeline panel — **Explore mode** (§5.5)
 - Click-a-quake → center timeline on it
