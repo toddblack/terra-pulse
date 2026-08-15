@@ -28,3 +28,4 @@ export {
 export * from './aurora';
 export * from './omni-indices';
 export * from './gfz-kp';
+export * from './swpc-solar-wind';

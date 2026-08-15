@@ -293,4 +293,56 @@ export const migrations: Migration[] = [
       CREATE INDEX idx_space_weather_time ON space_weather (time_utc);
     `,
   },
+  {
+    id: 7,
+    name: 'solar_wind_columns',
+    // Solar wind speed and IMF Bz, alongside the geomagnetic indices they share
+    // an hour with. Speed is H3's registered quantity; Bz is not registered for
+    // anything and is carried for Explore and for §5.6's magnetopause work.
+    //
+    // ## Why this costs no new download
+    //
+    // Both come out of the *same OMNI2 year files* the Dst backfill already
+    // fetches — the adapter was parsing two columns out of 55 and discarding
+    // these. Backfilling them re-reads bytes we were downloading anyway.
+    //
+    // ## Why they are nullable, and why that matters more here than for Kp
+    //
+    // Solar wind coverage depends on a spacecraft being at L1, and for a decade
+    // none was: measured hourly coverage runs 92% in 1980, collapses to 32-42%
+    // from 1985 to 1994 after ISEE-3 left L1, and recovers to 98-100% from 1995
+    // with WIND and then ACE. Null is therefore the *common* case across a
+    // third of the record, not an edge case, and it must never be read as calm
+    // solar wind. See SOLAR_WIND_COMPLETE_SINCE_YEAR.
+    //
+    // Adds only, so the create-copy-drop-rename pattern at the top of this file
+    // doesn't apply. SQLite's ADD COLUMN backfills existing rows with NULL,
+    // which is exactly right: those hours were never measured for these fields.
+    sql: `
+      ALTER TABLE space_weather ADD COLUMN wind_speed REAL;
+      ALTER TABLE space_weather ADD COLUMN bz_gsm REAL;
+    `,
+  },
+  {
+    id: 8,
+    name: 'solar_wind_density',
+    // Proton density, for dynamic pressure — the quantity that actually
+    // compresses the dayside magnetosphere, and the input §5.6's magnetopause
+    // standoff needs. Pressure goes as density x speed^2, and neither number
+    // alone says how hard the wind is pushing: a fast tenuous stream and a slow
+    // dense one can exert the same force.
+    //
+    // Added as its own migration rather than folded into 7, because 7 has
+    // already been applied on at least one machine and editing applied history
+    // desynchronises the code from disk — the rule at the top of this file.
+    //
+    // Density and not OMNI's precomputed flow-pressure column: SWPC's live
+    // product publishes density and no pressure, so taking pressure from one
+    // source and deriving it in the other would put two subtly different
+    // quantities in one series. OMNI's includes an alpha-particle correction a
+    // proton-only derivation does not.
+    sql: `
+      ALTER TABLE space_weather ADD COLUMN density REAL;
+    `,
+  },
 ];

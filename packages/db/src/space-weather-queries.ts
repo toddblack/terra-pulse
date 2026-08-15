@@ -5,6 +5,9 @@ interface Row {
   time_utc: string;
   kp: number | null;
   dst: number | null;
+  wind_speed: number | null;
+  density: number | null;
+  bz_gsm: number | null;
 }
 
 /**
@@ -30,17 +33,27 @@ export function insertSpaceWeather(
   if (samples.length === 0) return 0;
 
   const statement = db.prepare(`
-    INSERT INTO space_weather (time_utc, kp, dst)
-    VALUES (?, ?, ?)
+    INSERT INTO space_weather (time_utc, kp, dst, wind_speed, density, bz_gsm)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(time_utc) DO UPDATE SET
       kp = COALESCE(excluded.kp, kp),
-      dst = COALESCE(excluded.dst, dst)
+      dst = COALESCE(excluded.dst, dst),
+      wind_speed = COALESCE(excluded.wind_speed, wind_speed),
+      density = COALESCE(excluded.density, density),
+      bz_gsm = COALESCE(excluded.bz_gsm, bz_gsm)
   `);
 
   db.exec('SAVEPOINT insert_space_weather');
   try {
     for (const sample of samples) {
-      statement.run(sample.timeUtc, sample.kp, sample.dst);
+      statement.run(
+        sample.timeUtc,
+        sample.kp,
+        sample.dst,
+        sample.windSpeed,
+        sample.density,
+        sample.bzGsm,
+      );
     }
     db.exec('RELEASE insert_space_weather');
   } catch (error: unknown) {
@@ -67,14 +80,21 @@ export function querySpaceWeather(
 ): SpaceWeatherSample[] {
   const rows = db
     .prepare(
-      `SELECT time_utc, kp, dst
+      `SELECT time_utc, kp, dst, wind_speed, density, bz_gsm
          FROM space_weather
         WHERE time_utc >= ? AND time_utc < ?
         ORDER BY time_utc`,
     )
     .all(startUtc, endUtc) as unknown as Row[];
 
-  return rows.map((row) => ({ timeUtc: row.time_utc, kp: row.kp, dst: row.dst }));
+  return rows.map((row) => ({
+    timeUtc: row.time_utc,
+    kp: row.kp,
+    dst: row.dst,
+    windSpeed: row.wind_speed,
+    density: row.density,
+    bzGsm: row.bz_gsm,
+  }));
 }
 
 /**
@@ -98,11 +118,12 @@ export function querySpaceWeather(
  */
 export function spaceWeatherYearsPresent(
   db: DatabaseSync,
-  index: 'kp' | 'dst',
+  index: 'kp' | 'dst' | 'wind_speed',
 ): Set<number> {
-  // Column names cannot be bound, so this maps to a literal rather than
+  // Column names cannot be bound, so this maps through a fixed set rather than
   // interpolating the argument — parameterised SQL only, including here.
-  const column = index === 'kp' ? 'kp' : 'dst';
+  const COLUMNS = { kp: 'kp', dst: 'dst', wind_speed: 'wind_speed' } as const;
+  const column = COLUMNS[index];
 
   const rows = db
     .prepare(

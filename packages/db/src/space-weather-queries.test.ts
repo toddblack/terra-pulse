@@ -8,10 +8,20 @@ import {
   spaceWeatherYearsPresent,
 } from './space-weather-queries';
 
-const hour = (iso: string, kp: number | null, dst: number | null): SpaceWeatherSample => ({
+const hour = (
+  iso: string,
+  kp: number | null,
+  dst: number | null,
+  windSpeed: number | null = null,
+  bzGsm: number | null = null,
+  density: number | null = null,
+): SpaceWeatherSample => ({
   timeUtc: iso,
   kp,
   dst,
+  windSpeed,
+  density,
+  bzGsm,
 });
 
 const fresh = () => openDatabase(':memory:');

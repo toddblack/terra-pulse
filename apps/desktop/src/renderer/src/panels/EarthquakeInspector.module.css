@@ -50,10 +50,16 @@
      clearance is ~10.7rem and the total height `100vh - 21.4rem`, less this
      panel's own 1.875rem of padding.
 
+     The solar wind row added a second plot (1.5rem) plus its header (~0.9rem)
+     plus a gap, ~2.5rem — which costs 5rem here, because of the doubling. Both
+     plots dropped from 1.85rem to 1.5rem to give 0.7rem of that back, so the
+     net is ~4.3rem and this became 27rem. Any further row costs the same way;
+     the cheap alternative is a row the reader can collapse, not a shorter one.
+
      Being centred is what makes this expensive — the clearance has to be paid
      at the top as well, where nothing is in the way. If the panel ever stops
      pointing at the centred event, revisit this along with it. */
-  max-height: calc(100vh - 23rem);
+  max-height: calc(100vh - 27rem);
   overflow-y: auto;
 }
 

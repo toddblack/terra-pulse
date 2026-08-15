@@ -1,7 +1,26 @@
-import { app, BrowserWindow, Notification, session } from 'electron';
+import { app, BrowserWindow, Notification, screen, session } from 'electron';
 import { join } from 'node:path';
 import dotenv from 'dotenv';
-import { openDatabase } from '@terra-pulse/db';
+import type { DatabaseSync } from 'node:sqlite';
+import { openDatabase, readAppState, writeAppState } from '@terra-pulse/db';
+import {
+  parseWindowBounds,
+  placeWindow,
+  serialiseWindowBounds,
+} from './window-bounds';
+
+/**
+ * First-run size, and the floor below which the layout starts colliding.
+ *
+ * The minimum is not cosmetic: the inspector sits left of the viewport centre
+ * at 24rem wide, so its left edge lands 448px from centre. Below 1000px that
+ * reaches the left column. Widening the inspector without raising this is what
+ * makes them collide — the two are a pair, see EarthquakeInspector.module.css.
+ */
+const DEFAULT_WIDTH = 1600;
+const DEFAULT_HEIGHT = 1000;
+const MIN_WIDTH = 1000;
+const MIN_HEIGHT = 600;
 import {
   ALERT_MAX_AGE_MS,
   ALERT_MIN_MAGNITUDE,
@@ -87,18 +106,34 @@ const CONTENT_SECURITY_POLICY = [
   "worker-src 'self' blob:",
 ].join('; ');
 
-function createWindow(): BrowserWindow {
+/** Where the remembered size and position live, in the existing key-value table. */
+const WINDOW_BOUNDS_KEY = 'window_bounds';
+
+/**
+ * How long to wait after the last resize or move before writing.
+ *
+ * `resize` fires continuously while a window is being dragged, and every write
+ * here is a synchronous SQLite transaction on the main process. Without this a
+ * single drag would be hundreds of them, competing with the render loop for
+ * exactly as long as the reader is watching the window move.
+ */
+const BOUNDS_SAVE_DEBOUNCE_MS = 400;
+
+function createWindow(db: DatabaseSync): BrowserWindow {
+  const placement = placeWindow(
+    parseWindowBounds(readAppState(db, WINDOW_BOUNDS_KEY)),
+    screen.getAllDisplays().map((display) => display.workArea),
+    { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT, minWidth: MIN_WIDTH, minHeight: MIN_HEIGHT },
+  );
+
   const mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    // The inspector sits left of the viewport centre (where a selected event is
-    // flown to), so its left edge lands at `50% - (width + 4rem)`. At the
-    // inspector's 24rem that is 448px from centre, leaving ~52px of margin here
-    // before it reaches the left column. Widening the panel without raising
-    // this is what makes them collide, so the two are a pair — see
-    // EarthquakeInspector.module.css.
-    minWidth: 1000,
-    minHeight: 600,
+    width: placement.width,
+    height: placement.height,
+    // Absent when the stored position no longer lands on a display, in which
+    // case Electron centres the window — see `placeWindow`.
+    ...(placement.x === undefined ? {} : { x: placement.x, y: placement.y }),
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
@@ -161,6 +196,48 @@ function createWindow(): BrowserWindow {
     console.error('Failed to load the renderer', error);
   });
 
+  if (placement.maximized) mainWindow.maximize();
+
+  // --- remembering size and position -------------------------------------
+  let saveTimer: NodeJS.Timeout | null = null;
+
+  const saveBounds = () => {
+    if (mainWindow.isDestroyed()) return;
+    // Minimised bounds are not a size anyone chose, and on some platforms are
+    // not meaningful at all.
+    if (mainWindow.isMinimized()) return;
+
+    // `getNormalBounds`, never `getBounds`: while maximised the latter reports
+    // the maximised rectangle, so saving it would make un-maximising restore to
+    // full screen and quietly lose the size the reader actually picked.
+    writeAppState(
+      db,
+      WINDOW_BOUNDS_KEY,
+      serialiseWindowBounds({ ...mainWindow.getNormalBounds(), maximized: mainWindow.isMaximized() }),
+    );
+  };
+
+  const scheduleSave = () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveBounds, BOUNDS_SAVE_DEBOUNCE_MS);
+  };
+
+  mainWindow.on('resize', scheduleSave);
+  mainWindow.on('move', scheduleSave);
+  // Not debounced: these are single deliberate acts, and the flag is the whole
+  // point of saving them.
+  mainWindow.on('maximize', saveBounds);
+  mainWindow.on('unmaximize', saveBounds);
+
+  mainWindow.on('close', () => {
+    // Flush synchronously. A pending debounce would be cancelled by teardown,
+    // so a resize in the last fraction of a second before quitting would be the
+    // one change that never got saved.
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = null;
+    saveBounds();
+  });
+
   return mainWindow;
 }
 
@@ -195,7 +272,7 @@ app
     //
     // The database already holds everything from last run, so there is nothing
     // to wait for. Backfill is a refresh, not a prerequisite.
-    mainWindow = createWindow();
+    mainWindow = createWindow(db);
 
     const notifyRenderer = (result: EarthquakeSyncResult) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -289,7 +366,7 @@ app
     });
 
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow();
+      if (BrowserWindow.getAllWindows().length === 0) mainWindow = createWindow(db);
     });
   })
   .catch((error: unknown) => {

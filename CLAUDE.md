@@ -983,8 +983,114 @@ abbreviations, so the same elapsed time could read "5d ago" in one place and
 - `formatAgoFrom` returns **null** for an unparseable input rather than a label,
   so a bad timestamp shows nothing instead of "just now".
 
-**Next in Phase 3:** solar wind speed and Bz (H3's registered data), then the
-multi-track timeline (§5.5) proper.
+**Solar wind speed and IMF Bz — ingest shipped.** H3's registered quantity, plus
+Bz for Explore and for §5.6's magnetopause work. No UI yet.
+
+- **The history cost nothing to add.** Speed and Bz are columns 25 and 17 of the
+  same 55-field OMNI2 rows the Dst backfill was already downloading and
+  discarding. The only new endpoint is the live tail.
+- **Coverage is not monotonic, and that is the whole story.** Measured hourly
+  coverage: 8% in 1963, 61% by 1970, **92% in 1980** with ISEE-3 at L1 — then a
+  collapse to **32-42% from 1985 to 1994** after ISEE-3 left for comet
+  Giacobini-Zinner, recovering to 98-100% from 1995 with WIND and ACE. Any "it
+  improves over time" assumption is simply false.
+- **`SOLAR_WIND_COMPLETE_SINCE_YEAR` is 1995, and the number that sets it is
+  not coverage.** H3 defines a stream onset as sustained speed over a threshold
+  for **six hours**, so what matters is unbroken six-hour windows: **16.9%** of
+  them in 1993, 24.8% in 1994, **97.6% in 1995**. A 5.8x swing in detectability
+  from spacecraft coverage alone — the same trap as running a decade-scale
+  correlation on M4.5+ earthquakes.
+- **The record is missing preferentially at its own maxima, which is worse than
+  a uniform gap.** Around the 2003 Halloween storm: 2003-10-29 and 10-30 have
+  **zero of 48 hours** with a speed, while Dst reads -350 and -383 straight
+  through. **59 of 2003's 72 missing hours — 82% — are those four days.** ACE's
+  plasma instrument saturates on solar energetic particles exactly when the wind
+  is most extreme; ground magnetometers don't. So anything counting high-speed
+  events under-counts the biggest ones, and a gap must never be read as "no
+  stream". Dst and Kp are what distinguish a quiet spell from a blinded sensor.
+- **The live tail must be SWPC's *propagated* product, not its raw L1 stream.**
+  OMNI is time-shifted to the bow shock nose as a defining property, and
+  `products/geospace/propagated-solar-wind.json` is too; `json/rtsw/` is the
+  raw measurement 1.5 million km upstream. Measured offset: **59.4 minutes** on
+  a 362 km/s wind, and it scales inversely with speed — a whole bucket at hourly
+  resolution. Bucketing on `time_tag` instead of `propagated_time_tag` would
+  shift the entire live week an hour early. Same "same name, different quantity"
+  rule that keeps SWPC's modelled Dst and NOAA's estimated Kp out.
+- **Two endpoints, for the same reason the Kp adapter has two.** The seven-day
+  file is 1.19 MB — polled every 15 minutes that is 114 MB/day — so the poll
+  reads the **6.5 KB one-hour** file, which overlaps a 15-minute cadence four
+  times over. The seven-day file runs once per backfill to fill the week OMNI's
+  lag cannot reach.
+- **Columns are read by name from the payload's own header row**, unlike the
+  OMNI adapter which must use positions because its format has no header. There
+  is no reason to hard-code offsets that a future inserted column would shift.
+- **Bz is GSM, not GSE, and they sit one column apart in OMNI.** GSM is
+  referenced to Earth's dipole, so it is the frame where southward Bz means the
+  reconnection condition that drives storms. Verified for the SWPC feed against
+  its own `solar-wind-mag-field.json`, which names its frame.
+- **Hourly values are means here, and that is not a contradiction of the Kp
+  rule.** Kp may not be averaged because it is quasi-logarithmic; speed and Bz
+  are linear measurements, and OMNI's own hourly values are averages of
+  high-resolution data. An extreme would make the live week disagree in kind
+  with every hour before it.
+- **`OMNI_FIELDS_VERSION` exists because presence stopped being a resume test.**
+  The Dst loop skipped years already holding Dst — complete while Dst was all
+  this adapter took. A database backfilled before this change holds every Dst
+  year, so the loop would skip all 63 and never fetch the wind columns, with no
+  error and a panel reporting complete. **Testing `wind_speed` presence instead
+  is wrong and looks right**: coverage is genuinely 32-42% through 1985-94, so
+  "absent" and "never fetched" are indistinguishable per year, and such a year
+  would refetch forever. The marker records what the *parser asked for*. Bump it
+  when a column is added; `completedYears` reports 0 while it is stale, or the
+  panel would say complete and nobody would press Resume.
+- Migration 7 is `ALTER TABLE ADD COLUMN` x2 — adds only, so create-copy-drop-
+  rename doesn't apply. Verified against a copy of the real 202 MB database:
+  **924 ms**, all 829,443 space-weather and 311,070 earthquake rows preserved.
+
+**The track is two rows now** — geomagnetic and solar wind — which is §5.5's
+multi-track timeline in its first real form.
+
+- **Two rows because two y-scales in one plot is the worst thing you can do to a
+  chart.** Kp is 0-9, speed is 250-900 km/s, Dst is 0 to -600 nT. They get a row
+  each and share the x, which is what makes "did the wind arrive before the
+  storm?" answerable by looking down a column.
+- **One bucketing, laid out twice.** `layoutTrack` takes a `TrackSpec` naming
+  which fields a row plots and what its scale is, so both rows come from the
+  same `downsampleSpaceWeather` call and *cannot* land on different x positions.
+  Duplicating the layout per row would have let a change to gap handling or
+  hover apply to one and not the other.
+- **The hover index is shared.** Pointing at an hour reads out both rows at that
+  hour; only the top one prints the time, since the rows are read as one block
+  and always show the same instant.
+- **`WIND_SPEED_MAX` is 1000 km/s, measured not guessed.** Pooled over 34,259
+  real hours from 1974/2003/2015/2024: p50 450, p90 656, p99 782, p99.9 877, max
+  1189. It **clips 0.035%** — one hour in 2,900 — to put the ordinary range
+  across most of the row instead of a third of it. A ceiling of 1200 clips
+  nothing and spends a fifth of the height on values that never occur.
+- **`FAST_WIND_THRESHOLD` is 500 for display only**, kept as its own constant
+  even though H3 registers the same number, exactly as `KP_STORM_THRESHOLD` is
+  kept apart from H4c's trigger. If the registered value is ever amended this
+  one must not silently follow.
+- **Bz is taken as the *minimum* per bucket, not the maximum.** Southward is the
+  geoeffective direction; taking the max would headline the least interesting
+  hour of every interval. Same for Dst, and the opposite for Kp and speed —
+  `peakOf` handles each in its own disturbed direction.
+- **The height budget is real and doubles.** The track sits inside the scrubber
+  panel, and the inspector is centred, so it pays clearance at the top too:
+  every rem the panel grows costs the inspector two. A second row is ~2.5rem, so
+  both plots dropped 1.85rem → 1.5rem to claw 0.7rem back and the inspector's
+  `max-height` went 23rem → 27rem. **A third row costs the same way** — the
+  cheap answer then is a row the reader can collapse, not a shorter one.
+- **The refactor dropped the ResizeObserver and lint caught it.** Width would
+  have stayed at the 480px fallback forever, so bucket count and tick count
+  would never have adapted to the real width — a silent wrongness, not a crash.
+  It is a ref callback on the first row only, since both are the same width.
+
+**Next in Phase 3:** §5.6's magnetopause standoff (Shue et al. 1998) is
+unblocked — it needs exactly speed, density and Bz, all now stored. That is the
+honest way to put solar wind *on the globe*: the wind itself has no geography,
+being one number per hour for the whole planet, but its effect on the
+magnetosphere is genuinely spatial.
 
 
 
@@ -1076,6 +1182,37 @@ globe is drawing, click-to-fly, sortable by time or magnitude.
     not an effect**, and don't conditionally unmount a measured element.
     `visibleRange` also now falls back to a screenful when height is 0: the
     failure mode should be "too many rows", never "none".
+
+### Window size
+
+Remembered between launches in `app_state` under `window_bounds`, with 1600×1000
+as the first-run default. `window-bounds.ts` holds the decisions as pure
+functions; `index.ts` does the Electron wiring.
+
+- **`getNormalBounds()`, never `getBounds()`.** While maximised the latter
+  reports the maximised rectangle, so saving it makes un-maximising restore to
+  full screen and silently loses the size the reader actually chose.
+- **Size and position are restored independently.** Undock a laptop and the
+  saved position points at coordinates no display covers; restored there the
+  window opens genuinely invisible with no obvious way back. When that happens
+  the *size* is still honoured and only the position is dropped, so Electron
+  centres a window that is still the size you picked.
+- **"On a display" needs a grabbable overlap, not any overlap** — 120×40px. A
+  window one pixel onto the screen is as unreachable as one fully off it.
+  Negative coordinates are normal (a second monitor to the left), so a naive
+  `x >= 0` check would discard a valid position on every launch.
+- **Writes are debounced 400 ms and flushed on `close`.** `resize` fires
+  continuously while dragging and each write is a synchronous SQLite
+  transaction on the main process; without the debounce one drag is hundreds of
+  them, competing with the render loop exactly while the window is moving.
+  Without the flush, a resize in the last moment before quitting is the one
+  change that never persists.
+- The stored value is parsed strictly — a `NaN` width reaches `BrowserWindow` as
+  a window that never appears, which is a baffling failure for something this
+  peripheral.
+- `MIN_WIDTH` is 1000 and is **not cosmetic**: the inspector is 24rem wide and
+  sits left of centre, so its left edge lands 448px from centre and below 1000px
+  it reaches the left column. It moves with the inspector's width, not alone.
 
 ### Panel placement
 

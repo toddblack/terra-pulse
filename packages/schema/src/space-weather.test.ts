@@ -13,6 +13,11 @@ const at = (hour: number, kp: number | null, dst: number | null): SpaceWeatherSa
   timeUtc: new Date(Date.UTC(2000, 0, 1, hour)).toISOString(),
   kp,
   dst,
+  // The track draws Kp and Dst; the wind fields ride the same rows but are not
+  // part of what these tests exercise.
+  windSpeed: null,
+  density: null,
+  bzGsm: null,
 });
 
 describe('storm thresholds', () => {

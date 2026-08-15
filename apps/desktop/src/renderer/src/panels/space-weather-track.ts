@@ -1,6 +1,8 @@
 import {
+  FAST_WIND_THRESHOLD,
   KP_MAX,
   KP_STORM_THRESHOLD,
+  WIND_SPEED_MAX,
   type SpaceWeatherBucket,
   type SpaceWeatherSample,
 } from '@terra-pulse/schema';
@@ -20,16 +22,55 @@ export interface TrackBar {
   typicalHeight: number;
   /** 0-1 up the track — its worst hour. Always >= `typicalHeight`. */
   peakHeight: number;
-  /** The interval's worst hour reached storm level. */
+  /** The interval's worst hour crossed the row's emphasis threshold. */
   peakStormy: boolean;
-  /** It sat at storm level, which is a different and rarer claim. */
+  /** It *sat* above it, which is a different and rarer claim. */
   typicalStormy: boolean;
   timeUtc: string;
-  typicalKp: number | null;
-  peakKp: number | null;
-  peakDst: number | null;
+  /** The row's own quantity, unscaled, for the readout. */
+  typical: number | null;
+  peak: number | null;
+  /** The row's second quantity — Dst on the geomagnetic row, Bz on the wind. */
+  secondary: number | null;
   hours: number;
 }
+
+/**
+ * What one row of the track plots.
+ *
+ * The two rows are the same machinery with different fields: a bounded primary
+ * quantity sizing the bars, a secondary one that only marks them, and a
+ * threshold where the mark turns emphatic. Keeping it parameterised rather than
+ * duplicating the layout means a change to how gaps or hover behave cannot
+ * apply to one row and not the other.
+ */
+export interface TrackSpec {
+  typicalOf: (bucket: SpaceWeatherBucket) => number | null;
+  peakOf: (bucket: SpaceWeatherBucket) => number | null;
+  secondaryOf: (bucket: SpaceWeatherBucket) => number | null;
+  /** Full height of the row. Fixed, never fitted to the window. */
+  scaleMax: number;
+  /** At or above this, the mark takes the emphasis colour. */
+  emphasisAt: number;
+}
+
+/** Kp sized 0-9, marked by Dst. */
+export const GEOMAGNETIC_SPEC: TrackSpec = {
+  typicalOf: (b) => b.typicalKp,
+  peakOf: (b) => b.peakKp,
+  secondaryOf: (b) => b.peakDst,
+  scaleMax: KP_MAX,
+  emphasisAt: KP_STORM_THRESHOLD,
+};
+
+/** Wind speed sized 0-1000 km/s, marked by the most southward Bz. */
+export const SOLAR_WIND_SPEC: TrackSpec = {
+  typicalOf: (b) => b.typicalWindSpeed,
+  peakOf: (b) => b.peakWindSpeed,
+  secondaryOf: (b) => b.peakBzGsm,
+  scaleMax: WIND_SPEED_MAX,
+  emphasisAt: FAST_WIND_THRESHOLD,
+};
 
 /**
  * Lays buckets out across a fixed window.
@@ -57,6 +98,7 @@ export function layoutTrack(
   startMs: number,
   endMs: number,
   barWidth: number,
+  spec: TrackSpec = GEOMAGNETIC_SPEC,
 ): TrackBar[] {
   const span = endMs - startMs;
   if (span <= 0) return [];
@@ -68,21 +110,25 @@ export function layoutTrack(
     if (!Number.isFinite(timeMs)) continue;
     if (timeMs < startMs || timeMs > endMs) continue;
 
-    // Kp drives both heights: it is bounded 0-9, which makes a fixed scale
-    // honest. Dst has no bound, so it marks rather than sizes — a single
-    // -589 nT hour would otherwise flatten every other bar in the record to
-    // nothing, and that hour is exactly what you want to see in context.
+    // The primary quantity drives both heights, against a fixed scale that
+    // makes a bar mean the same thing in every view. The secondary one marks
+    // rather than sizes, because neither Dst nor Bz is bounded the way Kp and
+    // speed are — a single -589 nT hour would flatten every other bar in the
+    // record, and that hour is exactly what you want to see in context.
+    const typical = spec.typicalOf(bucket);
+    const peak = spec.peakOf(bucket);
+
     bars.push({
       x: (timeMs - startMs) / span,
       width: barWidth,
-      typicalHeight: heightOf(bucket.typicalKp),
-      peakHeight: heightOf(bucket.peakKp),
-      peakStormy: bucket.peakKp !== null && bucket.peakKp >= KP_STORM_THRESHOLD,
-      typicalStormy: bucket.typicalKp !== null && bucket.typicalKp >= KP_STORM_THRESHOLD,
+      typicalHeight: heightOf(typical, spec.scaleMax),
+      peakHeight: heightOf(peak, spec.scaleMax),
+      peakStormy: peak !== null && peak >= spec.emphasisAt,
+      typicalStormy: typical !== null && typical >= spec.emphasisAt,
       timeUtc: bucket.timeUtc,
-      typicalKp: bucket.typicalKp,
-      peakKp: bucket.peakKp,
-      peakDst: bucket.peakDst,
+      typical,
+      peak,
+      secondary: spec.secondaryOf(bucket),
       hours: bucket.hours,
     });
   }
@@ -90,8 +136,15 @@ export function layoutTrack(
   return bars;
 }
 
-function heightOf(kp: number | null): number {
-  return kp === null ? 0 : Math.min(kp / KP_MAX, 1);
+/**
+ * Clamped at the top, which is a deliberate loss.
+ *
+ * `WIND_SPEED_MAX` clips 0.035% of measured hours — about one in 2,900 — to
+ * keep the ordinary range across most of the row rather than a third of it.
+ * Kp cannot clip: 9 is the top of the scale by definition.
+ */
+function heightOf(value: number | null, scaleMax: number): number {
+  return value === null ? 0 : Math.min(value / scaleMax, 1);
 }
 
 /**
@@ -107,20 +160,34 @@ export function bucketsForWidth(pixelWidth: number): number {
   return Math.max(1, Math.floor(pixelWidth / 3));
 }
 
-/** The strongest storm in view, for the track's caption. */
+/**
+ * The most disturbed value of each quantity in view, for the row captions.
+ *
+ * "Most disturbed" is not the same direction for all four: Kp and speed go up,
+ * Dst and Bz go down. Taking the maximum of the latter two would report the
+ * calmest hour of the window as its headline.
+ */
 export function peakOf(samples: readonly SpaceWeatherSample[]): {
   kp: number | null;
   dst: number | null;
+  windSpeed: number | null;
+  bzGsm: number | null;
 } {
   let kp: number | null = null;
   let dst: number | null = null;
+  let windSpeed: number | null = null;
+  let bzGsm: number | null = null;
 
   for (const sample of samples) {
     if (sample.kp !== null && (kp === null || sample.kp > kp)) kp = sample.kp;
     if (sample.dst !== null && (dst === null || sample.dst < dst)) dst = sample.dst;
+    if (sample.windSpeed !== null && (windSpeed === null || sample.windSpeed > windSpeed)) {
+      windSpeed = sample.windSpeed;
+    }
+    if (sample.bzGsm !== null && (bzGsm === null || sample.bzGsm < bzGsm)) bzGsm = sample.bzGsm;
   }
 
-  return { kp, dst };
+  return { kp, dst, windSpeed, bzGsm };
 }
 
 /* ------------------------------------------------------------------ ticks */

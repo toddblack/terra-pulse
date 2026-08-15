@@ -23,6 +23,13 @@ function row(
   fields[2] = String(hour);
   fields[38] = String(kp10);
   fields[40] = String(dst);
+  // The wind columns default to their fill sentinels, not to the `0` padding.
+  // Zero is a legal Bz and an impossible speed, so padding them with it would
+  // make every row here claim a solar wind measurement nobody took — and would
+  // quietly stop these Dst-focused cases testing what they say they test.
+  fields[16] = '999.9';
+  fields[23] = '999.9';
+  fields[24] = '9999';
   return fields.join(' ');
 }
 
@@ -62,6 +69,75 @@ describe('parseOmniHourly', () => {
     // an absence.
     expect(parseOmniHourly(row(2020, 5, 5, 99, 99999))).toHaveLength(0);
     expect(parseOmniHourly(row(2020, 5, 5, 40, 99999))).toHaveLength(0);
+  });
+
+  it('reads solar wind speed and Bz out of the same row', () => {
+    // Free columns: 17 and 25 of the 55-field row already downloaded for Dst.
+    const fields = new Array<string>(55).fill('0');
+    fields[0] = '2003';
+    fields[1] = '303';
+    fields[2] = '12';
+    fields[16] = '-27.5'; // Bz GSM
+    fields[24] = '1850'; // speed
+    fields[40] = '-383'; // Dst
+
+    const [sample] = parseOmniHourly(fields.join(' '));
+    expect(sample?.windSpeed).toBe(1850);
+    expect(sample?.bzGsm).toBe(-27.5);
+    expect(sample?.dst).toBe(-383);
+  });
+
+  it('takes Bz from the GSM column, not GSE', () => {
+    // They sit one apart and are not interchangeable: GSM is referenced to
+    // Earth's dipole, so it is the frame where southward Bz means the
+    // reconnection condition. Reading 15 would give a plausible wrong series.
+    const fields = new Array<string>(55).fill('0');
+    fields[0] = '2003';
+    fields[1] = '303';
+    fields[2] = '12';
+    fields[15] = '11.1'; // Bz GSE — must be ignored
+    fields[16] = '-27.5'; // Bz GSM
+    fields[40] = '-383';
+
+    expect(parseOmniHourly(fields.join(' '))[0]?.bzGsm).toBe(-27.5);
+  });
+
+  it('treats each wind fill as absent, and they are not the same sentinel', () => {
+    // 9999 km/s is eleven times the fastest wind recorded; 999.9 nT is about a
+    // hundred times the strongest IMF. Both are ordinary numbers in a numeric
+    // column if nothing checks.
+    const fields = new Array<string>(55).fill('0');
+    fields[0] = '1989';
+    fields[1] = '72';
+    fields[2] = '0';
+    fields[16] = '999.9';
+    fields[24] = '9999';
+    fields[40] = '-583';
+
+    const [sample] = parseOmniHourly(fields.join(' '));
+    // The real 1989 Quebec storm row: Dst present, solar wind entirely absent,
+    // because no spacecraft was at L1 that decade.
+    expect(sample?.dst).toBe(-583);
+    expect(sample?.windSpeed).toBeNull();
+    expect(sample?.bzGsm).toBeNull();
+  });
+
+  it('keeps a row carrying wind but no Dst', () => {
+    // Not an oddity — the normal case for much of 1985-1994, where Dst is
+    // near-complete and the wind is 32-42% present. Dropping on Dst alone
+    // would discard wind measurements that exist.
+    const fields = new Array<string>(55).fill('0');
+    fields[0] = '1990';
+    fields[1] = '100';
+    fields[2] = '5';
+    fields[16] = '-3.2';
+    fields[24] = '620';
+    fields[40] = '99999'; // Dst fill
+
+    const [sample] = parseOmniHourly(fields.join(' '));
+    expect(sample?.dst).toBeNull();
+    expect(sample?.windSpeed).toBe(620);
+    expect(sample?.bzGsm).toBe(-3.2);
   });
 
   it('never emits a value outside the plausible range', () => {
