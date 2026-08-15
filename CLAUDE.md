@@ -699,7 +699,7 @@ This fixes earthquake playback over the archive too.
 
 **Reconnaissance that shaped the rest of the phase:** SWPC's JSON products are a
 **rolling window, not an archive** — Kp is 7 days at 3-hourly, GOES X-ray 7 days
-at 1-minute (4.6 MB). They can drive live views and can never drive H1/H3/H4,
+at 1-minute (4.6 MB). They can drive live views and can never drive H1/H3/H4c,
 which are decade-scale rate correlations. Deep Kp exists at GFZ Potsdam (to
 1932) as a *separate* source. NOAA's OVATION auroral product is live and ideal
 for the next layer: a 360×181 grid of aurora probability, same raster shape as
@@ -808,7 +808,7 @@ weather, and the answer to "the aurora doesn't animate": these do.
 - **SWPC's Dst is deliberately not ingested.** SWPC publishes one, and it is
   **Geospace model output** at one-minute cadence, whereas OMNI carries the
   Kyoto observatory-derived index. Same name, same unit, different quantities —
-  and Dst is registered data for H4, so blending them would leave no way to tell
+  and Dst is registered data for H4c, so blending them would leave no way to tell
   which any hour came from.
 - **SWPC's Kp is now out too, on the same argument.** It used to fill the recent
   tail, justified here as "genuinely the same planetary index". It isn't quite:
@@ -816,8 +816,8 @@ weather, and the answer to "the aurora doesn't animate": these do.
   index from thirteen. That distinction was tolerable only while GFZ looked
   unreachable. GFZ serves its own 30-day nowcast file — **8 KB**, byte-identical
   in format to the 5.5 MB archive — so the tail now comes from the same
-  publisher as the history. Logged as a source amendment in `HYPOTHESES.md`,
-  since H4 named SWPC by name.
+  publisher as the history. H4 named SWPC by name, so it was **withdrawn
+  unrun and replaced by H4c** in `HYPOTHESES.md` rather than edited in place.
 - **Kp is one request; Dst is 63.** GFZ's archive file is the whole 1932-onward
   record in a single ~5.5 MB read: 829,416 hourly samples, measured at 2.6 s to
   fetch and parse and **812 ms** to insert. OMNI is still a year-file loop and
@@ -844,7 +844,7 @@ weather, and the answer to "the aurora doesn't animate": these do.
   that performed it. Reordering the phases would hide that, not remove it.
 - **The two Kp encodings differ by at most 0.033 and agree exactly on the
   integers**, which is where every threshold in the app and in `HYPOTHESES.md`
-  sits (display emphasis 5, H4's trigger 6). So rows left from the OMNI era are
+  sits (display emphasis 5, H4c's trigger 6). So rows left from the OMNI era are
   imprecise, never misclassified — which is why no migration was needed.
 - **The GFZ file carries four more columns we don't ingest, and one of them is
   the reason to remember this.** `ap`/`Ap` is the **linear** equivalent of Kp,
@@ -932,7 +932,7 @@ weather, and the answer to "the aurora doesn't animate": these do.
   one time axis and one box — the inspector's `max-height` is computed against
   the height of whatever sits down there, and a second panel would have cost it
   twice over.
-- `KP_STORM_THRESHOLD` is 5 (NOAA G1) for **display emphasis only**. H4's
+- `KP_STORM_THRESHOLD` is 5 (NOAA G1) for **display emphasis only**. H4c's
   registered trigger is **Kp >= 6**. Keeping them apart is non-negotiable #3: a
   display threshold drifting into the analysis is a free parameter chosen after
   seeing the data. A test pins the separation.

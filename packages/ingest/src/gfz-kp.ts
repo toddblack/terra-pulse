@@ -119,7 +119,7 @@ async function fetchText(url: string, fetchImpl: typeof fetch, label: string): P
  * The two disagree by at most 0.033, which is invisible on a chart and, more
  * importantly, **cannot move a threshold**: Kp's integer values are exact in
  * both conventions, and every threshold in this app and in `HYPOTHESES.md` sits
- * on an integer (display emphasis at 5, H4's registered trigger at 6). So a
+ * on an integer (display emphasis at 5, H4c's registered trigger at 6). So a
  * database still holding some OMNI-era Kp rows is imprecise, never wrong.
  *
  * ## Three-hour values are expanded to hourly

@@ -4,7 +4,7 @@
  * The half of space weather that *has* a history. The auroral oval is a nowcast
  * with no archive; these go back decades, so they follow the scrubber and can
  * be put on the same time axis as the earthquake catalogue. They are also the
- * data H4 is registered against (`HYPOTHESES.md`), so what is stored here has to
+ * data H4c is registered against (`HYPOTHESES.md`), so what is stored here has to
  * be good enough for a rate claim, not just for a picture.
  */
 
@@ -46,7 +46,7 @@ export const KP_MAX = 9;
 /**
  * Kp at or above which conditions count as a geomagnetic storm (NOAA G1).
  *
- * Used for emphasis on the track, not for any test — H4's registered trigger is
+ * Used for emphasis on the track, not for any test — H4c's registered trigger is
  * **Kp >= 6**, which is a different and deliberately higher bar. Keeping the
  * two apart matters: a display threshold that drifted into the analysis would
  * be exactly the free-parameter-after-the-fact non-negotiable #3 forbids.
