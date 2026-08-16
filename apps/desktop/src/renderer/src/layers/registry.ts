@@ -13,6 +13,8 @@ import { createSubductionZonesLayer } from './subduction-zones';
 import { createActiveFaultsLayer } from './active-faults';
 import { createGeomagneticFieldLayer } from './geomagnetic-field';
 import { createAuroraLayer } from './aurora-layer';
+import { createMagnetopauseLayer } from './magnetopause-layer';
+import { createMagnetometerLayer } from './magnetometer-layer';
 
 /**
  * The single source of truth for which layers exist.
@@ -150,6 +152,33 @@ export const OVERLAY_REGISTRATIONS: readonly OverlayRegistration[] = [
     // must not be rebuilt when earthquakes land. The grid is pushed in through
     // `setGrid` — the same push-don't-rebuild channel the field quantity uses.
     create: () => createAuroraLayer(),
+  },
+  {
+    id: 'magnetometers',
+    label: 'Magnetometers (live)',
+    category: 'overlay',
+    // Off by default like the other space-weather layers.
+    defaultVisible: false,
+    // Readings arrive from main's own poll, not the catalogue, so it must not
+    // be rebuilt when earthquakes land — same push channel as the aurora grid.
+    create: () => createMagnetometerLayer(),
+  },
+  {
+    id: 'magnetopause',
+    label: 'Magnetopause (model)',
+    // The only `analysis` overlay so far, and the category is doing real work:
+    // every other layer draws a measurement or a mapped feature, and this draws
+    // an empirical fit evaluated on measured inputs. The label says "(model)"
+    // for the same reason — the distinction has to survive someone reading only
+    // the toggle.
+    category: 'analysis',
+    // Off by default, and more emphatically than the others: enabling it flies
+    // the camera out to ~26 Earth radii, because at any normal viewing distance
+    // the boundary is off screen entirely.
+    defaultVisible: false,
+    // Fed the solar wind through `setSolarWind`, on the same push-don't-rebuild
+    // channel as the field quantity and the aurora grid.
+    create: () => createMagnetopauseLayer(),
   },
 ];
 

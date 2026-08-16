@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type * as Cesium from 'cesium';
-import type { AntipodalEvent, AuroraGrid, EarthquakeEvent, GlobeLayer } from '@terra-pulse/schema';
+import type { AntipodalEvent, AuroraGrid, EarthquakeEvent, GlobeLayer,
+  MagnetometerReading,
+} from '@terra-pulse/schema';
 import {
   BASEMAP_REGISTRATIONS,
   OVERLAY_REGISTRATIONS,
@@ -11,6 +13,11 @@ import {
 } from '../layers/registry';
 import { isGeomagneticFieldLayer } from '../layers/geomagnetic-field';
 import { isAuroraLayer } from '../layers/aurora-layer';
+import { isMagnetometerLayer } from '../layers/magnetometer-layer';
+import {
+  isMagnetopauseLayer,
+  type SolarWindConditions,
+} from '../layers/magnetopause-layer';
 import type { FieldQuantity } from '../layers/igrf';
 import { INITIAL_FIRST_PAINT, observeTileQueue } from './first-paint';
 import { createAntipodeLayer } from '../layers/antipode-layer';
@@ -27,6 +34,9 @@ interface UseGlobeLayersOptions {
   fieldQuantity: FieldQuantity;
   /** The latest auroral grid, or null before the first poll. */
   auroraGrid: AuroraGrid | null;
+  magnetometerReadings: readonly MagnetometerReading[];
+  /** Conditions at the playhead, for the magnetopause. Null when unmeasured. */
+  solarWind: SolarWindConditions | null;
   /**
    * The event whose antipode chord is on screen, or `null`.
    *
@@ -121,6 +131,10 @@ function mountOverlays(
   context: { events: readonly EarthquakeEvent[]; backdropTone: ReturnType<typeof backdropToneFor> },
   window: { startMs: number; endMs: number } | null,
   track: Set<GlobeLayer>,
+  pushed: {
+    solarWind: SolarWindConditions | null;
+    magnetometerReadings: readonly MagnetometerReading[];
+  },
 ): () => void {
   const mounted: GlobeLayer[] = [];
 
@@ -130,6 +144,17 @@ function mountOverlays(
     // Apply the current window immediately: a layer mounted mid-playback must
     // not flash its full event set before the next tick corrects it.
     if (window) layer.setTimeWindow(new Date(window.startMs), new Date(window.endMs));
+    // And the same for anything else pushed rather than passed through
+    // `LayerContext`. The push effects below only fire when their *own* input
+    // changes, so a layer mounted between two changes waits for the next one —
+    // and the magnetopause's input changes **hourly**, which is long enough to
+    // read as the layer being broken. It drew nothing until the playhead moved.
+    //
+    // The aurora and the field quantity never showed this because their inputs
+    // change every few minutes or on a click, so the wait was never visible.
+    // They are given the same treatment anyway rather than left to luck.
+    if (isMagnetopauseLayer(layer)) layer.setSolarWind(pushed.solarWind);
+    if (isMagnetometerLayer(layer)) layer.setReadings(pushed.magnetometerReadings);
     mounted.push(layer);
     track.add(layer);
   }
@@ -163,6 +188,8 @@ export function useGlobeLayers({
   events,
   fieldQuantity,
   auroraGrid,
+  magnetometerReadings,
+  solarWind,
   antipodeEvent,
   antipodeHits,
   timeWindow,
@@ -221,6 +248,23 @@ export function useGlobeLayers({
     timeWindowRef.current = timeWindow;
   }, [timeWindow]);
 
+  /**
+   * The latest pushed inputs, so a layer mounted later can be given them at
+   * mount rather than waiting for the next change.
+   *
+   * A ref rather than a dependency, deliberately: putting `solarWind` in the
+   * mount effect's deps would tear down and rebuild every static overlay —
+   * faults included — every time the wind changed, which is the exact cost
+   * `consumesEvents` exists to avoid.
+   */
+  const pushedRef = useRef<{
+    solarWind: SolarWindConditions | null;
+    magnetometerReadings: readonly MagnetometerReading[];
+  }>({ solarWind: null, magnetometerReadings: [] });
+  useEffect(() => {
+    pushedRef.current = { solarWind, magnetometerReadings };
+  }, [solarWind, magnetometerReadings]);
+
   // --- Static overlays: geology. Rebuilt only on tone or toggle changes ----
   useEffect(() => {
     const viewer = viewerRef.current;
@@ -234,6 +278,7 @@ export function useGlobeLayers({
       { events: eventsRef.current, backdropTone },
       timeWindowRef.current,
       mountedLayersRef.current,
+      pushedRef.current,
     );
     // `layerVisibility` keeps a stable identity across unrelated store writes
     // (Zustand merges shallowly), so it only changes when a layer is toggled.
@@ -252,6 +297,7 @@ export function useGlobeLayers({
       { events, backdropTone },
       timeWindowRef.current,
       mountedLayersRef.current,
+      pushedRef.current,
     );
   }, [viewerRef, events, backdropTone, layerVisibility, firstPaintReady, viewerReadyToken]);
 
@@ -303,6 +349,23 @@ export function useGlobeLayers({
       if (isAuroraLayer(layer)) layer.setGrid(auroraGrid);
     }
   }, [auroraGrid, layerVisibility]);
+
+  // And the same for the magnetopause, whose inputs are three stored numbers at
+  // the playhead rather than a grid. Null is the ordinary case, not an error:
+  // the solar wind is 32-42% present across 1985-1994 and absent entirely
+  // before 1963, and the layer draws no boundary rather than guessing one.
+  useEffect(() => {
+    for (const layer of mountedLayersRef.current) {
+      if (isMagnetopauseLayer(layer)) layer.setSolarWind(solarWind);
+    }
+  }, [solarWind, layerVisibility]);
+
+  // And the magnetometers, on the same channel.
+  useEffect(() => {
+    for (const layer of mountedLayersRef.current) {
+      if (isMagnetometerLayer(layer)) layer.setReadings(magnetometerReadings);
+    }
+  }, [magnetometerReadings, layerVisibility]);
 
   // --- Playhead: pushed to whatever is mounted, no rebuild ----------------
   //

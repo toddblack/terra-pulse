@@ -21,6 +21,14 @@ import {
 } from '../layers/earthquake-encoding';
 import { GEOMAGNETIC_FIELD_LAYER_ID } from '../layers/geomagnetic-field';
 import { AURORA_LAYER_ID } from '../layers/aurora-layer';
+import { MAGNETOPAUSE_LAYER_ID } from '../layers/magnetopause-layer';
+import {
+  dynamicPressureNPa,
+  GEOSYNCHRONOUS_RE,
+  magnetopauseStandoff,
+} from '../layers/magnetopause';
+import { useSolarWindAt } from './useSpaceWeather';
+import { displayWindow } from '../globe/display-window';
 import { auroraLegendStops } from '../layers/aurora-encoding';
 import { AURORA_MAX_PROBABILITY, auroraIsStale, auroraPeak } from '@terra-pulse/schema';
 import { FIELD_SCALES, fieldLegendStops } from '../layers/field-encoding';
@@ -85,6 +93,7 @@ export function DepthLegend() {
   const faultsVisible = isLayerOn('active-faults');
   const fieldVisible = isLayerOn(GEOMAGNETIC_FIELD_LAYER_ID);
   const auroraVisible = isLayerOn(AURORA_LAYER_ID);
+  const magnetopauseVisible = isLayerOn(MAGNETOPAUSE_LAYER_ID);
 
   if (collapsed) {
     return (
@@ -277,6 +286,8 @@ export function DepthLegend() {
       {fieldVisible && <FieldKey tone={backdropTone} />}
 
       {auroraVisible && <AuroraKey />}
+
+      {magnetopauseVisible && <MagnetopauseKey />}
 
       <p className={styles.footnote}>
         {status === 'loading'
@@ -471,6 +482,85 @@ function AuroraKey() {
       {playheadMs !== null && (
         <p className={styles.note}>live only — does not follow the scrubber</p>
       )}
+    </div>
+  );
+}
+
+/**
+ * The magnetopause key.
+ *
+ * Four things, and three of them are caveats — which is what a layer drawing
+ * model output has to carry.
+ *
+ * 1. **Where the boundary is**, in Earth radii, so the drawing has a number.
+ * 2. **That it is a model**, not a measurement. Everything else on this globe
+ *    is an observation or a mapped feature.
+ * 3. **When it is extrapolating.** Shue et al. fitted roughly 0.5-8.5 nPa and
+ *    Bz -18 to +15 nT. 3.8% of the stored record falls outside that, and it is
+ *    disproportionately the large storms — the exact hours a reader zooms in
+ *    on. Extrapolating silently there would be the layer's worst failure.
+ * 4. **When it cannot be computed at all**, which is common: the solar wind is
+ *    32-42% present across 1985-1994 and absent entirely before 1963. Nothing
+ *    is drawn then, and this says why rather than leaving an empty sky.
+ *
+ * The shape is recomputed here from the same pure functions the layer uses, on
+ * the same inputs, rather than read back off the layer instance. They cannot
+ * disagree — and reaching into a mounted Cesium layer for a number would be a
+ * second channel to keep in sync.
+ */
+function MagnetopauseKey() {
+  const windowHours = useEarthquakeStore((state) => state.windowHours);
+  const playheadMs = useEarthquakeStore((state) => state.playheadMs);
+  const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
+  const nowMs = useNow();
+  const { endMs } = displayWindow(windowHours, playheadMs, trailingWindow, nowMs);
+  const wind = useSolarWindAt(endMs);
+
+  if (wind?.windSpeed == null || wind.density == null || wind.bzGsm == null) {
+    return (
+      <div className={styles.section}>
+        <h2 className={styles.heading}>Magnetopause</h2>
+        <p className={styles.note}>
+          no solar wind measured at this hour — the boundary is not drawn rather
+          than estimated
+        </p>
+      </div>
+    );
+  }
+
+  const pressure = dynamicPressureNPa(wind.density, wind.windSpeed);
+  const shape = magnetopauseStandoff(wind.bzGsm, pressure);
+
+  return (
+    <div className={styles.section}>
+      <h2 className={styles.heading}>
+        Magnetopause · {shape.standoffRe.toFixed(1)} R<sub>E</sub>
+      </h2>
+
+      <p className={styles.note}>
+        {wind.windSpeed.toFixed(0)} km/s · {wind.density.toFixed(1)} cm⁻³ · Bz{' '}
+        {wind.bzGsm.toFixed(1)} nT → {pressure.toFixed(1)} nPa
+      </p>
+
+      {shape.insideGeosynchronous && (
+        <p className={styles.note}>
+          inside geosynchronous orbit ({GEOSYNCHRONOUS_RE} R<sub>E</sub>) — satellites
+          there are in unshielded solar wind
+        </p>
+      )}
+
+      {/* Not a footnote: outside the fitted range the number is an
+          extrapolation, and that is most likely exactly when someone is
+          looking. */}
+      {shape.extrapolated && (
+        <p className={styles.note}>
+          beyond the range Shue et al. fitted — extrapolated, treat as indicative
+        </p>
+      )}
+
+      <p className={styles.note}>
+        modelled boundary (Shue et al. 1998), not an observation
+      </p>
     </div>
   );
 }

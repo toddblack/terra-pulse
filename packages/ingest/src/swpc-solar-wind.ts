@@ -122,7 +122,7 @@ export function parseSwpcSolarWind(payload: unknown): SpaceWeatherSample[] {
   const densityIndex = header.indexOf(COLUMN_DENSITY);
   const bzIndex = header.indexOf(COLUMN_BZ);
   // Density is not required: it is carried for the magnetopause work, and a
-  // feed without it should still yield the speed H3 is registered against.
+  // feed without it should still yield the speed H3b is registered against.
   if (timeIndex < 0 || speedIndex < 0 || bzIndex < 0) {
     throw new Error(
       `SWPC solar wind: header is missing a required column (${COLUMN_PROPAGATED_TIME}, ${COLUMN_SPEED}, ${COLUMN_BZ})`,

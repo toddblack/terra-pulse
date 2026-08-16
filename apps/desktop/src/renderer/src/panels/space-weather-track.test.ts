@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { SpaceWeatherBucket, SpaceWeatherSample } from '@terra-pulse/schema';
 import {
   bucketsForWidth,
+  COVERAGE_CAPTION_BELOW,
   GEOMAGNETIC_SPEC,
   layoutTrack,
+  measuredFraction,
   nearestBarIndex,
   peakOf,
   SOLAR_WIND_SPEC,
@@ -31,7 +33,12 @@ const bucket = (
   peakKp: number | null,
   peakDst: number | null = null,
   hours = 1,
-  wind: { typical?: number | null; peak?: number | null; bz?: number | null } = {},
+  wind: {
+    typical?: number | null;
+    peak?: number | null;
+    bz?: number | null;
+    measuredHours?: number;
+  } = {},
 ): SpaceWeatherBucket => ({
   timeUtc: new Date(Date.UTC(2020, 0, 1, hour)).toISOString(),
   typicalKp,
@@ -41,6 +48,10 @@ const bucket = (
   peakWindSpeed: wind.peak ?? null,
   peakBzGsm: wind.bz ?? null,
   hours,
+  kpHours: typicalKp === null ? 0 : hours,
+  // Defaults to "measured throughout" when a speed is given, so only the tests
+  // that care about coverage have to say anything about it.
+  windSpeedHours: wind.measuredHours ?? (wind.typical == null ? 0 : hours),
 });
 
 describe('layoutTrack', () => {
@@ -115,6 +126,8 @@ describe('layoutTrack', () => {
       peakWindSpeed: null,
       peakBzGsm: null,
       hours: 1,
+      kpHours: 1,
+      windSpeedHours: 0,
     };
     expect(layoutTrack([outside, bucket(3, 1, 1)], START, END, 0.01)).toHaveLength(1);
   });
@@ -129,6 +142,8 @@ describe('layoutTrack', () => {
       peakWindSpeed: null,
       peakBzGsm: null,
       hours: 1,
+      kpHours: 1,
+      windSpeedHours: 0,
     };
     expect(layoutTrack([broken], START, END, 0.01)).toHaveLength(0);
   });
@@ -205,6 +220,73 @@ describe('layoutTrack with the solar wind spec', () => {
     const [bar] = layoutTrack([bucket(0, 3, 5, -20)], START, END, 0.01, SOLAR_WIND_SPEC);
     expect(bar?.typicalHeight).toBe(0);
     expect(bar?.typical).toBeNull();
+  });
+});
+
+describe('coverage marking', () => {
+  it('flags an interval that measured nothing, distinct from one that measured zero', () => {
+    // The whole point: absent and quiet draw identically on a bar chart, and
+    // the hours this happens in are the least ordinary in the record.
+    const [missing] = layoutTrack([bucket(0, 3, 5, -20)], START, END, 0.01, SOLAR_WIND_SPEC);
+    expect(missing?.unmeasured).toBe(true);
+    expect(missing?.measuredHours).toBe(0);
+
+    const [present] = layoutTrack(
+      [bucket(1, 3, 5, -20, 1, { typical: 300, peak: 300 })],
+      START,
+      END,
+      0.01,
+      SOLAR_WIND_SPEC,
+    );
+    expect(present?.unmeasured).toBe(false);
+  });
+
+  it('does not flag a partially measured interval as absent', () => {
+    // Two hours of six is a thin sample, but it is a measurement. Only a total
+    // absence gets the baseline mark.
+    const [bar] = layoutTrack(
+      [bucket(0, 3, 5, -20, 6, { typical: 420, peak: 500, measuredHours: 2 })],
+      START,
+      END,
+      0.01,
+      SOLAR_WIND_SPEC,
+    );
+    expect(bar?.unmeasured).toBe(false);
+    expect(bar?.measuredHours).toBe(2);
+  });
+
+  it('reports the fraction of the window a row actually saw', () => {
+    const bars = layoutTrack(
+      [
+        bucket(0, 3, 5, -20, 10, { typical: 400, peak: 500, measuredHours: 10 }),
+        bucket(12, 3, 5, -20, 10, { typical: null, peak: null, measuredHours: 0 }),
+      ],
+      START,
+      END,
+      0.01,
+      SOLAR_WIND_SPEC,
+    );
+    expect(measuredFraction(bars)).toBeCloseTo(0.5, 5);
+  });
+
+  it('treats an empty row as complete rather than as zero percent', () => {
+    // A window with no buckets reads through the "not measured" caption. Saying
+    // "0% measured" would imply the row looked and found nothing.
+    expect(measuredFraction([])).toBe(1);
+  });
+
+  it('keeps the caption threshold below 100%, since good years still drop hours', () => {
+    // OMNI carries scattered single-hour dropouts even at its best. A caption on
+    // every view is noise that stops being read, which costs it when it matters.
+    expect(COVERAGE_CAPTION_BELOW).toBeLessThan(1);
+    expect(COVERAGE_CAPTION_BELOW).toBeGreaterThan(0.5);
+  });
+
+  it('counts Kp and wind coverage independently on the same buckets', () => {
+    // The normal case for 1985-1994: Dst and Kp near-complete, wind at 32-42%.
+    const buckets = [bucket(0, 3, 5, -20, 6, { typical: null, peak: null, measuredHours: 0 })];
+    expect(measuredFraction(layoutTrack(buckets, START, END, 0.01, GEOMAGNETIC_SPEC))).toBe(1);
+    expect(measuredFraction(layoutTrack(buckets, START, END, 0.01, SOLAR_WIND_SPEC))).toBe(0);
   });
 });
 

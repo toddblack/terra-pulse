@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { SpaceWeatherSample } from '@terra-pulse/schema';
 
 export type SpaceWeatherState =
@@ -48,4 +48,31 @@ export function useSpaceWeather(startMs: number, endMs: number): SpaceWeatherSta
   }, [startMs, endMs]);
 
   return state;
+}
+
+/**
+ * The solar wind in the hour containing an instant, or null.
+ *
+ * The **containing hour only** — deliberately not "the most recent reading
+ * before this instant". Carrying a value forward across a gap would draw a
+ * magnetopause from conditions that were measured hours or years earlier and
+ * present it as current, which is the one thing the coverage work exists to
+ * prevent. Null is an ordinary answer here: the wind is 32-42% present across
+ * 1985-1994 and absent entirely before 1963.
+ */
+export function useSolarWindAt(
+  atMs: number,
+): { windSpeed: number | null; density: number | null; bzGsm: number | null } | null {
+  const hourStartMs = Math.floor(atMs / 3_600_000) * 3_600_000;
+  const state = useSpaceWeather(hourStartMs, hourStartMs + 3_600_000);
+
+  // Memoised on the query result, not on `atMs`: a fresh object every render
+  // would re-run the layer push effect continuously, which is the identity trap
+  // this codebase has hit more than once.
+  return useMemo(() => {
+    if (state.status !== 'ready') return null;
+    const sample = state.samples.at(-1);
+    if (!sample) return null;
+    return { windSpeed: sample.windSpeed, density: sample.density, bzGsm: sample.bzGsm };
+  }, [state]);
 }

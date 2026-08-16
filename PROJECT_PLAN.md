@@ -842,8 +842,8 @@ Initial set:
 |---|---|---|---|
 | H1 | X/M-class flare occurrence elevates global M5+ rate | lags: 0–7d | Low |
 | H2 | Effect is stronger on the hemisphere facing the CME at **arrival** time | subsolar longitude at arrival ±90° | Low |
-| H3 | Coronal hole high-speed streams elevate M5+ rate | lags: 2–5d (transit time) | Low |
-| H4 | Kp/Dst geomagnetic disturbance correlates with M5+ rate | lags: 0–3d | Low |
+| ~~H3~~ → **H3b** | Coronal hole high-speed streams elevate M5+ rate | onset >500 km/s for 6h; **1995 onward**; lags 0–24h/24–48h/48–72h/3–5d | Low |
+| ~~H4~~ → **H4c** | Kp/Dst geomagnetic disturbance correlates with M5+ rate | Kp≥6 or Dst≤−100nT; **GFZ Kp**; 1963 onward; lags 0–72h | Low |
 | H4b | **Local** magnetometer disturbance correlates with **nearby** M5+ rate | station radius 500km, lags 0–72h | Low, but spatially specific — a stronger test than H4 |
 | H5 | M6+ quakes are followed by an excess of M5+ at short antipodal distance | distance-distribution test, 0–72h, completeness-corrected | Moderate — antipodal focusing is a real wave phenomenon |
 | H6 | Peak lunisolar tidal stress correlates with M5+ rate | resolved onto fault geometry; Phase 5 | **Highest** — established mechanism, existing literature |
@@ -964,7 +964,8 @@ server-side proxying of all third-party API calls.
   tail, so both halves are referenced to the bow shock nose. Stored, no UI yet.
   Coverage is **not monotonic** — 92% in 1980, 32-42% across 1985-94, 98-100%
   from 1995 — and missing hours cluster on the biggest storms, because ACE's
-  plasma instrument saturates. See the open registration questions under H3.
+  plasma instrument saturates. Registered as H3b (1995 onward, OMNI-sourced);
+  H3 was withdrawn unrun.
 - Solar emission + arrival layers (§5.6) — magnetopause standoff (Shue et al.
   1998) is now unblocked: it needs exactly speed, density and Bz.
 - INTERMAGNET / SuperMAG station layer with disturbance amplitude

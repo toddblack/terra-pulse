@@ -36,6 +36,10 @@ import {
 } from './ipc/earthquakes';
 import { registerAuroraIpcHandlers, startAuroraPolling } from './ipc/aurora';
 import {
+  registerMagnetometerIpcHandlers,
+  startMagnetometerPolling,
+} from './ipc/magnetometer';
+import {
   createSpaceWeatherController,
   registerSpaceWeatherIpcHandlers,
   startKpPolling,
@@ -338,6 +342,16 @@ app
       }
     });
     app.on('will-quit', stopAuroraPolling);
+
+    // Ground magnetometers. Its own poll for the same reason: a USGS outage
+    // must not stop the aurora updating, and vice versa.
+    registerMagnetometerIpcHandlers();
+    const stopMagnetometerPolling = startMagnetometerPolling((readings) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('magnetometer:updated', readings);
+      }
+    });
+    app.on('will-quit', stopMagnetometerPolling);
 
     // Kp and Dst. The rolling Kp tail runs always — it is an 8 KB read from
     // GFZ's nowcast file. The deep backfill is user-triggered, because its Dst

@@ -14,8 +14,10 @@ import { displayWindow } from '../globe/display-window';
 import { useSpaceWeather } from './useSpaceWeather';
 import {
   bucketsForWidth,
+  COVERAGE_CAPTION_BELOW,
   GEOMAGNETIC_SPEC,
   layoutTrack,
+  measuredFraction,
   nearestBarIndex,
   peakOf,
   SOLAR_WIND_SPEC,
@@ -66,7 +68,10 @@ function describeBar(
   if (withTime) parts.push(formatBarTime(bar.timeUtc));
   if (bar.hours > 1) parts.push(`${String(bar.hours)} h`);
 
-  if (bar.typical === null) {
+  if (bar.unmeasured) {
+    // Explicitly, rather than an em dash that reads as "zero" at a glance.
+    parts.push('not measured');
+  } else if (bar.typical === null) {
     parts.push(`${unit} —`);
   } else if (bar.peak !== null && bar.peak > bar.typical) {
     parts.push(`${unit} ${bar.typical.toFixed(digits)}, peak ${bar.peak.toFixed(digits)}`);
@@ -183,6 +188,11 @@ export function SpaceWeatherTrack() {
 
   const hasData = samples.length > 0;
   const hasWind = solarWind.some((bar) => bar.typical !== null);
+  // Reported beside the peak when the row saw materially less than the window:
+  // a peak drawn from a third of the hours is a different claim from one drawn
+  // from all of them, and nothing else on screen tells them apart.
+  const windCoverage = measuredFraction(solarWind);
+  const geoCoverage = measuredFraction(geomagnetic);
 
   /** Shared by both rows: pointer, keyboard and the resize observer. */
   const plotHandlers = {
@@ -237,6 +247,12 @@ export function SpaceWeatherTrack() {
                   · Dst {Math.round(peak.dst)} nT
                 </span>
               )}
+              {geoCoverage < COVERAGE_CAPTION_BELOW && (
+                <span className={styles.coverage}>
+                  {' '}
+                  · {Math.round(geoCoverage * 100)}% measured
+                </span>
+              )}
             </>
           ) : (
             // Distinguishes "no storms" from "no data", which look identical on
@@ -264,6 +280,12 @@ export function SpaceWeatherTrack() {
             <>
               peak {peak.windSpeed === null ? '—' : Math.round(peak.windSpeed)} km/s
               {peak.bzGsm !== null && <> · Bz {peak.bzGsm.toFixed(1)} nT</>}
+              {windCoverage < COVERAGE_CAPTION_BELOW && (
+                <span className={styles.coverage}>
+                  {' '}
+                  · {Math.round(windCoverage * 100)}% measured
+                </span>
+              )}
             </>
           ) : (
             // The common case until the archive is downloaded, and a genuine
@@ -381,6 +403,21 @@ function Row({
           const left = `${String(bar.x * 100)}%`;
           const barWidth = `${String(Math.max(bar.width * 100, 0.15))}%`;
           const isHovered = index === hovered;
+
+          if (bar.unmeasured) {
+            // An absence, drawn. Left blank it is indistinguishable from a low
+            // value — and the hours this happens in are the least ordinary in
+            // the record: ACE goes blind during the biggest storms, and no
+            // spacecraft sat at L1 at all between 1985 and 1994. Contiguous
+            // gaps merge into a dotted baseline; isolated ones read as dashes.
+            return (
+              <span
+                key={bar.timeUtc}
+                className={isHovered ? `${styles.absent} ${styles.absentHovered}` : styles.absent}
+                style={{ left, width: barWidth }}
+              />
+            );
+          }
 
           return (
             <span key={bar.timeUtc}>

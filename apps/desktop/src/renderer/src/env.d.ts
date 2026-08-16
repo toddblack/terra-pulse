@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import type {
+  MagnetometerReading,
   AftershockSequence,
   AuroraGrid,
   SpaceWeatherProgress,
@@ -46,6 +47,12 @@ declare global {
         latest(): Promise<AuroraGrid | null>;
         /** Subscribe to new grids; returns an unsubscribe function. */
         onUpdated(callback: (grid: AuroraGrid) => void): () => void;
+      };
+      magnetometer: {
+        /** The latest network read, empty before the first successful poll. */
+        latest(): Promise<MagnetometerReading[]>;
+        /** Subscribe to each refresh; returns an unsubscribe function. */
+        onUpdated(callback: (readings: MagnetometerReading[]) => void): () => void;
       };
       spaceWeather: {
         /** Kp and Dst over a half-open range. Bounded on both ends. */
