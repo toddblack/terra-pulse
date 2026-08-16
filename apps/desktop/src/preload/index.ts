@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
+  MagnetometerReading,
   AftershockSequence,
   AuroraGrid,
   SpaceWeatherSample,
@@ -117,6 +118,26 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.on('aurora:updated', listener);
       return () => {
         ipcRenderer.removeListener('aurora:updated', listener);
+      };
+    },
+  },
+  magnetometer: {
+    /**
+     * The most recent network read, or empty before the first successful poll.
+     *
+     * Not persisted: a disturbance reading is a transient, and no view can ask
+     * for this hour again. History comes from the INTERMAGNET archive instead.
+     */
+    latest: (): Promise<MagnetometerReading[]> => ipcRenderer.invoke('magnetometer:latest'),
+
+    /** Subscribes to each refresh. Returns an unsubscribe function. */
+    onUpdated: (callback: (readings: MagnetometerReading[]) => void): (() => void) => {
+      const listener = (_event: unknown, readings: MagnetometerReading[]) => {
+        callback(readings);
+      };
+      ipcRenderer.on('magnetometer:updated', listener);
+      return () => {
+        ipcRenderer.removeListener('magnetometer:updated', listener);
       };
     },
   },

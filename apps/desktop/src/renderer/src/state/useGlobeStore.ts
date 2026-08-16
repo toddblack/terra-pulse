@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { FieldQuantity } from '../layers/igrf';
-import type { AuroraGrid } from '@terra-pulse/schema';
+import type { AuroraGrid, MagnetometerReading } from '@terra-pulse/schema';
 import {
   DEFAULT_BASEMAP_ID,
   backdropToneFor,
@@ -97,6 +97,8 @@ interface GlobeState {
    * different grid than the one drawn would be worse than no legend.
    */
   auroraGrid: AuroraGrid | null;
+  /** Latest magnetometer network read. Empty before the first poll. */
+  magnetometerReadings: MagnetometerReading[];
 
   /**
    * Which inspector sections are expanded, by section id.
@@ -129,6 +131,7 @@ interface GlobeState {
   toggleSection: (id: string) => void;
   setFieldQuantity: (quantity: FieldQuantity) => void;
   setAuroraGrid: (grid: AuroraGrid | null) => void;
+  setMagnetometerReadings: (readings: MagnetometerReading[]) => void;
 }
 
 export const useGlobeStore = create<GlobeState>((set) => ({
@@ -142,6 +145,7 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   expandedSections: {},
   fieldQuantity: 'intensity',
   auroraGrid: null,
+  magnetometerReadings: [],
 
   setActiveBasemap: (id) => set({ activeBasemapId: id }),
 
@@ -171,6 +175,7 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   setFieldQuantity: (fieldQuantity) => set({ fieldQuantity }),
 
   setAuroraGrid: (auroraGrid) => set({ auroraGrid }),
+  setMagnetometerReadings: (magnetometerReadings) => set({ magnetometerReadings }),
 
   /**
    * Absent means collapsed, so the first click on an untouched section opens

@@ -1,6 +1,6 @@
 # HYPOTHESES.md — Pre-Registration Log
 
-**Last updated:** 2026-08-14
+**Last updated:** 2026-08-15
 
 ---
 
@@ -95,48 +95,98 @@ Applied to all hypotheses unless an entry overrides them.
 | Field | Value |
 |---|---|
 | **Registered** | 2026-07-24 |
-| **Status** | Not yet run |
+| **Status** | **Superseded by H3b on 2026-08-15 — never run** |
 | **Statement** | Coronal hole high-speed stream arrivals are followed by an elevated global M5.0+ rate. |
 | **Solar source** | SWPC solar wind speed (DSCOVR/ACE/IMAP); stream onset defined as sustained speed > 500 km/s for ≥ 6h |
 | **Lag windows** | 0–24h, 24–48h, 48–72h, 3–5d (4 windows) |
-| **Tests in family** | 4 |
+| **Tests in family** | 4 — **withdrawn unrun**, see the matrix note |
+| **Mechanism plausibility** | Low |
+| **Result** | — (never run) |
+
+**Withdrawn: it named a source that cannot supply the history, and left the time
+range implied when the data does not permit one.** Every registered parameter
+above is left exactly as written, per rule 3 — only `Status`, which tracks
+lifecycle rather than being a registered parameter, has moved. The replacement is
+H3b immediately below, and its 4 tests replace these rather than adding to the
+matrix. No result exists to hide: H3 was never run.
+
+### H3b — Coronal hole high-speed streams (OMNI, 1995 onward)
+
+| Field | Value |
+|---|---|
+| **Registered** | 2026-08-15 |
+| **Status** | Not yet run |
+| **Supersedes** | H3, withdrawn unrun on the same date |
+| **Statement** | Coronal hole high-speed stream arrivals are followed by an elevated global M5.0+ rate. |
+| **Solar source** | **NASA OMNI2** hourly solar wind speed for the history; **SWPC's propagated real-time product** for the recent tail. Both are referenced to the bow shock nose. |
+| **Trigger definition** | Stream onset = sustained speed > 500 km/s for ≥ 6h — **unchanged from H3** |
+| **Time range** | **1995-01-01 onward** |
+| **Gap handling** | An onset requires 6 consecutive hours *each carrying a measured speed*; an unmeasured hour breaks the run. Exposure counts only hours where a full 6-hour window was measured. |
+| **Lag windows** | 0–24h, 24–48h, 48–72h, 3–5d (4 windows) |
+| **Tests in family** | 4 (replacing H3's 4) |
 | **Mechanism plausibility** | Low |
 | **Result** | — |
 
-**Open — two registration questions raised by the ingest, 2026-08-15. Not yet
-resolved, and H3 must not be run until they are.** Both were forced by measuring
-the data, not by any result; H3 has never been run.
+**Nothing here was chosen after seeing a result.** H3 was never run. Both changes
+were forced by measuring the ingested data, and both were settled before any test
+was written.
 
-1. **No time range is registered, and the data demands one.** H3's onset needs
-   *sustained speed for six hours*, so what governs is unbroken six-hour
-   windows. Measured on the real OMNI record: **16.9%** intact in 1993, 24.8%
-   in 1994, **97.6% in 1995** — a 5.8x swing driven by whether a spacecraft sat
-   at L1. Coverage is not monotonic either: 92% in 1980, collapsing to 32-42%
-   across 1985-1994 after ISEE-3 left, recovering from 1995. Running H3 over the
-   full record would find far more onsets after 1995 for purely instrumental
-   reasons. **Proposed: 1995-01-01 onward**, registered explicitly.
-2. **The historical source is OMNI, which H3 does not name.** H3 says "SWPC
-   solar wind speed (DSCOVR/ACE/IMAP)". SWPC serves only the last seven days, so
-   the history has to come from NASA's OMNI2 — the same spacecraft, cross-
-   normalised and time-shifted to the bow shock nose. The live tail uses SWPC's
-   *propagated* product specifically so both halves mean the same thing.
+**Why the source changed.** H3 named "SWPC solar wind speed (DSCOVR/ACE/IMAP)".
+SWPC serves only the last seven days, so the history has to come from NASA's
+OMNI2 — the same spacecraft, cross-normalised and time-shifted to the bow shock
+nose. This is a weaker change than H4 → H4c, where the *quantity* differed;
+here it is the same measurements aggregated by a different body. It is
+re-registered rather than clarified in place because H3 named a publisher, and
+rule 3 does not distinguish between kinds of parameter.
 
-Also to be handled by whatever entry runs this, whether or not it changes the
-registration:
+The live tail deliberately uses SWPC's **propagated** product rather than its raw
+L1 stream, so both halves of the series mean the same thing. The propagation
+shift is not negligible — measured at 59.4 minutes on a 362 km/s wind, and it
+scales inversely with speed.
 
-- **Missing wind is biased toward the largest events**, so it cannot be treated
-  as missing-at-random. Around the 2003 Halloween storm, 2003-10-29 and 10-30
-  carry **no speed at all** for 48 straight hours while Dst reads -350 and -383;
-  **82% of that year's missing hours are those four days.** ACE's plasma
-  instrument saturates on solar energetic particles exactly when the wind is
-  most extreme. A gap read as "no stream" drops the strongest candidates from
-  the sample — the error runs *against* finding an effect, but it is still an
-  error. Dst and Kp remain present through these hours and can distinguish a
-  quiet spell from a blinded sensor.
+**Why 1995.** The trigger needs *six unbroken hours*, so what governs is not
+average coverage but the fraction of six-hour windows with no gap:
 
-Resolving these follows the H4 → H4c precedent: registered parameters are not
-edited, so this becomes a new entry that supersedes H3 unrun, with H3's 4 tests
-transferring rather than adding to the matrix.
+| year | speed coverage | 6h windows intact |
+|---|---|---|
+| 1993 | 33% | **16.9%** |
+| 1994 | 42% | 24.8% |
+| **1995** | 98.5% | **97.6%** |
+
+A 5.8x swing in whether the test can run at all, driven by whether a spacecraft
+sat at L1. Coverage is also **not monotonic** — 92% in 1980, collapsing to 32-42%
+across 1985-1994 after ISEE-3 left for comet Giacobini-Zinner, recovering from
+1995 with WIND and then ACE. Over the full record H3 would have found far more
+onsets after 1995 for purely instrumental reasons, which against any driver that
+trends across the period is a manufactured correlation — the same trap as running
+a decade-scale test on M4.5+ earthquakes.
+
+**Why gap handling is registered rather than left to the implementation.** It
+changes what the test counts, so rule 2 requires it stated. Two decisions, and
+they must be paired:
+
+- A missing hour **breaks** a candidate run. "Sustained above threshold" cannot
+  be claimed across an hour nobody measured.
+- Exposure is therefore restricted to hours where a full detection window *was*
+  measured. Breaking runs without also shrinking the denominator would count
+  unobservable time as observed and depress the rate.
+
+**The remaining bias, which no parameter fixes.** Missing wind is not
+missing-at-random: it is biased toward the largest events. Around the 2003
+Halloween storm, 2003-10-29 and 10-30 carry **no speed at all** for 48 straight
+hours while Dst reads -350 and -383 — and **82% of that year's missing hours are
+those four days**. ACE's plasma instrument saturates on solar energetic particles
+exactly when the wind is most extreme; ground magnetometers do not.
+
+The gap-handling rule above stops this producing a *false positive*: those hours
+leave the sample entirely rather than counting as "no stream". What it cannot do
+is recover the events themselves, so **H3b systematically under-samples the
+strongest streams and its power is lower than the raw hour count suggests.** The
+error runs against finding an effect, which is the safe direction, but a null
+result must be reported with this stated rather than as a clean null. Dst and Kp
+remain present through these hours and can distinguish a quiet spell from a
+blinded sensor; using them to *impute* a stream would be a new hypothesis, not
+this one.
 
 ### H4 — Global geomagnetic disturbance
 
@@ -276,7 +326,8 @@ not as a discovery.
 |---|---|
 | H1 | 4 |
 | H2 | 2 |
-| H3 | 4 |
+| ~~H3~~ | 0 — withdrawn unrun 2026-08-15, replaced by H3b |
+| H3b | 4 |
 | ~~H4~~ | 0 — withdrawn unrun 2026-08-14, replaced by H4c |
 | H4c | 6 |
 | H4b | 2 |
@@ -284,17 +335,25 @@ not as a discovery.
 | H6 | 2 |
 | **Total** | **21** |
 
-**Why the total did not move when H4c was added.** H4c is not a new question —
-it is H4 with a corrected data source, registered because rule 3 forbids editing
-a registered parameter. Counting both would put 27 in the denominator and make
-**every other hypothesis in this file harder to pass** in exchange for a
-provenance fix, which is a real cost paid for nothing.
+**Why the total did not move when H3b and H4c were added.** Neither is a new
+question — each is its predecessor with a corrected data source, registered
+because rule 3 forbids editing a registered parameter. Counting both pairs would
+put 31 in the denominator and make **every other hypothesis in this file harder
+to pass** in exchange for two provenance fixes, which is a real cost paid for
+nothing.
 
 The condition that makes this legitimate, and the one to check before ever doing
-it again: **H4 was never run.** No p-value was computed under it, so nothing is
-being dropped from the correction — there is no result, not a discarded one.
-A family that *has* been run keeps its tests in the denominator forever, whatever
-happens to it afterwards; that is rule 5, and it is not what happened here.
+it again: **neither H3 nor H4 was ever run.** No p-value was computed under
+either, so nothing is being dropped from the correction — there is no result, not
+a discarded one. A family that *has* been run keeps its tests in the denominator
+forever, whatever happens to it afterwards; that is rule 5, and it is not what
+happened here.
+
+**This is now a pattern, so it needs a limit.** Two supersessions in two days is
+what a new data source does to hypotheses registered before that source existed —
+it is not licence to keep re-registering. Any *third* one should prompt the
+question of whether the entries are being written too early, before the data they
+name has been looked at.
 
 At an uncorrected threshold of p < 0.05, roughly **1 false positive is expected
 from noise alone** across this matrix. FDR correction is applied across all 21.

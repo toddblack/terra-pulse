@@ -48,8 +48,8 @@ export const DST_START_YEAR = 1963;
  * to 92%, collapses for a decade, then recovers. Any "it gets better over time"
  * assumption is simply false here.
  *
- * The number that decides the epoch is not coverage but whether H3's detection
- * metric can run at all. H3 defines a stream onset as sustained speed above a
+ * The number that decides the epoch is not coverage but whether H3b's detection
+ * metric can run at all. H3b defines a stream onset as sustained speed above a
  * threshold for **six hours**, so what matters is the fraction of six-hour
  * windows with no gap in them:
  *
@@ -148,7 +148,7 @@ export interface SpaceWeatherSample {
   /**
    * Solar wind bulk speed in km/s, or null.
    *
-   * H3's registered quantity. Typically 300-500 km/s at solar minimum; a
+   * H3b's registered quantity. Typically 300-500 km/s at solar minimum; a
    * coronal-hole high-speed stream runs 500-800. Observed range across the real
    * OMNI record for 1989: 280-918.
    */
@@ -179,7 +179,7 @@ export interface SpaceWeatherSample {
    * GSE the same physical field gives a different number, and OMNI publishes
    * both, one column apart.
    *
-   * Not registered data for any hypothesis — H3 is speed alone. This is carried
+   * Not registered data for any hypothesis — H3b is speed alone. This is carried
    * for Explore, and because the magnetopause standoff calculation the plan
    * wants for §5.6 needs it.
    */
@@ -223,8 +223,22 @@ export interface SpaceWeatherBucket {
    * the least interesting hour of every bucket.
    */
   peakBzGsm: number | null;
-  /** Hours actually holding a sample, so a readout can say how much it covers. */
+  /** Hours in the span, measured or not — the width of the interval. */
   hours: number;
+  /**
+   * Hours that actually carried a value, per quantity.
+   *
+   * Separate from `hours` because **absent and quiet are different claims**, and
+   * on a bar chart they draw identically: a bucket with no measurement and a
+   * bucket that measured nothing notable both produce a short bar or none.
+   *
+   * This matters most exactly where the data is most interesting. Around the
+   * 2003 Halloween storm the wind is missing for 48 straight hours while Dst
+   * reads -383, and drawn without this the row says "the wind stopped" rather
+   * than "nobody could measure it".
+   */
+  kpHours: number;
+  windSpeedHours: number;
 }
 
 /**
@@ -246,7 +260,7 @@ export const WIND_SPEED_MAX = 1000;
 /**
  * Where the wind counts as fast, in km/s — **for display emphasis only**.
  *
- * 500 is the conventional slow/fast boundary, and H3 registers its stream onset
+ * 500 is the conventional slow/fast boundary, and H3b registers its stream onset
  * at the same number for the same reason. They are kept as separate values
  * regardless, exactly as `KP_STORM_THRESHOLD` is kept apart from H4c's trigger:
  * if the registered threshold is ever amended, this one must not silently
@@ -336,6 +350,9 @@ export function downsampleSpaceWeather(
       typicalWindSpeed: lowerMedian(speedValues),
       peakBzGsm,
       hours: end - start,
+      // Length of the value lists: every measured hour pushed exactly once.
+      kpHours: kpValues.length,
+      windSpeedHours: speedValues.length,
     });
   }
 
@@ -379,4 +396,66 @@ export interface SpaceWeatherProgress {
   storedSamples: number;
   currentYear: number | null;
   error: string | null;
+}
+
+/**
+ * A ground magnetometer observatory.
+ *
+ * The network H4b is registered against. Unlike the auroral oval — which is
+ * organised by the magnetic poles and therefore sits over almost nowhere that
+ * has large earthquakes — ground magnetometers respond to storms at **all**
+ * latitudes, through currents induced in the ground rather than through
+ * particle precipitation. Measured against this app's own catalogue: 21.3% of
+ * M7+ events have an INTERMAGNET station within H4b's registered 500 km, against
+ * 0.77% under the ordinary auroral oval.
+ */
+export interface MagnetometerStation {
+  /** IAGA three-letter code. */
+  code: string;
+  name: string;
+  latitude: number;
+  /** Degrees east, -180 to 180. */
+  longitude: number;
+  agency: string | null;
+}
+
+/**
+ * How disturbed one station is over a window.
+ *
+ * The **range of the horizontal component in nT** — largest minus smallest.
+ * Deliberately not converted to a K index: the K scale is quasi-logarithmic and
+ * each observatory has its own conversion table, so a K is neither comparable
+ * between stations nor averageable, which is the same trap Kp already poses. A
+ * range in nT is a measurement any reader can compare directly.
+ */
+export interface StationDisturbance {
+  code: string;
+  rangeNt: number;
+  /** How many readings the range was taken from, so a thin hour is visible. */
+  samples: number;
+  observedAtUtc: string;
+}
+
+/**
+ * Where a station's disturbance stops being ordinary, in nT per hour.
+ *
+ * **Display emphasis only.** H4b's registered trigger is the 99th percentile of
+ * *that station's own* distribution, which is a per-station quantity this
+ * cannot stand in for — a quiet mid-latitude site and an auroral-zone site
+ * differ by an order of magnitude on an ordinary day. Kept apart for the same
+ * reason `KP_STORM_THRESHOLD` is kept apart from H4c's trigger.
+ */
+export const STATION_DISTURBED_NT = 50;
+
+/**
+ * One station and what it read, if anything.
+ *
+ * The disturbance is **separately nullable** because a station being offline is
+ * the common case, not an error: measured, 13 of 31 report in a given hour. A
+ * station with no reading must draw as *no reading* — one that is down during a
+ * storm is exactly the one a reader must not mistake for quiet.
+ */
+export interface MagnetometerReading {
+  station: MagnetometerStation;
+  disturbance: StationDisturbance | null;
 }

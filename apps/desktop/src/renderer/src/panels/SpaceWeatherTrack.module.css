@@ -116,6 +116,33 @@
   background-color: rgb(125 211 252 / 95%);
 }
 
+/* Nothing was measured in this interval.
+
+   Sits *on* the baseline at 2px tall, so it reads as "there is a slot here and
+   it is empty" rather than as a very small value. Deliberately not the series
+   hue: it is not a measurement, and colouring it blue would make a decade with
+   no spacecraft at L1 look like a decade of very slow solar wind.
+
+   Contiguous gaps merge into a dotted line along the axis — which is exactly
+   what a two-day instrument blackout should look like — while isolated dropouts
+   read as dashes. */
+.absent {
+  position: absolute;
+  bottom: 0;
+  height: 2px;
+  background-color: rgb(148 163 184 / 45%);
+}
+
+.absentHovered {
+  background-color: rgb(226 232 240 / 85%);
+}
+
+/* How much of the window the row actually saw. Muted: it qualifies the peak
+   beside it rather than competing with it. */
+.coverage {
+  color: rgb(148 163 184);
+}
+
 /* The interval's worst hour. Same hue as the bar because it is the same
    measurement — two statistics of one series, not two series — carried at
    higher opacity to hold its own at 2px tall against a full column. */

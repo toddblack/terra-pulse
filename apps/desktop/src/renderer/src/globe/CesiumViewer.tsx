@@ -18,6 +18,7 @@ import { watchSelection } from './selection-sync';
 import { useGlobeLayers } from './useGlobeLayers';
 import { displayWindow, LIVE_END_MARGIN_MS } from './display-window';
 import { useNow } from './useNow';
+import { useSolarWindAt } from '../panels/useSpaceWeather';
 import { usePlayback } from './usePlayback';
 import { useVisibleEarthquakes } from './useVisibleEarthquakes';
 import { useAntipodal } from '../panels/useAntipodal';
@@ -80,6 +81,10 @@ export function CesiumViewer() {
   const location = useGlobeStore((state) => state.location);
   const fieldQuantity = useGlobeStore((state) => state.fieldQuantity);
   const auroraGrid = useGlobeStore((state) => state.auroraGrid);
+  const magnetometerReadings = useGlobeStore((state) => state.magnetometerReadings);
+  // The magnetopause is an instantaneous state, so it reads the playhead's
+  // leading edge rather than the window.
+  const solarWind = useSolarWindAt(timeWindow.endMs);
 
   // Resolved from the loaded set rather than held in the store, so the chord
   // follows revisions to the event like every other view does.
@@ -175,6 +180,8 @@ export function CesiumViewer() {
     events,
     fieldQuantity,
     auroraGrid,
+    magnetometerReadings,
+    solarWind,
     antipodeEvent,
     antipodeHits,
     timeWindow,

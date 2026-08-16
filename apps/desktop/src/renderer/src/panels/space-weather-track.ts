@@ -33,6 +33,18 @@ export interface TrackBar {
   /** The row's second quantity — Dst on the geomagnetic row, Bz on the wind. */
   secondary: number | null;
   hours: number;
+  /** Hours in the interval that carried a measurement of this row's quantity. */
+  measuredHours: number;
+  /**
+   * Nothing was measured here, so the empty slot is an **absence, not a zero**.
+   *
+   * Drawn as a baseline mark rather than left blank: a bucket with no bar and a
+   * bucket whose value was genuinely low look identical otherwise, and the
+   * places this happens are the least ordinary hours in the record — ACE goes
+   * blind during the biggest storms, and no spacecraft sat at L1 at all from
+   * 1985 to 1994.
+   */
+  unmeasured: boolean;
 }
 
 /**
@@ -52,6 +64,8 @@ export interface TrackSpec {
   scaleMax: number;
   /** At or above this, the mark takes the emphasis colour. */
   emphasisAt: number;
+  /** How many of the interval's hours carried this row's quantity. */
+  measuredHoursOf: (bucket: SpaceWeatherBucket) => number;
 }
 
 /** Kp sized 0-9, marked by Dst. */
@@ -61,6 +75,7 @@ export const GEOMAGNETIC_SPEC: TrackSpec = {
   secondaryOf: (b) => b.peakDst,
   scaleMax: KP_MAX,
   emphasisAt: KP_STORM_THRESHOLD,
+  measuredHoursOf: (b) => b.kpHours,
 };
 
 /** Wind speed sized 0-1000 km/s, marked by the most southward Bz. */
@@ -70,6 +85,7 @@ export const SOLAR_WIND_SPEC: TrackSpec = {
   secondaryOf: (b) => b.peakBzGsm,
   scaleMax: WIND_SPEED_MAX,
   emphasisAt: FAST_WIND_THRESHOLD,
+  measuredHoursOf: (b) => b.windSpeedHours,
 };
 
 /**
@@ -117,6 +133,7 @@ export function layoutTrack(
     // record, and that hour is exactly what you want to see in context.
     const typical = spec.typicalOf(bucket);
     const peak = spec.peakOf(bucket);
+    const measuredHours = spec.measuredHoursOf(bucket);
 
     bars.push({
       x: (timeMs - startMs) / span,
@@ -130,6 +147,8 @@ export function layoutTrack(
       peak,
       secondary: spec.secondaryOf(bucket),
       hours: bucket.hours,
+      measuredHours,
+      unmeasured: measuredHours === 0,
     });
   }
 
@@ -146,6 +165,36 @@ export function layoutTrack(
 function heightOf(value: number | null, scaleMax: number): number {
   return value === null ? 0 : Math.min(value / scaleMax, 1);
 }
+
+/**
+ * What fraction of the drawn window this row actually measured, 0-1.
+ *
+ * Reported beside the row's peak whenever it is not essentially complete,
+ * because a peak drawn from a third of the hours is a different claim from one
+ * drawn from all of them — and nothing else on screen distinguishes them.
+ *
+ * Returns 1 for an empty row so a window with no buckets at all reads through
+ * the "not measured" caption rather than as "0% measured", which would imply
+ * the row had looked and found nothing.
+ */
+export function measuredFraction(bars: readonly TrackBar[]): number {
+  let hours = 0;
+  let measured = 0;
+  for (const bar of bars) {
+    hours += bar.hours;
+    measured += bar.measuredHours;
+  }
+  return hours === 0 ? 1 : measured / hours;
+}
+
+/**
+ * Below this, the row says how much of the window it saw.
+ *
+ * Not 100%: OMNI carries scattered single-hour dropouts even in its best years,
+ * and a caption reading "99% measured" on every view would be noise that stops
+ * being read — which would cost it exactly when it matters.
+ */
+export const COVERAGE_CAPTION_BELOW = 0.95;
 
 /**
  * How many buckets to downsample into for a given pixel width.

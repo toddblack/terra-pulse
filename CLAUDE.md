@@ -699,7 +699,7 @@ This fixes earthquake playback over the archive too.
 
 **Reconnaissance that shaped the rest of the phase:** SWPC's JSON products are a
 **rolling window, not an archive** — Kp is 7 days at 3-hourly, GOES X-ray 7 days
-at 1-minute (4.6 MB). They can drive live views and can never drive H1/H3/H4c,
+at 1-minute (4.6 MB). They can drive live views and can never drive H1/H3b/H4c,
 which are decade-scale rate correlations. Deep Kp exists at GFZ Potsdam (to
 1932) as a *separate* source. NOAA's OVATION auroral product is live and ideal
 for the next layer: a 360×181 grid of aurora probability, same raster shape as
@@ -853,7 +853,8 @@ weather, and the answer to "the aurora doesn't animate": these do.
   *extreme* of each bucket rather than the mean, but any Phase 4 rate work that
   wants a mean geomagnetic level must use ap, not Kp. Also there: sunspot number
   from 1932 and F10.7 solar flux from 1947. Neither appears in any registered
-  hypothesis — H3 is solar wind speed and Bz — so they are Explore material if
+  hypothesis — H3b registers solar wind *speed alone*, not Bz — so they are
+  Explore material if
   anything. Note the **sunspot column is CC BY-NC 4.0** while the rest of the
   file is CC BY 4.0; ingesting it would put a non-commercial term on a dataset
   that otherwise has none.
@@ -983,8 +984,9 @@ abbreviations, so the same elapsed time could read "5d ago" in one place and
 - `formatAgoFrom` returns **null** for an unparseable input rather than a label,
   so a bad timestamp shows nothing instead of "just now".
 
-**Solar wind speed and IMF Bz — ingest shipped.** H3's registered quantity, plus
-Bz for Explore and for §5.6's magnetopause work. No UI yet.
+**Solar wind speed and IMF Bz — ingest shipped.** Speed is H3b's registered
+quantity; **Bz is not registered for anything**, and is carried for Explore and
+for §5.6's magnetopause work.
 
 - **The history cost nothing to add.** Speed and Bz are columns 25 and 17 of the
   same 55-field OMNI2 rows the Dst backfill was already downloading and
@@ -995,7 +997,7 @@ Bz for Explore and for §5.6's magnetopause work. No UI yet.
   Giacobini-Zinner, recovering to 98-100% from 1995 with WIND and ACE. Any "it
   improves over time" assumption is simply false.
 - **`SOLAR_WIND_COMPLETE_SINCE_YEAR` is 1995, and the number that sets it is
-  not coverage.** H3 defines a stream onset as sustained speed over a threshold
+  not coverage.** H3b defines a stream onset as sustained speed over a threshold
   for **six hours**, so what matters is unbroken six-hour windows: **16.9%** of
   them in 1993, 24.8% in 1994, **97.6% in 1995**. A 5.8x swing in detectability
   from spacecraft coverage alone — the same trap as running a decade-scale
@@ -1068,7 +1070,7 @@ multi-track timeline in its first real form.
   across most of the row instead of a third of it. A ceiling of 1200 clips
   nothing and spends a fifth of the height on values that never occur.
 - **`FAST_WIND_THRESHOLD` is 500 for display only**, kept as its own constant
-  even though H3 registers the same number, exactly as `KP_STORM_THRESHOLD` is
+  even though H3b registers the same number, exactly as `KP_STORM_THRESHOLD` is
   kept apart from H4c's trigger. If the registered value is ever amended this
   one must not silently follow.
 - **Bz is taken as the *minimum* per bucket, not the maximum.** Southward is the
@@ -1081,16 +1083,90 @@ multi-track timeline in its first real form.
   both plots dropped 1.85rem → 1.5rem to claw 0.7rem back and the inspector's
   `max-height` went 23rem → 27rem. **A third row costs the same way** — the
   cheap answer then is a row the reader can collapse, not a shorter one.
+- **Absence is drawn, because absent and quiet are the same picture.** A bucket
+  with no measurement and one that measured something low both produce a short
+  bar or none. `SpaceWeatherBucket` carries `kpHours` / `windSpeedHours`, and a
+  bucket measuring zero of them gets a **2px baseline mark in neutral grey** —
+  not the series hue, or a decade with no spacecraft at L1 would read as a
+  decade of very slow wind. Contiguous gaps merge into a dotted axis; isolated
+  dropouts read as dashes.
+- **A row also says how much of the window it saw**, below 95%. Measured on the
+  real database: the 48-hour Halloween blackout is **0% wind against 100% Kp and
+  Dst** while Dst reads -383; the surrounding 5-day window is 51%; 1985-1994 is
+  40%; 2015 is 100% and shows no caption. A peak drawn from a third of the hours
+  is a different claim from one drawn from all of them, and nothing else on
+  screen tells them apart.
+  - The threshold is 95% and not 100% because OMNI drops scattered single hours
+    even in its best years — a caption on every view is noise that stops being
+    read, which would cost it exactly when it matters.
+  - **It exposed a real gap in the live window**: the last 30 days measure only
+    57% wind and 70% Dst, because OMNI's recent data ends before SWPC's 7-day
+    file begins. Not a bug, a limitation of the two-source design that was
+    invisible until the caption existed.
 - **The refactor dropped the ResizeObserver and lint caught it.** Width would
   have stayed at the 480px fallback forever, so bucket count and tick count
   would never have adapted to the real width — a silent wrongness, not a crash.
   It is a ref callback on the first row only, since both are the same width.
 
-**Next in Phase 3:** §5.6's magnetopause standoff (Shue et al. 1998) is
-unblocked — it needs exactly speed, density and Bz, all now stored. That is the
-honest way to put solar wind *on the globe*: the wind itself has no geography,
-being one number per hour for the whole planet, but its effect on the
-magnetosphere is genuinely spatial.
+**Magnetopause (§5.6) — shipped as an off-by-default layer.** Shue et al. (1998)
+evaluated on the stored wind, drawn as an open wireframe at ~10 Earth radii.
+
+- **The only layer that draws model output**, which is why its category is
+  `analysis`, its label says `(model)`, and it is a thin wireframe rather than a
+  shaded skin — a solid surface would read as an object that is there.
+- **Validated against 396,183 real hours**: standoff p50 **10.62 Re** (textbook),
+  min 5.11, and **298 hours (0.075%) inside geosynchronous orbit**. The eight
+  most-compressed hours are all recognisable storms — Bastille Day 2000,
+  2001-03-31, 2003-05-29, and **2024-05-10/11 (Gannon)** at 5.23 Re against a
+  measured Dst of -406. It reproduces known events from independent inputs.
+- **Geosynchronous orbit is drawn beside it, and is what makes it legible.**
+  "6.3 Re" is a number; "inside geosync, so those satellites are in raw solar
+  wind" is an event. The ring is drawn even when the boundary cannot be — that
+  is what shows the *boundary* is what is missing.
+- **It flashed under playback on the first attempt, and the cause was the field
+  layer's lesson in a different medium.** `entities.removeAll()` plus a re-add
+  of all 21 polylines on every hour change leaves a frame with nothing drawn.
+  The entity equivalent of flipping an alpha is a **`CallbackProperty`**: the
+  geometry is created once on mount and never removed, and only the positions it
+  reads change. `antipode-layer.ts` already used this. **Anything that redraws
+  on the playhead needs this shape** — imagery via alpha, entities via callback,
+  and never by replacing the objects.
+  - The position arrays are **cached, not computed in the callback**, which runs
+    every frame: 21 polylines of ~49 points is ~60,000 `Cartesian3` allocations
+    a second to redraw geometry that has not moved.
+  - Out-of-order responses needed no new guard — `useSpaceWeather`'s effect
+    cleanup already discards a superseded query, which is what the field layer
+    needed a sequence token for.
+- **Enabling it flies the camera to ~26 Re**, because at normal zoom the
+  boundary is entirely off screen and a layer that drew it silently would look
+  broken. Not restored on unmount: flying back would fight a reader who turned
+  it off *because* they had navigated elsewhere.
+- **3.8% of stored hours fall outside the range Shue et al. fitted**, including
+  most large storms — `MagnetopauseShape.extrapolated` reports it rather than
+  continuing silently. Still to surface in the legend.
+- `subsolarPoint` is computed analytically, not via Cesium's ephemeris: the
+  ICRF-to-fixed transform needs asynchronously-loaded Earth-orientation data and
+  can be `undefined` on early frames — a lot of failure surface for a quantity a
+  low-precision formula gets within a fraction of a degree, which at 10 Re is
+  nothing. Pinned against the solstices, equinoxes and 15°/hour rotation.
+- **Null wind draws no boundary.** The same rule as the track's absence marks,
+  and `useSolarWindAt` reads the *containing hour only* — carrying a value
+  forward across a gap would present conditions measured years earlier as
+  current.
+
+**The aurora is not where a quake-versus-charge comparison can be made, and it
+is worth knowing why before building on it.** Measured over 1,045 M7+ events
+using this app's own IGRF: **68% sit within 30° geomagnetic latitude** and only
+**0.77% (8 events) fall under the ordinary auroral oval** — nearly all of them
+Macquarie Island. Auroral precipitation is organised by the magnetic poles;
+large earthquakes by plate boundaries. The geographies barely intersect, so a
+spatial test has n = 8 with a single-region confounder. Note also that the *most
+charged* atmosphere by electron density is not the aurora but the equatorial
+ionization anomaly at ±10-20° magnetic latitude — which overlaps that 68%
+**because both are equatorial**, the same spurious-by-construction trap as the
+antipodal South America/Indonesia pairing. The viable form of that question is
+**H4b**: local magnetometer disturbance and nearby seismicity, which works at
+all latitudes because induced currents are global.
 
 
 
@@ -1526,6 +1602,25 @@ interface GlobeLayer {
 ---
 
 ## Data sources (all free)
+
+**Licences, redistribution and credentials live in `SOURCES.md`.** Two standing
+rules come out of it and constrain what may be added:
+
+1. **Never bundle bulk third-party data** into the repo or the installer — every
+   install fetches its own. It is what keeps the non-commercial and
+   no-bulk-distribution terms satisfiable.
+2. **No source may require the user to create an account.** A layer that does
+   nothing until someone registers with a third party is broken for everyone who
+   doesn't. An optional *API key* with a working fallback is fine; a mandatory
+   *account* is not.
+
+**SuperMAG was evaluated and rejected on rule 2** despite being the best archive
+source technically (~180 stations, uniform processing, baseline-subtracted). Its
+rules also forbid redistribution outright, so no sample database could ever
+ship. INTERMAGNET is the archive source instead: CC BY-NC 4.0, no credential,
+138 stations, definitive through 2024. See `SOURCES.md` for the full comparison
+and for what INTERMAGNET's attribution obliges.
+
 
 | Purpose | Endpoint |
 |---|---|

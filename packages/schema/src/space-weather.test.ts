@@ -135,6 +135,35 @@ describe('downsampleSpaceWeather', () => {
     expect(buckets.every((b) => b.peakDst !== null)).toBe(true);
   });
 
+  it('counts measured hours per quantity, not per row', () => {
+    // Absent and quiet are different claims and draw identically on a bar
+    // chart, so the count is what lets the track say which it is. Kp and the
+    // wind have genuinely different coverage over the same hours: 1985-1994 is
+    // near-complete for Kp and 32-42% for the wind.
+    const withWind: SpaceWeatherSample = {
+      timeUtc: new Date(Date.UTC(2000, 0, 1, 0)).toISOString(),
+      kp: 3,
+      dst: -10,
+      windSpeed: 420,
+      density: 5,
+      bzGsm: -2,
+    };
+    const kpOnly: SpaceWeatherSample = { ...withWind, timeUtc: new Date(Date.UTC(2000, 0, 1, 1)).toISOString(), windSpeed: null };
+
+    const [bucket] = downsampleSpaceWeather([withWind, kpOnly], 1);
+    expect(bucket?.hours).toBe(2);
+    expect(bucket?.kpHours).toBe(2);
+    expect(bucket?.windSpeedHours).toBe(1);
+  });
+
+  it('reports zero measured hours rather than omitting the bucket', () => {
+    // The bucket still exists — Kp is there — and the wind's absence has to be
+    // representable, or the track cannot draw it as an absence.
+    const [bucket] = downsampleSpaceWeather([at(0, 4, -30), at(1, 4, -30)], 1);
+    expect(bucket?.kpHours).toBe(2);
+    expect(bucket?.windSpeedHours).toBe(0);
+  });
+
   it('handles the empty and degenerate cases', () => {
     expect(downsampleSpaceWeather([], 10)).toEqual([]);
     expect(downsampleSpaceWeather([at(0, 1, -1)], 0)).toEqual([]);

@@ -16,11 +16,13 @@ import { useEarthquakeStore } from './state/useEarthquakeStore';
 import { playAlertSound } from './audio/alert-sound';
 import styles from './App.module.css';
 import { useAurora } from './panels/useAurora';
+import { useMagnetometers } from './panels/useMagnetometers';
 import { SpaceWeatherArchive } from './panels/SpaceWeatherArchive';
 
 export default function App() {
   // Keeps the live auroral grid current for the layer and its legend.
   useAurora();
+  useMagnetometers();
 
   const load = useEarthquakeStore((state) => state.load);
   const noteSynced = useEarthquakeStore((state) => state.noteSynced);
