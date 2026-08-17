@@ -111,3 +111,9 @@
   outline: 2px solid rgb(125 211 252);
   outline-offset: 1px;
 }
+
+/* Takes the slack so the guide button sits at the row's end rather than
+   immediately after a short label. */
+.overlayLabel {
+  flex: 1;
+}

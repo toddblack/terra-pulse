@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import type { FieldQuantity } from '../layers/igrf';
-import type { AuroraGrid, MagnetometerReading } from '@terra-pulse/schema';
+import type {
+  AuroraGrid,
+  MagnetometerReading,
+  TecGrid,
+  TecQuantity,
+} from '@terra-pulse/schema';
 import {
   DEFAULT_BASEMAP_ID,
   backdropToneFor,
@@ -99,6 +104,14 @@ interface GlobeState {
   auroraGrid: AuroraGrid | null;
   /** Latest magnetometer network read. Empty before the first poll. */
   magnetometerReadings: MagnetometerReading[];
+  /** Latest TEC map, or null before the first on-demand fetch. */
+  tecGrid: TecGrid | null;
+  /** Which TEC quantity the raster paints. */
+  tecQuantity: TecQuantity;
+  /** Which layer's guide dialog is open, or null. */
+  openGuideLayerId: string | null;
+  /** Latest TEC map. Null before the first fetch. */
+  /** Which TEC quantity the raster paints. */
 
   /**
    * Which inspector sections are expanded, by section id.
@@ -132,6 +145,10 @@ interface GlobeState {
   setFieldQuantity: (quantity: FieldQuantity) => void;
   setAuroraGrid: (grid: AuroraGrid | null) => void;
   setMagnetometerReadings: (readings: MagnetometerReading[]) => void;
+  setTecGrid: (grid: TecGrid | null) => void;
+  setTecQuantity: (quantity: TecQuantity) => void;
+  openGuide: (layerId: string) => void;
+  closeGuide: () => void;
 }
 
 export const useGlobeStore = create<GlobeState>((set) => ({
@@ -146,6 +163,11 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   fieldQuantity: 'intensity',
   auroraGrid: null,
   magnetometerReadings: [],
+  tecGrid: null,
+  // Total content first: it is the quantity people mean by "the ionosphere".
+  // The anomaly is the more analytically useful view and is one click away.
+  tecQuantity: 'tec',
+  openGuideLayerId: null,
 
   setActiveBasemap: (id) => set({ activeBasemapId: id }),
 
@@ -176,6 +198,10 @@ export const useGlobeStore = create<GlobeState>((set) => ({
 
   setAuroraGrid: (auroraGrid) => set({ auroraGrid }),
   setMagnetometerReadings: (magnetometerReadings) => set({ magnetometerReadings }),
+  setTecGrid: (tecGrid) => set({ tecGrid }),
+  setTecQuantity: (tecQuantity) => set({ tecQuantity }),
+  openGuide: (openGuideLayerId) => set({ openGuideLayerId }),
+  closeGuide: () => set({ openGuideLayerId: null }),
 
   /**
    * Absent means collapsed, so the first click on an untouched section opens

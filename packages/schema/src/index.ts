@@ -6,3 +6,4 @@ export * from './recurrence';
 export * from './antipodal';
 export * from './aurora';
 export * from './space-weather';
+export * from './ionosphere';

@@ -1154,6 +1154,54 @@ evaluated on the stored wind, drawn as an open wireframe at ~10 Earth radii.
   forward across a gap would present conditions measured years earlier as
   current.
 
+**Ionosphere (TEC) — shipped.** SWPC's GloTEC as a raster, off by default, with
+a total/anomaly toggle. The layer the "charged atmosphere" question actually
+wanted, and the one place the equatorial crests are visible.
+
+- **The domain is 60 TECU, not the product's declared 300.** GloTEC's own
+  metadata gives `tec` a range of 0-300; five maps spanning a month measure p50
+  12.9, p95 41.9, max 60.5. Using the declared range would leave every ordinary
+  map in the bottom fifth of the ramp — **the exact mistake the declination scale
+  made once**. Set a domain from the distribution, never the definition.
+- **Cells are placed by their own coordinates, not by list order.** The product
+  emits 5,184 point features in a consistent order and nothing documents that. A
+  raster built by consuming them in sequence renders a plausible-but-scrambled
+  image the first time that changes — and scrambled TEC looks like weather.
+- **`anomaly` is the analytically useful quantity and raw TEC is the intuitive
+  one, so both are one click apart.** Raw TEC is dominated by local time: the
+  daylit hemisphere is always high, so a plain map mostly draws the terminator.
+  The anomaly removes that. It is signed, so it gets a diverging ramp with a
+  light neutral midpoint — measured p1 -6.1, p99 +10.0, domain ±10.
+- **Magenta, because hue is how four rasters stay apart.** aurora = green,
+  field = viridis, magnetopause/magnetometers = cyan, TEC = magenta; the anomaly
+  diverges purple↔orange rather than reusing the field's blue↔red, since both
+  can be on at once. Single hue for the sequential ramp — the field's departure
+  to viridis was for structure TEC does not have. Brighter means more, matching
+  the other two rasters.
+- **Uniform alpha, the opposite of the aurora.** The aurora makes transparency
+  carry meaning because ~70% of its cells are genuine zeroes. The ionosphere is
+  never absent, so a see-through cell would misstate coverage. Only a cell the
+  product did not supply is transparent.
+- **Pulled on demand, not polled — the only feed here that is.** A map is
+  **2.4 MB** against the auroral grid's 65 KB, so a timer would spend ~14 MB an
+  hour on a layer that is off by default. `useTec` fetches only while the layer
+  is visible; main caches for one publication cadence and shares one in-flight
+  request between askers.
+- **`quality_flag` is carried uninterpreted.** 72% are 0 and 14% are 5, and the
+  payload never says what they mean. They do *not* cluster like model-fill —
+  flag 5 runs 17-25% through mid-latitudes and **0%** poleward of 75 degrees.
+  Guessing that 5 means "modelled" and masking on it would invent a distinction.
+- Verified live: all 5,184 cells filled, zonal-mean TEC peaking at **±16-21
+  degrees** — the equatorial ionization anomaly's crests, where they belong — and
+  an equator-to-pole ratio of 25.7 against 8.6 TECU.
+
+**And the trap that layer makes visible, written into the schema so it cannot be
+lost:** the equatorial crests overlap **68% of M7+ earthquakes** because both are
+equatorial for unrelated reasons — the field's geometry on one side, plate
+boundaries on the other. Same spurious-by-construction shape as the antipodal
+South America/Indonesia pairing. Anything drawn from "quakes fall where TEC is
+high" has to answer that first.
+
 **The aurora is not where a quake-versus-charge comparison can be made, and it
 is worth knowing why before building on it.** Measured over 1,045 M7+ events
 using this app's own IGRF: **68% sit within 30° geomagnetic latitude** and only
@@ -1556,6 +1604,30 @@ a **105 MB NSIS installer** plus a `win-unpacked/` folder with a runnable
   so what the UI offers and what ingest fetches cannot drift apart.
 
 ---
+
+### Every layer explains itself
+
+**A new layer must ship with a guide** — `panels/layer-guides.ts`, one entry per
+layer id, surfaced by the `?` in the layer panel and the legend.
+
+This is enforced by `layer-guides.test.ts`, not by convention: adding a layer to
+the registry **fails the suite** until someone either writes its guide or puts it
+on `GUIDES_STILL_NEEDED` deliberately. A rule in a document gets forgotten; a red
+test does not. **That list is currently empty** — all twelve layers are written
+up — and it is worth keeping that way; it is a deliberate "not yet", not an
+escape hatch.
+
+The shape is fixed at four sections — what it shows, how to read it, **what it
+can't tell you**, where it came from. The third is why the feature exists. Nearly
+every layer here carries a caveat that changes what a reader may conclude (the
+field cannot show a storm; the aurora does not follow the scrubber; TEC's crests
+overlap 68% of large quakes for reasons unrelated to earthquakes), and until this
+existed all of it lived in code comments where no user would meet it. The app was
+already careful not to *draw* anything untrue — this is the other half.
+
+The fourth section is also where `SOURCES.md`'s attribution gets paid: a licence
+condition is not satisfied by a file in the repo that nobody reading a rendered
+map ever opens.
 
 ## Non-negotiables
 

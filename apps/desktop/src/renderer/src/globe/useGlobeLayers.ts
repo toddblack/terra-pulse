@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type RefObject } from 'react';
 import type * as Cesium from 'cesium';
 import type { AntipodalEvent, AuroraGrid, EarthquakeEvent, GlobeLayer,
   MagnetometerReading,
+  TecGrid,
+  TecQuantity,
 } from '@terra-pulse/schema';
 import {
   BASEMAP_REGISTRATIONS,
@@ -14,6 +16,7 @@ import {
 import { isGeomagneticFieldLayer } from '../layers/geomagnetic-field';
 import { isAuroraLayer } from '../layers/aurora-layer';
 import { isMagnetometerLayer } from '../layers/magnetometer-layer';
+import { isTecLayer } from '../layers/tec-layer';
 import {
   isMagnetopauseLayer,
   type SolarWindConditions,
@@ -35,6 +38,8 @@ interface UseGlobeLayersOptions {
   /** The latest auroral grid, or null before the first poll. */
   auroraGrid: AuroraGrid | null;
   magnetometerReadings: readonly MagnetometerReading[];
+  tecGrid: TecGrid | null;
+  tecQuantity: TecQuantity;
   /** Conditions at the playhead, for the magnetopause. Null when unmeasured. */
   solarWind: SolarWindConditions | null;
   /**
@@ -134,6 +139,8 @@ function mountOverlays(
   pushed: {
     solarWind: SolarWindConditions | null;
     magnetometerReadings: readonly MagnetometerReading[];
+    tecGrid: TecGrid | null;
+    tecQuantity: TecQuantity;
   },
 ): () => void {
   const mounted: GlobeLayer[] = [];
@@ -155,6 +162,10 @@ function mountOverlays(
     // They are given the same treatment anyway rather than left to luck.
     if (isMagnetopauseLayer(layer)) layer.setSolarWind(pushed.solarWind);
     if (isMagnetometerLayer(layer)) layer.setReadings(pushed.magnetometerReadings);
+    if (isTecLayer(layer)) {
+      layer.setQuantity(pushed.tecQuantity);
+      layer.setGrid(pushed.tecGrid);
+    }
     mounted.push(layer);
     track.add(layer);
   }
@@ -189,6 +200,8 @@ export function useGlobeLayers({
   fieldQuantity,
   auroraGrid,
   magnetometerReadings,
+  tecGrid,
+  tecQuantity,
   solarWind,
   antipodeEvent,
   antipodeHits,
@@ -260,10 +273,12 @@ export function useGlobeLayers({
   const pushedRef = useRef<{
     solarWind: SolarWindConditions | null;
     magnetometerReadings: readonly MagnetometerReading[];
-  }>({ solarWind: null, magnetometerReadings: [] });
+    tecGrid: TecGrid | null;
+    tecQuantity: TecQuantity;
+  }>({ solarWind: null, magnetometerReadings: [], tecGrid: null, tecQuantity: 'tec' });
   useEffect(() => {
-    pushedRef.current = { solarWind, magnetometerReadings };
-  }, [solarWind, magnetometerReadings]);
+    pushedRef.current = { solarWind, magnetometerReadings, tecGrid, tecQuantity };
+  }, [solarWind, magnetometerReadings, tecGrid, tecQuantity]);
 
   // --- Static overlays: geology. Rebuilt only on tone or toggle changes ----
   useEffect(() => {
@@ -366,6 +381,20 @@ export function useGlobeLayers({
       if (isMagnetometerLayer(layer)) layer.setReadings(magnetometerReadings);
     }
   }, [magnetometerReadings, layerVisibility]);
+
+  // And the ionosphere. Two pushes because the map and the chosen quantity
+  // change independently — a new map every ten minutes, a quantity on a click.
+  useEffect(() => {
+    for (const layer of mountedLayersRef.current) {
+      if (isTecLayer(layer)) layer.setGrid(tecGrid);
+    }
+  }, [tecGrid, layerVisibility]);
+
+  useEffect(() => {
+    for (const layer of mountedLayersRef.current) {
+      if (isTecLayer(layer)) layer.setQuantity(tecQuantity);
+    }
+  }, [tecQuantity, layerVisibility]);
 
   // --- Playhead: pushed to whatever is mounted, no rebuild ----------------
   //

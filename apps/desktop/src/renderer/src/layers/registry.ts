@@ -15,6 +15,7 @@ import { createGeomagneticFieldLayer } from './geomagnetic-field';
 import { createAuroraLayer } from './aurora-layer';
 import { createMagnetopauseLayer } from './magnetopause-layer';
 import { createMagnetometerLayer } from './magnetometer-layer';
+import { createTecLayer } from './tec-layer';
 
 /**
  * The single source of truth for which layers exist.
@@ -152,6 +153,17 @@ export const OVERLAY_REGISTRATIONS: readonly OverlayRegistration[] = [
     // must not be rebuilt when earthquakes land. The grid is pushed in through
     // `setGrid` — the same push-don't-rebuild channel the field quantity uses.
     create: () => createAuroraLayer(),
+  },
+  {
+    id: 'tec',
+    label: 'Ionosphere (live)',
+    category: 'overlay',
+    // Off by default like every full-globe raster here — and more pointedly, a
+    // map is 2.4 MB and main only fetches while this is on.
+    defaultVisible: false,
+    // Its map arrives over IPC, not from the catalogue, so a poll must not
+    // rebuild it. Pushed in through `setGrid`, like the aurora grid.
+    create: (context) => createTecLayer(context.backdropTone),
   },
   {
     id: 'magnetometers',

@@ -2,6 +2,7 @@
 
 import type {
   MagnetometerReading,
+  TecGrid,
   AftershockSequence,
   AuroraGrid,
   SpaceWeatherProgress,
@@ -47,6 +48,10 @@ declare global {
         latest(): Promise<AuroraGrid | null>;
         /** Subscribe to new grids; returns an unsubscribe function. */
         onUpdated(callback: (grid: AuroraGrid) => void): () => void;
+      };
+      tec: {
+        /** The latest TEC map, or null if none could be fetched. */
+        latest(): Promise<TecGrid | null>;
       };
       magnetometer: {
         /** The latest network read, empty before the first successful poll. */

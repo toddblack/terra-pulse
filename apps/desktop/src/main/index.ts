@@ -35,6 +35,7 @@ import {
   startEarthquakePolling,
 } from './ipc/earthquakes';
 import { registerAuroraIpcHandlers, startAuroraPolling } from './ipc/aurora';
+import { registerTecIpcHandlers } from './ipc/tec';
 import {
   registerMagnetometerIpcHandlers,
   startMagnetometerPolling,
@@ -345,6 +346,9 @@ app
 
     // Ground magnetometers. Its own poll for the same reason: a USGS outage
     // must not stop the aurora updating, and vice versa.
+    // Pulled on demand rather than polled: a TEC map is 2.4 MB.
+    registerTecIpcHandlers();
+
     registerMagnetometerIpcHandlers();
     const stopMagnetometerPolling = startMagnetometerPolling((readings) => {
       if (mainWindow && !mainWindow.isDestroyed()) {

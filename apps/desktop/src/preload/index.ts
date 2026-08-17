@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   MagnetometerReading,
+  TecGrid,
   AftershockSequence,
   AuroraGrid,
   SpaceWeatherSample,
@@ -120,6 +121,16 @@ contextBridge.exposeInMainWorld('terraPulse', {
         ipcRenderer.removeListener('aurora:updated', listener);
       };
     },
+  },
+  tec: {
+    /**
+     * The most recent TEC map, or null if none could be fetched.
+     *
+     * **Pulled, not pushed** — a map is 2.4 MB, so main fetches only when asked
+     * and caches for one publication cadence. The renderer asks while its layer
+     * is mounted; a reader who never enables it costs nothing.
+     */
+    latest: (): Promise<TecGrid | null> => ipcRenderer.invoke('tec:latest'),
   },
   magnetometer: {
     /**
