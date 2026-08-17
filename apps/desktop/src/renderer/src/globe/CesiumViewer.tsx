@@ -82,6 +82,8 @@ export function CesiumViewer() {
   const fieldQuantity = useGlobeStore((state) => state.fieldQuantity);
   const auroraGrid = useGlobeStore((state) => state.auroraGrid);
   const magnetometerReadings = useGlobeStore((state) => state.magnetometerReadings);
+  const tecGrid = useGlobeStore((state) => state.tecGrid);
+  const tecQuantity = useGlobeStore((state) => state.tecQuantity);
   // The magnetopause is an instantaneous state, so it reads the playhead's
   // leading edge rather than the window.
   const solarWind = useSolarWindAt(timeWindow.endMs);
@@ -181,6 +183,8 @@ export function CesiumViewer() {
     fieldQuantity,
     auroraGrid,
     magnetometerReadings,
+    tecGrid,
+    tecQuantity,
     solarWind,
     antipodeEvent,
     antipodeHits,

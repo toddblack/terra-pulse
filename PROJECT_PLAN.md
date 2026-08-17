@@ -968,7 +968,13 @@ server-side proxying of all third-party API calls.
   H3 was withdrawn unrun.
 - Solar emission + arrival layers (§5.6) — magnetopause standoff (Shue et al.
   1998) is now unblocked: it needs exactly speed, density and Bz.
-- INTERMAGNET / SuperMAG station layer with disturbance amplitude
+- ~~Magnetometer station layer with disturbance amplitude~~ — **shipped** as the
+  live USGS network (31 stations, public domain). **SuperMAG rejected**: its rules
+  forbid redistribution and it needs a per-user account. INTERMAGNET (CC BY-NC,
+  138 stations, definitive through 2024) is the archive source for H4b — not yet
+  built. See `SOURCES.md`.
+- ~~Ionospheric TEC~~ — **shipped.** SWPC GloTEC raster, total and anomaly views,
+  fetched on demand because a map is 2.4 MB.
 - Multi-track timeline panel — **Explore mode** (§5.5)
 - Click-a-quake → center timeline on it
 - ~~Large-event alerts (§5.8)~~ — **shipped early.** Needed no new data source,

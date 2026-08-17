@@ -17,12 +17,15 @@ import { playAlertSound } from './audio/alert-sound';
 import styles from './App.module.css';
 import { useAurora } from './panels/useAurora';
 import { useMagnetometers } from './panels/useMagnetometers';
+import { useTec } from './panels/useTec';
+import { LayerGuideModal } from './panels/LayerGuideModal';
 import { SpaceWeatherArchive } from './panels/SpaceWeatherArchive';
 
 export default function App() {
   // Keeps the live auroral grid current for the layer and its legend.
   useAurora();
   useMagnetometers();
+  useTec();
 
   const load = useEarthquakeStore((state) => state.load);
   const noteSynced = useEarthquakeStore((state) => state.noteSynced);
@@ -96,6 +99,7 @@ export default function App() {
       {/* Last, so it draws above every panel — it tracks the pointer and
           must never be occluded by the chrome it passes over. */}
       <HoverTooltip />
+      <LayerGuideModal />
     </div>
   );
 }

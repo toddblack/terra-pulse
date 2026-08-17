@@ -172,7 +172,7 @@ export const FIELD_SCALES: Record<FieldQuantity, FieldScale> = {
   },
 };
 
-type Rgb = [number, number, number];
+export type Rgb = [number, number, number];
 
 function hexToRgb(hex: string): Rgb {
   return [

@@ -22,6 +22,10 @@ import {
 import { GEOMAGNETIC_FIELD_LAYER_ID } from '../layers/geomagnetic-field';
 import { AURORA_LAYER_ID } from '../layers/aurora-layer';
 import { MAGNETOPAUSE_LAYER_ID } from '../layers/magnetopause-layer';
+import { TEC_LAYER_ID } from '../layers/tec-layer';
+import { LayerGuideButton } from './LayerGuideModal';
+import { TEC_SCALES, tecLegendStops } from '../layers/tec-encoding';
+import { tecIsStale, tecPeak, type TecQuantity } from '@terra-pulse/schema';
 import {
   dynamicPressureNPa,
   GEOSYNCHRONOUS_RE,
@@ -94,6 +98,7 @@ export function DepthLegend() {
   const fieldVisible = isLayerOn(GEOMAGNETIC_FIELD_LAYER_ID);
   const auroraVisible = isLayerOn(AURORA_LAYER_ID);
   const magnetopauseVisible = isLayerOn(MAGNETOPAUSE_LAYER_ID);
+  const tecVisible = isLayerOn(TEC_LAYER_ID);
 
   if (collapsed) {
     return (
@@ -287,6 +292,8 @@ export function DepthLegend() {
 
       {auroraVisible && <AuroraKey />}
 
+      {tecVisible && <TecKey tone={backdropTone} />}
+
       {magnetopauseVisible && <MagnetopauseKey />}
 
       <p className={styles.footnote}>
@@ -370,7 +377,10 @@ function FieldKey({ tone }: { tone: BackdropTone }) {
 
   return (
     <div className={styles.section}>
-      <h2 className={styles.heading}>Magnetic field · {Math.floor(clampedYear)}</h2>
+      <h2 className={styles.heading}>
+        Magnetic field · {Math.floor(clampedYear)}
+        <LayerGuideButton layerId={GEOMAGNETIC_FIELD_LAYER_ID} />
+      </h2>
 
       <div className={styles.fieldRamp} aria-hidden="true">
         {stops.map((stop) => (
@@ -519,7 +529,10 @@ function MagnetopauseKey() {
   if (wind?.windSpeed == null || wind.density == null || wind.bzGsm == null) {
     return (
       <div className={styles.section}>
-        <h2 className={styles.heading}>Magnetopause</h2>
+        <h2 className={styles.heading}>
+          Magnetopause
+          <LayerGuideButton layerId={MAGNETOPAUSE_LAYER_ID} />
+        </h2>
         <p className={styles.note}>
           no solar wind measured at this hour — the boundary is not drawn rather
           than estimated
@@ -535,6 +548,7 @@ function MagnetopauseKey() {
     <div className={styles.section}>
       <h2 className={styles.heading}>
         Magnetopause · {shape.standoffRe.toFixed(1)} R<sub>E</sub>
+        <LayerGuideButton layerId={MAGNETOPAUSE_LAYER_ID} />
       </h2>
 
       <p className={styles.note}>
@@ -561,6 +575,123 @@ function MagnetopauseKey() {
       <p className={styles.note}>
         modelled boundary (Shue et al. 1998), not an observation
       </p>
+    </div>
+  );
+}
+
+/**
+ * The ionosphere key.
+ *
+ * Carries four things, and the last two are why it exists at all:
+ *
+ * 1. What the ramp means, and which quantity is being drawn.
+ * 2. **The quantity toggle.** The anomaly is the analytically useful view and
+ *    raw TEC is the intuitive one — raw content is dominated by local time, so a
+ *    plain TEC map mostly draws the day/night terminator. Both are one click
+ *    apart rather than one of them being unreachable.
+ * 3. **When the map is from.** Live, superseded every ten minutes, and about
+ *    half an hour behind real time in normal operation.
+ * 4. **That it does not follow the scrubber.** SWPC indexes a month of past maps
+ *    but nothing here stores them, so scrubbing cannot show the ionosphere of
+ *    then — and leaving the current map up unlabelled while the playhead sits in
+ *    the past would misrepresent what is drawn.
+ */
+function TecKey({ tone }: { tone: BackdropTone }) {
+  const grid = useGlobeStore((state) => state.tecGrid);
+  const quantity = useGlobeStore((state) => state.tecQuantity);
+  const setTecQuantity = useGlobeStore((state) => state.setTecQuantity);
+  const playheadMs = useEarthquakeStore((state) => state.playheadMs);
+  const nowMs = useNow();
+
+  const scale = TEC_SCALES[quantity];
+  const stops = tecLegendStops(quantity, tone, 5);
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+
+  const options: { id: TecQuantity; label: string }[] = [
+    { id: 'tec', label: 'total' },
+    { id: 'anomaly', label: 'vs expected' },
+  ];
+
+  if (!grid) {
+    return (
+      <div className={styles.section}>
+        <h2 className={styles.heading}>
+          Ionosphere
+          <LayerGuideButton layerId={TEC_LAYER_ID} />
+        </h2>
+        {/* Fetched on demand rather than polled — a map is 2.4 MB, so nothing
+            moves until this layer is on. */}
+        <p className={styles.note}>fetching the latest map from NOAA SWPC…</p>
+      </div>
+    );
+  }
+
+  const peak = tecPeak(grid);
+  const stale = tecIsStale(grid, nowMs);
+  const observed = Date.parse(grid.observedAtUtc);
+
+  return (
+    <div className={styles.section}>
+      <h2 className={styles.heading}>
+        Ionosphere{peak === null ? '' : ` · peak ${Math.round(peak).toString()} TECU`}
+        <LayerGuideButton layerId={TEC_LAYER_ID} />
+      </h2>
+
+      <div className={styles.fieldRamp} aria-hidden="true">
+        {stops.map((stop) => (
+          <span
+            key={stop.value}
+            className={styles.fieldRampStep}
+            style={{ backgroundColor: stop.color }}
+          />
+        ))}
+      </div>
+
+      <div className={styles.fieldScaleRow}>
+        <span>
+          {scale.clamped && quantity === 'anomaly' ? '≤' : ''}
+          {Math.round(first?.value ?? 0).toString()}
+        </span>
+        <span>{scale.unit}</span>
+        <span>
+          {scale.clamped ? '≥' : ''}
+          {Math.round(last?.value ?? 0).toString()}
+        </span>
+      </div>
+
+      <div className={styles.quantityRow}>
+        {options.map((option) => (
+          <button
+            key={option.id}
+            type="button"
+            className={
+              option.id === quantity
+                ? `${styles.quantityButton} ${styles.quantityButtonActive}`
+                : styles.quantityButton
+            }
+            onClick={() => setTecQuantity(option.id)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
+      <p className={styles.note}>
+        {quantity === 'anomaly'
+          ? 'departure from the quiet-time expectation — neutral means as expected'
+          : 'electrons in a column overhead · highest in the two equatorial crests'}
+      </p>
+
+      <p className={styles.note}>
+        {stale
+          ? `map is ${formatDuration(nowMs - observed)} old — the feed may have stopped`
+          : `map for ${formatDuration(nowMs - observed)} ago`}
+      </p>
+
+      {playheadMs !== null && (
+        <p className={styles.note}>live only — does not follow the scrubber</p>
+      )}
     </div>
   );
 }

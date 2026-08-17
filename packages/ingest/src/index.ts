@@ -30,3 +30,4 @@ export * from './omni-indices';
 export * from './gfz-kp';
 export * from './swpc-solar-wind';
 export * from './usgs-magnetometer';
+export * from './swpc-tec';

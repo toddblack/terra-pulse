@@ -7,6 +7,7 @@ import {
 import { GEOMAGNETIC_FIELD_LAYER_ID } from '../layers/geomagnetic-field';
 import { FIELD_SCALES } from '../layers/field-encoding';
 import type { FieldQuantity } from '../layers/igrf';
+import { LayerGuideButton } from './LayerGuideModal';
 import styles from './LayerPanel.module.css';
 
 /**
@@ -70,7 +71,11 @@ export function LayerPanel() {
                   checked={isOverlayVisible(entry, layerVisibility)}
                   onChange={() => toggleLayer(entry.id)}
                 />
-                <span>{entry.label}</span>
+                <span className={styles.overlayLabel}>{entry.label}</span>
+                {/* Inside the label so it sits on the row, with its own click
+                    handler stopped — otherwise asking what a layer is would
+                    also switch it on. */}
+                <LayerGuideButton layerId={entry.id} />
               </label>
 
               {/* The field layer's three views. Shown only while the layer is

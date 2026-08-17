@@ -1,0 +1,135 @@
+/* Covers the viewport and takes the pointer events itself.
+
+   Not decorative: Cesium's hover picking and drag-deselect run off MOUSE_MOVE,
+   and `setInputAction` holds one handler per event type — so leaking events
+   through would give tooltips and cleared selections underneath an open
+   dialog. */
+.backdrop {
+  position: absolute;
+  z-index: 40;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background-color: rgb(2 6 23 / 55%);
+}
+
+.dialog {
+  width: min(34rem, 100%);
+  /* Long enough to scroll on a short window rather than overflow it. */
+  max-height: min(38rem, 100%);
+  overflow-y: auto;
+  padding: 1.125rem 1.25rem 1.25rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 97%);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 50%);
+  color: rgb(226 232 240);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.dialog:focus {
+  outline: none;
+}
+
+.header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.closeButton {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: rgb(148 163 184);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background-color: rgb(51 65 85);
+  color: rgb(226 232 240);
+}
+
+.shows {
+  margin: 0.625rem 0 0;
+  color: rgb(203 213 225);
+}
+
+.sectionHeading {
+  margin: 1.125rem 0 0.375rem;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* The caveats are the point of the dialog, so their heading carries the app's
+   "this is the notable one" red rather than sitting at the same weight as the
+   encoding notes above it. */
+.limitsHeading {
+  color: rgb(248 113 113);
+}
+
+.list {
+  margin: 0;
+  padding-left: 1.125rem;
+  color: rgb(203 213 225);
+}
+
+.list li + li {
+  margin-top: 0.4375rem;
+}
+
+.limits {
+  color: rgb(226 232 240);
+}
+
+.source {
+  margin: 1.125rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+/* Small, quiet, and only present where a guide exists — an affordance that
+   opens nothing is worse than none. */
+.infoButton {
+  flex: none;
+  width: 1.125rem;
+  height: 1.125rem;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 50%;
+  background: transparent;
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.infoButton:hover {
+  border-color: rgb(255 255 255 / 40%);
+  background-color: rgb(51 65 85);
+  color: rgb(241 245 249);
+}
