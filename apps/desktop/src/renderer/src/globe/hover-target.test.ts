@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { EarthquakeEvent } from '@terra-pulse/schema';
+import type { EarthquakeEvent, MagnetometerReading } from '@terra-pulse/schema';
 import {
   cursorForHover,
   describeBoundary,
   describeEarthquake,
   describeFault,
+  describeMagnetometer,
 } from './hover-target';
 import type { FaultRecord } from '../layers/fault-association';
 
@@ -114,6 +115,56 @@ describe('describeBoundary', () => {
       describeBoundary('PA/OK', 'SUB').title,
     );
     expect(describeBoundary('PA\\OK', 'SUB').title).not.toMatch(/under|beneath/i);
+  });
+});
+
+function reading(overrides: Partial<MagnetometerReading> = {}): MagnetometerReading {
+  return {
+    station: {
+      code: 'BRW',
+      name: 'Barrow',
+      latitude: 71.3,
+      longitude: -156.6,
+      agency: 'USGS',
+    },
+    disturbance: {
+      code: 'BRW',
+      rangeNt: 12.4,
+      samples: 60,
+      observedAtUtc: '2026-01-01T00:00:00.000Z',
+    },
+    ...overrides,
+  };
+}
+
+describe('describeMagnetometer', () => {
+  it('leads with the station name, not the IAGA code', () => {
+    const target = describeMagnetometer(reading());
+    expect(target.kind).toBe('magnetometer');
+    expect(target.title).toBe('Barrow');
+    expect(target.detail).toContain('BRW');
+  });
+
+  it('carries the reading as the instant, so the tooltip can show its age', () => {
+    expect(describeMagnetometer(reading()).timeUtc).toBe('2026-01-01T00:00:00.000Z');
+  });
+
+  it('calls out a disturbed station', () => {
+    const target = describeMagnetometer(
+      reading({ disturbance: { code: 'BRW', rangeNt: 62, samples: 60, observedAtUtc: '2026-01-01T00:00:00.000Z' } }),
+    );
+    expect(target.detail).toContain('disturbed');
+  });
+
+  it('does not call a quiet station disturbed', () => {
+    const target = describeMagnetometer(reading());
+    expect(target.detail).not.toContain('disturbed');
+  });
+
+  it('says so, and has no age, when the station reported nothing', () => {
+    const target = describeMagnetometer(reading({ disturbance: null }));
+    expect(target.detail).toBe('BRW · no reading in the last hour');
+    expect(target.timeUtc).toBeNull();
   });
 });
 

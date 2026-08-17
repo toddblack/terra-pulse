@@ -6,12 +6,16 @@
  * side (turning a `scene.pick()` result into one of these) lives in
  * `CesiumViewer`, and is the part that cannot be unit-tested here.
  */
-import type { EarthquakeEvent } from '@terra-pulse/schema';
+import {
+  STATION_DISTURBED_NT,
+  type EarthquakeEvent,
+  type MagnetometerReading,
+} from '@terra-pulse/schema';
 import { depthClass } from '../layers/earthquake-encoding';
 import { formatSlipRate, formatSlipType, type FaultRecord } from '../layers/fault-association';
 import { plateBoundaryLabel, plateClassLabel } from '../layers/plate-association';
 
-export type HoverKind = 'earthquake' | 'fault' | 'boundary';
+export type HoverKind = 'earthquake' | 'fault' | 'boundary' | 'magnetometer';
 
 export interface HoverTarget {
   kind: HoverKind;
@@ -26,7 +30,8 @@ export interface HoverTarget {
    * clock, and reading one here would freeze the answer at the moment the
    * pointer moved — so the tooltip formats it against `useNow`, which is also
    * the rule the rest of the app follows. Null for faults and plate
-   * boundaries, which are features rather than events.
+   * boundaries, which are features rather than events. A magnetometer reading
+   * carries its own instant — `observedAtUtc` — when it has one.
    */
   timeUtc: string | null;
 }
@@ -81,6 +86,39 @@ export function describeBoundary(pair: string, boundaryClass: string): HoverTarg
     title: plateBoundaryLabel(pair),
     detail: plateClassLabel(boundaryClass),
     timeUtc: null,
+  };
+}
+
+/**
+ * A magnetometer station: how disturbed it is, or that it reported nothing.
+ *
+ * Leads with the station name rather than the code — the code ("BRW") means
+ * nothing on its own, the name ("Barrow") does. `STATION_DISTURBED_NT` is
+ * display emphasis only, same caveat as everywhere else it's used: it isn't
+ * H4b's registered per-station trigger, just what makes a reading worth
+ * calling out in a tooltip.
+ */
+export function describeMagnetometer(reading: MagnetometerReading): HoverTarget {
+  const { station, disturbance } = reading;
+
+  if (disturbance === null) {
+    return {
+      kind: 'magnetometer',
+      title: station.name,
+      detail: `${station.code} · no reading in the last hour`,
+      // Nothing was reported, so there is no instant to be an age of.
+      timeUtc: null,
+    };
+  }
+
+  const disturbed = disturbance.rangeNt >= STATION_DISTURBED_NT;
+  return {
+    kind: 'magnetometer',
+    title: station.name,
+    detail: `${station.code} · ${disturbance.rangeNt.toFixed(1)} nT range${
+      disturbed ? ' · disturbed' : ''
+    }`,
+    timeUtc: disturbance.observedAtUtc,
   };
 }
 

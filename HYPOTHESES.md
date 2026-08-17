@@ -1,6 +1,6 @@
 # HYPOTHESES.md — Pre-Registration Log
 
-**Last updated:** 2026-08-15
+**Last updated:** 2026-08-17
 
 ---
 
@@ -63,7 +63,7 @@ Applied to all hypotheses unless an entry overrides them.
 | Field | Value |
 |---|---|
 | **Registered** | 2026-07-24 |
-| **Status** | Not yet run |
+| **Status** | **Superseded by H1b on 2026-08-17 - never run** |
 | **Statement** | X- and M-class solar flare occurrence is followed by an elevated global M5.0+ earthquake rate. |
 | **Solar source** | NOAA SWPC edited event reports + GOES X-ray flux |
 | **Trigger set** | Flares classified M1.0 or above |
@@ -74,21 +74,161 @@ Applied to all hypotheses unless an entry overrides them.
 | **Mechanism plausibility** | Low — no established coupling mechanism |
 | **Result** | — |
 
+**Withdrawn: two parameters it never registered turned out to decide the
+result.** Every registered parameter above is left exactly as written, per rule 3
+— only `Status` has moved. The replacement is H1b below, and its 4 tests replace
+these rather than adding to the matrix. H1 was never run.
+
+Its **source was right**, which is worth recording: "GOES X-ray flux" is both
+correct and the more complete catalogue. A DONKI adapter was built for H2, and
+substituting it here would have been a completeness downgrade disguised as an
+ingest decision — DONKI captured 25% of M/X flares in 2011-13 against GOES's
+full record.
+
+### H1b — Solar flares and global seismicity rate (GOES, 1996 onward)
+
+| Field | Value |
+|---|---|
+| **Registered** | 2026-08-17 |
+| **Status** | Not yet run |
+| **Supersedes** | H1, withdrawn unrun on the same date |
+| **Statement** | X- and M-class solar flare occurrence is followed by an elevated global M5.0+ earthquake rate. |
+| **Solar source** | **NOAA GOES XRS flare reports** for 1996-2016; **NASA DONKI** `/FLR` for 2017 onward. The join is validated on their 2014-2016 overlap, which agrees to 97-100%. |
+| **Trigger set** | Flares classified M1.0 or above — **unchanged from H1** |
+| **Target set** | Declustered M5.0+ global — **unchanged from H1** |
+| **Time range** | **1996-01-01 onward** |
+| **Baseline estimation** | Poisson expectation estimated **within a moving local window**, not pooled across the full record |
+| **Lag windows** | 0-24h, 24-48h, 48-72h, 3-7d (4 windows) |
+| **Test statistic** | Ratio of observed to Poisson-expected event count in each lag window |
+| **Tests in family** | 4 (replacing H1's 4) |
+| **Mechanism plausibility** | Low - no established coupling mechanism |
+| **Result** | - |
+
+**Nothing here was chosen after seeing a result.** H1 was never run. Both new
+parameters were forced by measuring the two catalogues before any test existed.
+
+**Why 1996.** GOES XRS yearly reports reach back to 1975, but fluxes from
+GOES 1-7 are documented as requiring a scaling correction — so "M1.0" before
+1996 is not the same threshold as after. Applying that correction would mean
+introducing a factor this project has not verified against a citable source,
+which is exactly the free parameter non-negotiable #3 forbids. GOES-8 onward
+avoids the question and still gives thirty years, against twelve from DONKI
+alone. **Extending back to 1976 remains possible** and would roughly double the
+record, but only once that correction is sourced and registered.
+
+**Why the baseline estimation is registered, and why it is the important half.**
+H1 specified the statistic as observed versus Poisson-expected without saying how
+the expectation is estimated. That omission is decisive, because the target
+catalogue is not stationary — measured on this app's own database, M5.0+ events
+per year rise **36%** from the 1970s to the 2010s, which is network growth rather
+than seismicity:
+
+| decade | M5.0+ /yr | M5.5+ /yr |
+|---|---|---|
+| 1970s | 1,358 | 438 |
+| 1980s | 1,603 | 438 |
+| 1990s | 1,466 | 487 |
+| 2000s | 1,723 | 516 |
+| 2010s | 1,847 | 490 |
+| 2020s | 1,803 | 465 |
+
+With a pooled baseline, late-period windows show an excess and early ones a
+deficit *for no seismic reason at all* — and because flares follow the solar
+cycle rather than being spread evenly, a cycle-correlated sample of a rising
+baseline manufactures a correlation. A locally estimated expectation removes this
+without touching the magnitude floor.
+
+**The floor stays at M5.0+ deliberately.** M5.5+ is the only floor flat since
+1970 (12% drift against 36%), so raising it is the alternative fix — but with a
+local baseline it would cost 3.7x the target events for no gain. **One of the two
+fixes is mandatory; doing neither is the spurious-correlation path.**
+
+**Still unverified, and it constrains any extension.** Whether "M1.0" means the
+same thing across the whole 1996-present span has not been checked — GOES
+instruments changed within that period too. The 2014-2016 cross-check between
+GOES and DONKI showed a 20% disagreement in 2015 with no duplicates on either
+side. Two good catalogues can differ at the margin, and that uncertainty travels
+with any flare count reported here.
+
 ### H2 — Hemispheric asymmetry at CME arrival
 
 | Field | Value |
 |---|---|
 | **Registered** | 2026-07-24 |
-| **Status** | Not yet run |
+| **Status** | **Superseded by H2b on 2026-08-17 - never run** |
 | **Statement** | Any H1 effect is stronger on the hemisphere facing the Sun at CME **arrival** time than on the far hemisphere. |
 | **Solar source** | NASA DONKI, CMEs with modeled Earth-impact estimates |
 | **Spatial split** | Subsolar longitude at arrival ±90° vs. complement |
 | **Lag windows** | 0–24h, 24–48h from arrival (2 windows) |
 | **Test statistic** | Rate ratio between hemispheres, against permuted arrival times |
-| **Tests in family** | 2 |
+| **Tests in family** | 2 - **withdrawn unrun**, see the matrix note |
 | **Note** | Arrival, not emission. Earth rotates substantially during CME transit. |
 | **Mechanism plausibility** | Low |
 | **Result** | — |
+
+**Withdrawn: its trigger set was underspecified in a way that decides the
+answer.** Registered parameters are unchanged, per rule 3; only `Status` has
+moved. H2b below replaces it, and its 2 tests transfer rather than adding to the
+matrix. H2 was never run.
+
+### H2b — Hemispheric asymmetry at CME arrival (direct impacts only)
+
+| Field | Value |
+|---|---|
+| **Registered** | 2026-08-17 |
+| **Status** | Not yet run |
+| **Supersedes** | H2, withdrawn unrun on the same date |
+| **Statement** | Any H1b effect is stronger on the hemisphere facing the Sun at CME **arrival** time than on the far hemisphere. |
+| **Solar source** | NASA DONKI `/WSAEnlilSimulations`, using `estimatedShockArrivalTime` — the Earth-specific field |
+| **Trigger set** | **Direct impacts only**: runs where `isEarthGB` and `isEarthMinorImpact` are both false |
+| **Time range** | **2014-01-01 onward** |
+| **Spatial split** | Subsolar longitude at arrival ±90° vs. complement — **unchanged from H2** |
+| **Lag windows** | 0-24h, 24-48h from arrival (2 windows) |
+| **Test statistic** | Rate ratio between hemispheres, against permuted arrival times |
+| **Tests in family** | 2 (replacing H2's 2) |
+| **Mechanism plausibility** | Low |
+| **Result** | - |
+
+**Why arrivals come from the model runs at all.** The CME records carry no
+arrival estimate — measured, `/CMEAnalysis` returns no `enlilList` and no arrival
+times whatsoever. Only the WSA-ENLIL runs do. And only a minority reach Earth: 79
+of 325 runs over ten weeks, because most modelled CMEs miss. Several carry
+arrivals at *other spacecraft* in their `impactList`, so filtering on "has an
+arrival time" is not the same as filtering on "arrives at Earth".
+
+**Why glancing blows are excluded.** DONKI distinguishes a direct impact from a
+glancing blow and a minor impact. Measured across seven years:
+
+| year | Earth arrivals | direct | glancing/minor |
+|---|---|---|---|
+| 2015 | 61 | 30 | 31 |
+| 2017 | 21 | 7 | 14 |
+| 2019 | 9 | 6 | 3 |
+| 2021 | 70 | 27 | 43 |
+| 2023 | 163 | 85 | 78 |
+| 2024 | 296 | 161 | 135 |
+| 2025 | 225 | 94 | 131 |
+| **total** | **845** | **410 (49%)** | 435 |
+
+A graze can carry a predicted Kp of 2 — barely geoeffective — and cannot produce
+the physical condition this hypothesis posits. Pooling them dilutes the trigger
+set with events that were never going to do anything, biasing toward the null.
+410 events across seven years is a comfortable sample: roughly 200 per lag window
+before the hemispheric split. The 49% ratio is stable across cycle phase, so it is
+not an artefact of activity level.
+
+**Deliberately not registered as two tests.** Running direct and glancing
+separately would take this family from 2 to 4, and the FDR denominator is shared
+— every other hypothesis in this file would become harder to pass so that H2b
+could hedge. Choosing the physically motivated set in advance is what
+pre-registration is for.
+
+**The time range is proposed by analogy and is the weakest claim here.** DONKI's
+flare record was checked against GOES and found complete from 2014; **its
+WSA-ENLIL coverage has not been independently verified**, because these are model
+runs with no obvious external catalogue to check against. 2014 is inherited from
+the flare finding rather than measured. If a comparable check becomes possible it
+should be done, and this entry amended if it disagrees.
 
 ### H3 — Coronal hole high-speed streams
 
@@ -324,8 +464,10 @@ not as a discovery.
 
 | Family | Tests |
 |---|---|
-| H1 | 4 |
-| H2 | 2 |
+| ~~H1~~ | 0 - withdrawn unrun 2026-08-17, replaced by H1b |
+| H1b | 4 |
+| ~~H2~~ | 0 - withdrawn unrun 2026-08-17, replaced by H2b |
+| H2b | 2 |
 | ~~H3~~ | 0 — withdrawn unrun 2026-08-15, replaced by H3b |
 | H3b | 4 |
 | ~~H4~~ | 0 — withdrawn unrun 2026-08-14, replaced by H4c |
@@ -335,25 +477,32 @@ not as a discovery.
 | H6 | 2 |
 | **Total** | **21** |
 
-**Why the total did not move when H3b and H4c were added.** Neither is a new
-question — each is its predecessor with a corrected data source, registered
-because rule 3 forbids editing a registered parameter. Counting both pairs would
-put 31 in the denominator and make **every other hypothesis in this file harder
-to pass** in exchange for two provenance fixes, which is a real cost paid for
-nothing.
+**Why the total did not move when H1b, H2b, H3b and H4c were added.** None is a
+new question — each is its predecessor with a corrected data source or a
+parameter that was never specified, registered separately because rule 3 forbids
+editing a registered one. Counting every pair would put **37** in the
+denominator and make **every other hypothesis in this file harder to pass** in
+exchange for four provenance fixes, which is a real cost paid for nothing.
 
 The condition that makes this legitimate, and the one to check before ever doing
-it again: **neither H3 nor H4 was ever run.** No p-value was computed under
-either, so nothing is being dropped from the correction — there is no result, not
-a discarded one. A family that *has* been run keeps its tests in the denominator
-forever, whatever happens to it afterwards; that is rule 5, and it is not what
-happened here.
+it again: **none of H1, H2, H3 or H4 was ever run.** No p-value was computed
+under any of them, so nothing is being dropped from the correction — there is no
+result, not a discarded one. A family that *has* been run keeps its tests in the
+denominator forever, whatever happens to it afterwards; that is rule 5, and it is
+not what happened here.
 
-**This is now a pattern, so it needs a limit.** Two supersessions in two days is
-what a new data source does to hypotheses registered before that source existed —
-it is not licence to keep re-registering. Any *third* one should prompt the
-question of whether the entries are being written too early, before the data they
-name has been looked at.
+**Four supersessions in four days is the pattern, and the diagnosis is the
+registration practice rather than the individual entries.** H1 through H4 were
+all registered on 2026-07-24, against sources nobody had queried. Every one of
+them then failed on contact with the data — an incomplete catalogue, a source
+that could not supply the history, a trigger set that was underspecified, a
+baseline that was never defined. That is four for four.
+
+**The rule this establishes: do not register a hypothesis against a source until
+the source has been ingested and its completeness measured.** Writing an entry is
+cheap and feels like rigour; it is only rigour if the parameters in it can
+survive the data. A fifth supersession means this rule is being ignored, not that
+the data was surprising again.
 
 At an uncorrected threshold of p < 0.05, roughly **1 false positive is expected
 from noise alone** across this matrix. FDR correction is applied across all 21.

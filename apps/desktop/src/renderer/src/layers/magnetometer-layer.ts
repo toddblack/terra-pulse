@@ -43,6 +43,21 @@ export function isMagnetometerLayer(layer: GlobeLayer): layer is MagnetometerLay
   return layer.id === MAGNETOMETER_LAYER_ID && 'setReadings' in layer;
 }
 
+/**
+ * The prefix on every station entity's id, so `CesiumViewer`'s pick resolver
+ * can recognise one without guessing from shape — the same convention plate
+ * boundaries use (`boundary-`).
+ */
+const STATION_ID_PREFIX = 'magnetometer-';
+
+export function stationEntityId(code: string): string {
+  return `${STATION_ID_PREFIX}${code}`;
+}
+
+export function stationCodeFromEntityId(entityId: string): string | null {
+  return entityId.startsWith(STATION_ID_PREFIX) ? entityId.slice(STATION_ID_PREFIX.length) : null;
+}
+
 /** Ring radius in metres for a quiet station, and for a strongly disturbed one. */
 const MIN_RADIUS_M = 60_000;
 const MAX_RADIUS_M = 420_000;
@@ -82,6 +97,7 @@ export function createMagnetometerLayer(
         // Reported nothing this window. A small hollow ring: present on the
         // map, visibly not carrying a value.
         source.entities.add({
+          id: stationEntityId(station.code),
           position,
           name: station.name,
           description: `${station.code} — no reading in the last hour`,
@@ -108,6 +124,7 @@ export function createMagnetometerLayer(
         : Cesium.Color.fromCssColorString('#67e8f9');
 
       source.entities.add({
+        id: stationEntityId(station.code),
         position,
         name: station.name,
         description: `${station.code} — ${disturbance.rangeNt.toFixed(1)} nT over the last hour`,
