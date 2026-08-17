@@ -29,6 +29,12 @@
   border-left: 2px solid rgb(167 139 250);
 }
 
+/* Same cyan the magnetometer layer and the magnetopause both use, so the two
+   space-weather features read as a family. */
+.tooltip[data-kind='magnetometer'] {
+  border-left: 2px solid rgb(103 232 249);
+}
+
 /* Baseline-aligned so "M5.6" and "3h ago" sit on the same line despite the
    size difference, and gapped so a long title can never run into the age. */
 .head {

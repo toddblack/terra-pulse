@@ -9,10 +9,12 @@ import {
   describeBoundary,
   describeEarthquake,
   describeFault,
+  describeMagnetometer,
   type HoverTarget,
 } from './hover-target';
-import type { AntipodalEvent } from '@terra-pulse/schema';
+import type { AntipodalEvent, EarthquakeEvent, MagnetometerReading } from '@terra-pulse/schema';
 import type { FaultRecord } from '../layers/fault-association';
+import { stationCodeFromEntityId } from '../layers/magnetometer-layer';
 import { createLocationHighlight } from '../layers/location-highlight';
 import { watchSelection } from './selection-sync';
 import { useGlobeLayers } from './useGlobeLayers';
@@ -217,6 +219,13 @@ export function CesiumViewer() {
     eventsRef.current = events;
   }, [events]);
 
+  // Same reason as `eventsRef`: read inside the pick handler below, which is
+  // set up once and must not go stale as new station readings arrive.
+  const magnetometerReadingsRef = useRef(magnetometerReadings);
+  useEffect(() => {
+    magnetometerReadingsRef.current = magnetometerReadings;
+  }, [magnetometerReadings]);
+
   // Globe click → store.
   //
   // Explicit picking rather than Cesium's `selectedEntityChanged`, which fires
@@ -240,30 +249,32 @@ export function CesiumViewer() {
     // Declared up here because the hover handler reads it to stay quiet
     // mid-drag.
     let dragOrigin: Cesium.Cartesian2 | undefined;
+    // Whether this drag has already crossed the threshold and fired its one
+    // deselect. Kept separate from `dragOrigin` itself: `dragOrigin` has to
+    // stay set for the *entire* gesture (cleared only on LEFT_UP) so the hover
+    // branch below keeps suppressing `scene.pick()` for the whole pan, not
+    // just up to the first threshold crossing.
+    let dragThresholdCrossed = false;
 
     /**
-     * Turns a `scene.pick()` result into something describable.
+     * One candidate found under the pointer, before priority is applied.
      *
-     * Three shapes come back, because the layers are built three different ways:
+     * Four shapes come back, because the layers are built four different ways:
      *
-     * - Earthquakes and plate boundaries are **entities**, so `picked.id` is a
-     *   Cesium Entity carrying an id string and `properties`.
+     * - Earthquakes, plate boundaries and magnetometer stations are
+     *   **entities**, so `picked.id` is a Cesium Entity carrying an id string
+     *   (and, for boundaries, `properties`).
      * - Faults are a batched **PolylineCollection**, so `picked.id` is the raw
      *   `FaultRecord` the layer attached at `add()` time. There is no entity to
      *   look up, which is why the layer has to carry the record itself.
      */
-    const resolvePick = (
-      windowPosition: Cesium.Cartesian2,
-    ): {
-      target: HoverTarget;
-      /** The clicked feature, minus its coordinate — the caller supplies that. */
-      feature:
-        | { kind: 'fault'; fault: FaultRecord }
-        | { kind: 'boundary'; pair: string; boundaryClass: string }
-        | null;
-      eventId: string | null;
-    } | null => {
-      const picked: unknown = viewer.scene.pick(windowPosition);
+    type PickCandidate =
+      | { kind: 'fault'; fault: FaultRecord }
+      | { kind: 'boundary'; pair: string; boundaryClass: string }
+      | { kind: 'earthquake'; event: EarthquakeEvent }
+      | { kind: 'magnetometer'; reading: MagnetometerReading };
+
+    function classifyPicked(picked: unknown): PickCandidate | null {
       if (picked === null || typeof picked !== 'object') return null;
 
       const id: unknown = (picked as { id?: unknown }).id;
@@ -272,8 +283,7 @@ export function CesiumViewer() {
       // A fault: the vendored record, recognised by its own shape rather than
       // by an id convention, because that is literally what was attached.
       if ('p' in id && 'z' in id) {
-        const fault = id as FaultRecord;
-        return { target: describeFault(fault), feature: { kind: 'fault', fault }, eventId: null };
+        return { kind: 'fault', fault: id as FaultRecord };
       }
 
       if (!('id' in id)) return null;
@@ -292,20 +302,91 @@ export function CesiumViewer() {
         const rawClass: unknown = properties?.stepClass?.getValue();
         const pair = typeof rawPair === 'string' ? rawPair : '';
         const boundaryClass = typeof rawClass === 'string' ? rawClass : '';
-        if (pair !== '') {
-          return {
-            target: describeBoundary(pair, boundaryClass),
-            feature: { kind: 'boundary', pair, boundaryClass },
-            eventId: null,
-          };
-        }
+        return pair !== '' ? { kind: 'boundary', pair, boundaryClass } : null;
+      }
+
+      const stationCode = stationCodeFromEntityId(entityId);
+      if (stationCode !== null) {
+        const reading = magnetometerReadingsRef.current.find(
+          (candidate) => candidate.station.code === stationCode,
+        );
+        return reading ? { kind: 'magnetometer', reading } : null;
       }
 
       // Otherwise an earthquake. The dot and its emphasis ring share an event
       // id, so both resolve to the same event.
       const eventId = eventIdFromEntityId(entityId);
       const event = eventsRef.current.find((candidate) => candidate.id === eventId);
-      return event ? { target: describeEarthquake(event), feature: null, eventId } : null;
+      return event ? { kind: 'earthquake', event } : null;
+    }
+
+    /**
+     * Resolves the pointer to whichever candidate wins, when more than one
+     * pickable thing sits under the same pixel.
+     *
+     * A magnetometer ring is a shaded region up to 420 km across, drawn at the
+     * same height-0 surface an earthquake dot sits on — so where a dot falls
+     * inside a ring, `scene.pick()`'s normal depth test is comparing two
+     * essentially coincident depths, a real GPU tie decided by precision, not
+     * by anything meaningful. `drillPick` gathers every candidate at the pixel
+     * instead of trusting whichever one the tie happens to favour, and this
+     * function picks among them by hand: the smaller, more specific target
+     * always wins over the broad region it happens to sit inside. Earthquakes
+     * and faults/boundaries essentially never coincide at pixel scale, so
+     * their relative order here rarely matters in practice.
+     */
+    function choosePick(candidates: readonly PickCandidate[]): PickCandidate | null {
+      for (const kind of ['earthquake', 'fault', 'boundary', 'magnetometer'] as const) {
+        const found = candidates.find((candidate) => candidate.kind === kind);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    const resolvePick = (
+      windowPosition: Cesium.Cartesian2,
+    ): {
+      target: HoverTarget;
+      /** The clicked feature, minus its coordinate — the caller supplies that. */
+      feature:
+        | { kind: 'fault'; fault: FaultRecord }
+        | { kind: 'boundary'; pair: string; boundaryClass: string }
+        | null;
+      eventId: string | null;
+    } | null => {
+      // A small limit: at most a dot, its ring, a fault and a magnetometer
+      // ring could ever plausibly coincide at one pixel. `drillPick` stops
+      // early once a pass finds nothing new, so hovering empty globe still
+      // costs exactly the one pass `pick()` always cost.
+      const picked: unknown[] = viewer.scene.drillPick(windowPosition, 4);
+      const candidates = picked
+        .map(classifyPicked)
+        .filter((candidate): candidate is PickCandidate => candidate !== null);
+      const chosen = choosePick(candidates);
+      if (chosen === null) return null;
+
+      switch (chosen.kind) {
+        case 'fault':
+          return {
+            target: describeFault(chosen.fault),
+            feature: { kind: 'fault', fault: chosen.fault },
+            eventId: null,
+          };
+        case 'boundary':
+          return {
+            target: describeBoundary(chosen.pair, chosen.boundaryClass),
+            feature: { kind: 'boundary', pair: chosen.pair, boundaryClass: chosen.boundaryClass },
+            eventId: null,
+          };
+        case 'earthquake':
+          return {
+            target: describeEarthquake(chosen.event),
+            feature: null,
+            eventId: chosen.event.id,
+          };
+        case 'magnetometer':
+          return { target: describeMagnetometer(chosen.reading), feature: null, eventId: null };
+      }
     };
 
     /**
@@ -381,6 +462,7 @@ export function CesiumViewer() {
 
     handler.setInputAction((event: Cesium.ScreenSpaceEventHandler.PositionedEvent) => {
       dragOrigin = Cesium.Cartesian2.clone(event.position);
+      dragThresholdCrossed = false;
     }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
 
     /**
@@ -393,7 +475,10 @@ export function CesiumViewer() {
      */
     handler.setInputAction((event: Cesium.ScreenSpaceEventHandler.MotionEvent) => {
       if (dragOrigin) {
-        if (Cesium.Cartesian2.distance(dragOrigin, event.endPosition) >= DRAG_THRESHOLD_PX) {
+        if (
+          !dragThresholdCrossed &&
+          Cesium.Cartesian2.distance(dragOrigin, event.endPosition) >= DRAG_THRESHOLD_PX
+        ) {
           // Suppressed while the antipode chord is up. Spinning the globe to see
           // where the chord comes out is the entire point of that mode, and
           // deselecting would take the chord *and* the inspector holding its
@@ -404,8 +489,13 @@ export function CesiumViewer() {
           // to find a coastline to click on would otherwise clear the selection
           // you still have open beside it.
           if (!antipodeActiveRef.current && !faultProbeActiveRef.current) select(null);
-          // Cleared so a single drag deselects once rather than on every frame.
-          dragOrigin = undefined;
+          // Latched rather than clearing `dragOrigin`: a single drag deselects
+          // once, but `dragOrigin` itself has to survive until LEFT_UP or the
+          // branch below falls through to `resolvePick()` — a `scene.pick()`
+          // GPU readback — for the rest of the pan. That was the actual cause
+          // of the panning stutter: deselect fired once correctly, then hover
+          // picking silently resumed for the remainder of every drag.
+          dragThresholdCrossed = true;
         }
 
         // Nothing is hovered mid-drag: the pointer is moving the camera, the
@@ -429,6 +519,7 @@ export function CesiumViewer() {
 
     handler.setInputAction(() => {
       dragOrigin = undefined;
+      dragThresholdCrossed = false;
     }, Cesium.ScreenSpaceEventType.LEFT_UP);
 
     return () => {
