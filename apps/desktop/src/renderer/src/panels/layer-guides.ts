@@ -256,6 +256,40 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
     ],
     source: 'GEBCO via the BODC WMS service.',
   },
+
+  'solar-flares': {
+    title: 'Solar flares',
+    shows:
+      'M-class and X-class solar flares, marked at the subsolar point — the spot on Earth with the Sun directly overhead — at the moment each flare peaked.',
+    reading: [
+      'The marker sits where the Sun is overhead at peak time, not where anything happened on Earth. A flare has no location on the ground; the subsolar point is a proxy for "the Sun, right now" that moves with the time window.',
+      'Orange is M-class, the app’s red emphasis colour is X-class — the same red used for a recent large earthquake and a disturbed magnetometer, because X flares are this layer’s own severe tier.',
+      'Larger markers are stronger within a class (an M8 draws bigger than an M1). The size difference between M and X is the bigger jump, matching how the classes themselves work: each letter is ten times the X-ray flux of the one before.',
+    ],
+    limits: [
+      'A-, B- and C-class flares are not drawn at all. They occur several times a day and are not geoeffective, so including them would turn the globe into a dense scatter with no readable signal. This is the same M1.0-or-above floor H1b’s registered trigger uses.',
+      'This shows raw occurrence only. Whether flares are followed by elevated earthquake rates is H1b’s question, registered in HYPOTHESES.md and answered — once Phase 4’s analysis engine exists — with a proper significance test, never by eyeballing this layer.',
+      'Coverage is source-dependent and uneven before 2014 — see DONKI_START_YEAR and FLARE_COMPLETE_SINCE_YEAR in packages/schema. A quiet-looking early year may be an incompletely observed one, not a genuinely quiet Sun.',
+    ],
+    source: 'NASA DONKI /FLR. Public domain (US Government work).',
+  },
+
+  'cme-arrivals': {
+    title: 'CME arrivals',
+    shows:
+      'Modelled coronal mass ejection arrivals at Earth, marked at the subsolar point at the predicted arrival time.',
+    reading: [
+      'Bright cyan — the same colour the magnetopause and magnetometer layers use — marks a direct impact. Muted grey marks a glancing blow or a minor impact: a graze, not a hit.',
+      'Larger markers had a higher predicted Kp, the model’s own headline geoeffectiveness estimate, on a fixed 0–9 scale. A marker with no size beyond the floor means the model run produced no Kp estimate at all, not that it predicted zero.',
+      'Like the flare markers, position is the subsolar point at the time in question — an anchor for "where on Earth is facing the source", not a location where anything was observed.',
+    ],
+    limits: [
+      'Every marker here is a model run (WSA-ENLIL), not an observation. Roughly three quarters of modelled CMEs are predicted to miss Earth entirely and never appear on this layer at all.',
+      'This shows raw occurrence only, with no significance claim. H2b, registered in HYPOTHESES.md, is the actual test of whether the hemisphere facing a direct-impact arrival sees an elevated earthquake rate — that runs in Phase 4, not here.',
+      'A glancing blow can still carry a predicted Kp of several — the direct/glancing distinction is about the geometry of the hit, not automatically about its strength.',
+    ],
+    source: 'NASA DONKI /WSAEnlilSimulations. Public domain (US Government work).',
+  },
 };
 
 /**

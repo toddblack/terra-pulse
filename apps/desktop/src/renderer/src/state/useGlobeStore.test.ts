@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useGlobeStore, type LocationSelection } from './useGlobeStore';
+import { HISTORICAL_DATA_SECTION_ID, useGlobeStore, type LocationSelection } from './useGlobeStore';
 import type { FaultRecord } from '../layers/fault-association';
 
 const reset = () => useGlobeStore.setState({ faultProbeActive: false, location: null });
@@ -162,5 +162,35 @@ describe('inspector section expansion', () => {
     const visibilityBefore = useGlobeStore.getState().layerVisibility;
     useGlobeStore.getState().toggleSection('fault');
     expect(useGlobeStore.getState().layerVisibility).toEqual(visibilityBefore);
+  });
+});
+
+describe('the historical data section, which starts open', () => {
+  // Reset to the shape the module actually initialises with — present and
+  // true, not absent — rather than relying on load order against the other
+  // describe block above, which resets to `{}` in its own `beforeEach`.
+  beforeEach(() => {
+    useGlobeStore.setState({ expandedSections: { [HISTORICAL_DATA_SECTION_ID]: true } });
+  });
+
+  it('reads open without ever being toggled', () => {
+    expect(useGlobeStore.getState().expandedSections[HISTORICAL_DATA_SECTION_ID]).toBe(true);
+  });
+
+  it('closes on the first toggle, not the second', () => {
+    // The bug this guards against: `toggleSection` negates the *raw* stored
+    // value. If the key had been absent and only `CollapsibleSection`
+    // defaulted it to open via a prop, this first toggle would negate
+    // `undefined` to `true` — already-open staying open — and it would take
+    // a second click to actually close it. Being present-and-true from the
+    // start is what keeps the existing negation logic correct unmodified.
+    useGlobeStore.getState().toggleSection(HISTORICAL_DATA_SECTION_ID);
+    expect(useGlobeStore.getState().expandedSections[HISTORICAL_DATA_SECTION_ID]).toBe(false);
+  });
+
+  it('reopens on the second toggle', () => {
+    useGlobeStore.getState().toggleSection(HISTORICAL_DATA_SECTION_ID);
+    useGlobeStore.getState().toggleSection(HISTORICAL_DATA_SECTION_ID);
+    expect(useGlobeStore.getState().expandedSections[HISTORICAL_DATA_SECTION_ID]).toBe(true);
   });
 });

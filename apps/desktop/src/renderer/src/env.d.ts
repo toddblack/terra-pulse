@@ -9,11 +9,14 @@ import type {
   SpaceWeatherSample,
   AntipodalWindow,
   ArchiveProgress,
+  CmeArrival,
+  DonkiProgress,
   EarthquakeEvent,
   EarthquakeQuery,
   EarthquakeSyncResult,
   MissedEvents,
   RegionalRecurrence,
+  SolarFlare,
 } from '@terra-pulse/schema';
 
 export {};
@@ -77,6 +80,20 @@ declare global {
         cancel(): Promise<ArchiveProgress>;
         /** Subscribe to backfill progress; returns an unsubscribe function. */
         onProgress(callback: (progress: ArchiveProgress) => void): () => void;
+      };
+      solarEvents: {
+        /** Flares peaking in a half-open range. Bounded on both ends. */
+        queryFlares(request: { startUtc: string; endUtc: string }): Promise<SolarFlare[]>;
+        /** CME arrivals in a half-open range. Bounded on both ends. */
+        queryCmeArrivals(request: { startUtc: string; endUtc: string }): Promise<CmeArrival[]>;
+        status(): Promise<DonkiProgress>;
+        /** Settles when the whole backfill finishes — follow onProgress instead. */
+        start(): Promise<DonkiProgress>;
+        cancel(): Promise<DonkiProgress>;
+        /** Subscribe to backfill progress; returns an unsubscribe function. */
+        onProgress(callback: (progress: DonkiProgress) => void): () => void;
+        /** Fires when the live poll stores something new. */
+        onUpdated(callback: () => void): () => void;
       };
       shell: {
         /** Resolves false if main refused to open the URL. */

@@ -16,6 +16,8 @@ import { createAuroraLayer } from './aurora-layer';
 import { createMagnetopauseLayer } from './magnetopause-layer';
 import { createMagnetometerLayer } from './magnetometer-layer';
 import { createTecLayer } from './tec-layer';
+import { createSolarFlaresLayer } from './solar-flares-layer';
+import { createCmeArrivalsLayer } from './cme-arrivals-layer';
 
 /**
  * The single source of truth for which layers exist.
@@ -108,6 +110,22 @@ export const OVERLAY_REGISTRATIONS: readonly OverlayRegistration[] = [
     // The only layer whose contents come from the event set.
     consumesEvents: true,
     create: (context) => createEarthquakeLayer(context.events, context.backdropTone),
+  },
+  {
+    id: 'solar-flares',
+    label: 'Solar flares (M+)',
+    category: 'events',
+    defaultVisible: false,
+    // Flares arrive from main's own query, not the catalogue — pushed through
+    // `setFlares`, the same push channel as the aurora grid.
+    create: () => createSolarFlaresLayer(),
+  },
+  {
+    id: 'cme-arrivals',
+    label: 'CME arrivals',
+    category: 'events',
+    defaultVisible: false,
+    create: () => createCmeArrivalsLayer(),
   },
   {
     id: 'plate-boundaries',

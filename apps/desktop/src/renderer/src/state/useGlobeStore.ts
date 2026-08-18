@@ -151,6 +151,22 @@ interface GlobeState {
   closeGuide: () => void;
 }
 
+/**
+ * The one `CollapsibleSection` id that starts open rather than collapsed —
+ * the grouped Historical archive / Geomagnetic history / Solar event history
+ * panel, unlike the inspector's four sections.
+ *
+ * Rather than adding a `defaultOpen` prop to `CollapsibleSection` (which
+ * would need `toggleSection` to know each section's own default in order to
+ * negate correctly — it doesn't, and gaining that dependency for one caller
+ * isn't worth it), the key is simply present-and-true here from the start.
+ * `expandedSections[id] ?? false` then reads `true` immediately because the
+ * key exists, not because of a fallback, and `toggleSection`'s existing
+ * `!state.expandedSections[id]` already negates a *present* value correctly
+ * — the mechanism nothing else here needed to change.
+ */
+export const HISTORICAL_DATA_SECTION_ID = 'historical-data';
+
 export const useGlobeStore = create<GlobeState>((set) => ({
   activeBasemapId: DEFAULT_BASEMAP_ID,
   layerVisibility: defaultOverlayVisibility(),
@@ -159,7 +175,7 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   recurrenceRadiusKm: DEFAULT_RECURRENCE_RADIUS_KM,
   recurrenceFloor: DEFAULT_RECURRENCE_FLOOR,
   hover: null,
-  expandedSections: {},
+  expandedSections: { [HISTORICAL_DATA_SECTION_ID]: true },
   fieldQuantity: 'intensity',
   auroraGrid: null,
   magnetometerReadings: [],

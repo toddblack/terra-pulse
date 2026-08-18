@@ -1,15 +1,7 @@
-/* Placement belongs to App's .leftColumn. The min-width keeps the column wide
-   enough for "1970–present · 294,648 events" to stay on one line; the column
-   is sized by whichever panel is widest, so this quietly sets that floor. */
-.panel {
-  min-width: 14rem;
-  padding: 0.625rem 0.75rem;
-  border-radius: 0.5rem;
-  background-color: rgb(15 23 42 / 80%);
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 30%);
-  color: rgb(203 213 225);
-  user-select: none;
-}
+/* No `.panel` card here any more — ArchivePanel, SpaceWeatherArchive and
+   DonkiArchive are now always nested inside HistoricalDataPanel, which owns
+   the one outer card the three of them used to have individually. See
+   HistoricalDataPanel.module.css's `.card`. */
 
 .heading {
   margin: 0 0 0.375rem;
@@ -26,19 +18,33 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Capped and wrapped rather than left to its intrinsic width, unlike .status.
+   .panel has no max-width of its own, and .leftColumn is `width: max-content`
+   (App.module.css) — so an unbroken line here doesn't just wrap oddly, it
+   sets the width for Magnitude, Window, History and every other archive panel
+   in the column. .status stays uncapped because every panel's describe()
+   produces a short, bounded string; .note and .error don't have that
+   guarantee — .note is free-form copy, and .error is a thrown Error's own
+   message, which DONKI's rate-limit text alone runs to 146 characters.
+   overflow-wrap covers a single long token (a URL, an ALL_CAPS constant) that
+   wrapping alone wouldn't break. */
 .note {
   margin: 0.375rem 0 0;
+  max-width: 12.5rem;
   color: rgb(148 163 184);
   font-size: 0.6875rem;
   font-style: italic;
+  overflow-wrap: break-word;
 }
 
 /* Louder than .note — a failed backfill left a hole, and that shouldn't be
    something you have to go looking for. */
 .error {
   margin: 0.375rem 0 0;
+  max-width: 12.5rem;
   color: rgb(248 160 100);
   font-size: 0.6875rem;
+  overflow-wrap: break-word;
 }
 
 .track {

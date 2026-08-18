@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type * as Cesium from 'cesium';
-import type { AntipodalEvent, AuroraGrid, EarthquakeEvent, GlobeLayer,
+import type { AntipodalEvent, AuroraGrid, CmeArrival, EarthquakeEvent, GlobeLayer,
   MagnetometerReading,
+  SolarFlare,
   TecGrid,
   TecQuantity,
 } from '@terra-pulse/schema';
@@ -17,6 +18,8 @@ import { isGeomagneticFieldLayer } from '../layers/geomagnetic-field';
 import { isAuroraLayer } from '../layers/aurora-layer';
 import { isMagnetometerLayer } from '../layers/magnetometer-layer';
 import { isTecLayer } from '../layers/tec-layer';
+import { isSolarFlaresLayer } from '../layers/solar-flares-layer';
+import { isCmeArrivalsLayer } from '../layers/cme-arrivals-layer';
 import {
   isMagnetopauseLayer,
   type SolarWindConditions,
@@ -40,6 +43,9 @@ interface UseGlobeLayersOptions {
   magnetometerReadings: readonly MagnetometerReading[];
   tecGrid: TecGrid | null;
   tecQuantity: TecQuantity;
+  /** Flares and CME arrivals in the current display window. */
+  solarFlares: readonly SolarFlare[];
+  cmeArrivals: readonly CmeArrival[];
   /** Conditions at the playhead, for the magnetopause. Null when unmeasured. */
   solarWind: SolarWindConditions | null;
   /**
@@ -141,6 +147,8 @@ function mountOverlays(
     magnetometerReadings: readonly MagnetometerReading[];
     tecGrid: TecGrid | null;
     tecQuantity: TecQuantity;
+    solarFlares: readonly SolarFlare[];
+    cmeArrivals: readonly CmeArrival[];
   },
 ): () => void {
   const mounted: GlobeLayer[] = [];
@@ -166,6 +174,8 @@ function mountOverlays(
       layer.setQuantity(pushed.tecQuantity);
       layer.setGrid(pushed.tecGrid);
     }
+    if (isSolarFlaresLayer(layer)) layer.setFlares(pushed.solarFlares);
+    if (isCmeArrivalsLayer(layer)) layer.setArrivals(pushed.cmeArrivals);
     mounted.push(layer);
     track.add(layer);
   }
@@ -202,6 +212,8 @@ export function useGlobeLayers({
   magnetometerReadings,
   tecGrid,
   tecQuantity,
+  solarFlares,
+  cmeArrivals,
   solarWind,
   antipodeEvent,
   antipodeHits,
@@ -275,10 +287,26 @@ export function useGlobeLayers({
     magnetometerReadings: readonly MagnetometerReading[];
     tecGrid: TecGrid | null;
     tecQuantity: TecQuantity;
-  }>({ solarWind: null, magnetometerReadings: [], tecGrid: null, tecQuantity: 'tec' });
+    solarFlares: readonly SolarFlare[];
+    cmeArrivals: readonly CmeArrival[];
+  }>({
+    solarWind: null,
+    magnetometerReadings: [],
+    tecGrid: null,
+    tecQuantity: 'tec',
+    solarFlares: [],
+    cmeArrivals: [],
+  });
   useEffect(() => {
-    pushedRef.current = { solarWind, magnetometerReadings, tecGrid, tecQuantity };
-  }, [solarWind, magnetometerReadings, tecGrid, tecQuantity]);
+    pushedRef.current = {
+      solarWind,
+      magnetometerReadings,
+      tecGrid,
+      tecQuantity,
+      solarFlares,
+      cmeArrivals,
+    };
+  }, [solarWind, magnetometerReadings, tecGrid, tecQuantity, solarFlares, cmeArrivals]);
 
   // --- Static overlays: geology. Rebuilt only on tone or toggle changes ----
   useEffect(() => {
@@ -395,6 +423,22 @@ export function useGlobeLayers({
       if (isTecLayer(layer)) layer.setQuantity(tecQuantity);
     }
   }, [tecQuantity, layerVisibility]);
+
+  // Flares and CME arrivals, on the same push channel — `useSolarEvents`
+  // re-queries main whenever the display window changes, so this is what
+  // hands the result to a layer that's already mounted rather than waiting
+  // for the next toggle.
+  useEffect(() => {
+    for (const layer of mountedLayersRef.current) {
+      if (isSolarFlaresLayer(layer)) layer.setFlares(solarFlares);
+    }
+  }, [solarFlares, layerVisibility]);
+
+  useEffect(() => {
+    for (const layer of mountedLayersRef.current) {
+      if (isCmeArrivalsLayer(layer)) layer.setArrivals(cmeArrivals);
+    }
+  }, [cmeArrivals, layerVisibility]);
 
   // --- Playhead: pushed to whatever is mounted, no rebuild ----------------
   //

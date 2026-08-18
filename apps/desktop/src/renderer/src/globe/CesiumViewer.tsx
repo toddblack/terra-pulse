@@ -21,6 +21,7 @@ import { useGlobeLayers } from './useGlobeLayers';
 import { displayWindow, LIVE_END_MARGIN_MS } from './display-window';
 import { useNow } from './useNow';
 import { useSolarWindAt } from '../panels/useSpaceWeather';
+import { useSolarEvents } from '../panels/useSolarEvents';
 import { usePlayback } from './usePlayback';
 import { useVisibleEarthquakes } from './useVisibleEarthquakes';
 import { useAntipodal } from '../panels/useAntipodal';
@@ -89,6 +90,10 @@ export function CesiumViewer() {
   // The magnetopause is an instantaneous state, so it reads the playhead's
   // leading edge rather than the window.
   const solarWind = useSolarWindAt(timeWindow.endMs);
+  // Flares and CME arrivals, over the same window the earthquake layer draws —
+  // unlike the magnetopause, these are dated events with real duration rather
+  // than an instantaneous condition, so they follow the whole window.
+  const { flares: solarFlares, cmeArrivals } = useSolarEvents(timeWindow.startMs, timeWindow.endMs);
 
   // Resolved from the loaded set rather than held in the store, so the chord
   // follows revisions to the event like every other view does.
@@ -187,6 +192,8 @@ export function CesiumViewer() {
     magnetometerReadings,
     tecGrid,
     tecQuantity,
+    solarFlares,
+    cmeArrivals,
     solarWind,
     antipodeEvent,
     antipodeHits,

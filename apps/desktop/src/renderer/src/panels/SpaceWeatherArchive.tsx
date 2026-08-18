@@ -54,11 +54,13 @@ function describe(progress: SpaceWeatherProgress): string {
 /**
  * The Kp/Dst backfill control.
  *
- * A sibling of the earthquake archive rather than part of it: they are separate
- * downloads with separate costs, and someone who wants a century of earthquakes
- * does not necessarily want 184 MB of space weather. Reuses the archive panel's
- * stylesheet because it is the same idiom, and a second visual language for the
- * same interaction would be noise.
+ * Grouped with the earthquake and DONKI archives under one
+ * `HistoricalDataPanel` disclosure, but functionally independent from both:
+ * they are separate downloads with separate costs, and someone who wants a
+ * century of earthquakes does not necessarily want 184 MB of space weather.
+ * Still reuses the archive panel's stylesheet for its content styling — same
+ * idiom, and a second visual language for the same interaction would be
+ * noise — though the outer card chrome now belongs to the parent.
  *
  * **The last week of Kp needs none of this** — it arrives from the rolling poll
  * and the track shows it immediately. This is only for the deep record.
@@ -92,8 +94,9 @@ export function SpaceWeatherArchive() {
       : Math.round((progress.completedYears / progress.totalYears) * 100);
 
   return (
-    <div id="space-weather-archive" className={styles.panel}>
-      <h2 className={styles.heading}>Geomagnetic history</h2>
+    <div id="space-weather-archive">
+      {/* h4, not h2 — see the identical note in ArchivePanel.tsx. */}
+      <h4 className={styles.heading}>Geomagnetic history</h4>
       <p className={styles.status}>{describe(progress)}</p>
 
       {running && (
