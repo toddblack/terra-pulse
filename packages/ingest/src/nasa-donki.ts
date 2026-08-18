@@ -3,15 +3,35 @@ import type { CmeArrival, FlareClass, SolarFlare } from '@terra-pulse/schema';
 /**
  * Solar flares and CME arrivals from NASA's DONKI catalogue.
  *
- * ## The key is optional, and that is the point
+ * ## No shared-key fallback — a product choice, not a proven-broken `DEMO_KEY`
  *
- * NASA publishes a shared `DEMO_KEY` that works without registration, so this
- * layer functions for someone who never sets one — degraded to 10 requests an
- * hour rather than broken. A personal key raises that to 2,500.
+ * NASA publishes a shared `DEMO_KEY` that works without registration, and the
+ * original design here leaned on it: the app would run for anyone who never
+ * set a key, degraded to 10 requests an hour instead of 2,500. Real testing
+ * turned up `403 Forbidden` on essentially every request, which looked like
+ * the shared key being unreliable — but the actual cause, found afterwards,
+ * was `apps/desktop/src/main/ipc/nasa-donki.ts`'s key resolution treating an
+ * *empty* `NASA_DONKI_API_KEY=` in `.env` as a configured key rather than as
+ * unset, so every request went out with a blank `api_key`. That is what a 403
+ * looks like for a bad credential, and it fully explains what was seen —
+ * `DEMO_KEY` itself was never actually confirmed to be the problem.
  *
- * That distinction is what makes DONKI acceptable where SuperMAG was not: an
- * optional key with a working fallback is fine, a mandatory account is not. See
- * `SOURCES.md`.
+ * The app requires a personal key anyway, independent of that bug: headroom
+ * (2,500 requests/hour instead of 10) and not depending on a resource shared
+ * with every tutorial and demo that hardcodes `DEMO_KEY`. See that file's
+ * `donkiApiKey` for the actual gate.
+ *
+ * The function signatures below still accept `apiKey` as optional and still
+ * default to `DONKI_DEMO_KEY` — that stays honest at the HTTP-client level,
+ * where a shared key is a valid credential even if the app chooses not to use
+ * it. The "requires a key" decision lives one layer up, in what the app
+ * chooses to call this with.
+ *
+ * This does narrow the "no mandatory account" rule in `SOURCES.md` — worth
+ * being honest about. It's a narrower ask than SuperMAG's rejected
+ * registration (a free, instant, login-free key request, not an account with
+ * credentials), and it's scoped to DONKI alone; every other layer in this app
+ * remains fully keyless.
  *
  * ## Two endpoints, because arrival is not in the CME record
  *
@@ -22,8 +42,31 @@ import type { CmeArrival, FlareClass, SolarFlare } from '@terra-pulse/schema';
  */
 const BASE = 'https://api.nasa.gov/DONKI';
 
-/** NASA's shared key. Rate-limited to 10 requests an hour, but it works. */
+/**
+ * NASA's shared key. Rate-limited to 10 requests an hour. See the module doc
+ * above — this app doesn't call the fetch functions below with this as the
+ * actual key any more, only as their documented default, by product choice
+ * rather than because it was shown not to work.
+ */
 export const DONKI_DEMO_KEY = 'DEMO_KEY';
+
+/**
+ * Raised on HTTP 429 instead of a plain `Error`, same idea as
+ * `ArchiveCancelledError` in the archive adapter.
+ *
+ * Lets a caller tell "rate limited, will clear on its own" apart from
+ * "actually broken" without string-matching a message — the main-process
+ * controller uses this to switch into a `waiting`/auto-resume state rather
+ * than burning retries or failing outright.
+ */
+export class DonkiRateLimitError extends Error {
+  constructor(label: string) {
+    super(
+      `DONKI ${label}: rate limited. The shared DEMO_KEY allows 10 requests an hour; set NASA_DONKI_API_KEY for 2,500.`,
+    );
+    this.name = 'DonkiRateLimitError';
+  }
+}
 
 function endpoint(path: string, startUtc: Date, endUtc: Date, apiKey: string): string {
   const query = new URLSearchParams({
@@ -40,9 +83,7 @@ async function getJson(url: string, fetchImpl: typeof fetch, label: string): Pro
     // 429 is the one worth naming: on the shared key it arrives after ten
     // requests an hour, and "HTTP 429" alone reads as a bug rather than a quota.
     if (response.status === 429) {
-      throw new Error(
-        `DONKI ${label}: rate limited. The shared DEMO_KEY allows 10 requests an hour; set NASA_DONKI_API_KEY for 2,500.`,
-      );
+      throw new DonkiRateLimitError(label);
     }
     throw new Error(`DONKI ${label}: HTTP ${String(response.status)} ${response.statusText}`);
   }

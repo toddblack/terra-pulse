@@ -1,29 +1,26 @@
-import { useEffect, useState } from 'react';
 import { DONKI_START_YEAR, type DonkiProgress } from '@terra-pulse/schema';
+import { useGlobeStore } from '../state/useGlobeStore';
+import { useNow } from '../globe/useNow';
+import { formatDuration } from './time-labels';
 import styles from './ArchivePanel.module.css';
-
-const IDLE: DonkiProgress = {
-  state: 'idle',
-  phase: null,
-  completedChunks: 0,
-  totalChunks: 0,
-  storedFlares: 0,
-  storedCmeArrivals: 0,
-  currentYear: null,
-  error: null,
-};
 
 /** Whether anything at all is stored, and therefore Download versus Resume. */
 function isEmpty(progress: DonkiProgress): boolean {
   return progress.storedFlares === 0 && progress.storedCmeArrivals === 0;
 }
 
-function describe(progress: DonkiProgress): string {
+function describe(progress: DonkiProgress, nowMs: number): string {
   if (progress.state === 'running') {
     const label = progress.phase === 'cme' ? 'CME arrivals' : 'flares';
     return progress.currentYear === null
       ? 'starting…'
       : `${label} ${String(progress.currentYear)} · ${String(progress.completedChunks)}/${String(progress.totalChunks)}`;
+  }
+  if (progress.state === 'waiting') {
+    const retryAtMs = progress.retryAtUtc === null ? NaN : Date.parse(progress.retryAtUtc);
+    return Number.isFinite(retryAtMs)
+      ? `rate limited · resumes in ${formatDuration(Math.max(0, retryAtMs - nowMs))}`
+      : 'rate limited · waiting to resume';
   }
   if (isEmpty(progress)) {
     return `flares and CME arrivals from ${String(DONKI_START_YEAR)}`;
@@ -44,30 +41,22 @@ function describe(progress: DonkiProgress): string {
  * **The live tail needs none of this** — it arrives from the rolling poll and
  * the two marker layers show it immediately. This is only for the historical
  * record.
+ *
+ * Reads `donkiProgress` from the store rather than holding its own state —
+ * `LayerPanel` needs `hasApiKey` too, to gate the solar-flares/CME-arrivals
+ * toggles, so both are fed by one subscription (`useDonkiStatus`, called once
+ * in `App.tsx`) instead of two.
  */
 export function DonkiArchive() {
-  const [progress, setProgress] = useState<DonkiProgress>(IDLE);
+  const progress = useGlobeStore((state) => state.donkiProgress);
+  const openDonkiKeyModal = useGlobeStore((state) => state.openDonkiKeyModal);
+  // Wall clock, for the 'waiting' countdown — same basis as the rest of the
+  // app's relative-time labels.
+  const nowMs = useNow();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    void window.terraPulse.solarEvents.status().then(
-      (initial) => {
-        if (!cancelled) setProgress(initial);
-      },
-      (error: unknown) => {
-        console.error('Failed to read DONKI status', error);
-      },
-    );
-
-    const unsubscribe = window.terraPulse.solarEvents.onProgress(setProgress);
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, []);
-
-  const running = progress.state === 'running';
+  // Cancel must stay available through 'waiting', not just 'running' — a
+  // rate-limited pause is not a stopped backfill.
+  const inProgress = progress.state === 'running' || progress.state === 'waiting';
   const percent =
     progress.totalChunks === 0
       ? 0
@@ -77,9 +66,9 @@ export function DonkiArchive() {
     <div id="donki-archive">
       {/* h4, not h2 — see the identical note in ArchivePanel.tsx. */}
       <h4 className={styles.heading}>Solar event history</h4>
-      <p className={styles.status}>{describe(progress)}</p>
+      <p className={styles.status}>{describe(progress, nowMs)}</p>
 
-      {running && (
+      {inProgress && (
         <div
           className={styles.track}
           role="progressbar"
@@ -92,22 +81,14 @@ export function DonkiArchive() {
         </div>
       )}
 
-      {!running && isEmpty(progress) && (
+      {!inProgress && !progress.hasApiKey && (
+        <p className={styles.note}>needs a free NASA API key</p>
+      )}
+      {progress.state === 'waiting' && (
         <p className={styles.note}>
-          {/* The real constraint here is the shared key's request budget, not
-              file size — DONKI records are small JSON, unlike the OMNI/USGS
-              archives this panel sits beside.
-
-              Kept to one short line deliberately: `.leftColumn` is
-              `width: max-content` (App.module.css), so its widest child sets
-              the width for Magnitude, Window, History and both other archive
-              panels together. The first version of this note was 124
-              characters against the Archive/Geomagnetic notes' ~60 and
-              visibly widened the whole column. */}
-          shared NASA key · 10 requests/hour · NASA_DONKI_API_KEY raises it
+          NASA’s rate limit was hit — resuming automatically, no action needed.
         </p>
       )}
-
       {progress.state === 'failed' && progress.error && (
         <p className={styles.error}>{progress.error} — resuming picks up where it stopped.</p>
       )}
@@ -116,7 +97,7 @@ export function DonkiArchive() {
       )}
 
       <div className={styles.actions}>
-        {running ? (
+        {inProgress ? (
           <button
             type="button"
             id="donki-cancel"
@@ -133,7 +114,11 @@ export function DonkiArchive() {
             id="donki-start"
             className={`${styles.button} ${styles.buttonPrimary}`}
             onClick={() => {
-              void window.terraPulse.solarEvents.start();
+              if (progress.hasApiKey) {
+                void window.terraPulse.solarEvents.start();
+              } else {
+                openDonkiKeyModal({ kind: 'download' });
+              }
             }}
           >
             {isEmpty(progress) ? 'Download' : 'Resume'}

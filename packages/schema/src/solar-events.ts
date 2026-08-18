@@ -158,7 +158,7 @@ export function isDirectImpact(arrival: CmeArrival): boolean {
  * answered here.
  */
 export interface DonkiProgress {
-  state: 'idle' | 'running' | 'complete' | 'failed' | 'cancelled';
+  state: 'idle' | 'running' | 'waiting' | 'complete' | 'failed' | 'cancelled';
   phase: 'flares' | 'cme' | null;
   completedChunks: number;
   totalChunks: number;
@@ -168,4 +168,19 @@ export interface DonkiProgress {
   currentYear: number | null;
   /** Present when `state` is 'failed'. */
   error: string | null;
+  /**
+   * When the next auto-resume attempt fires, only meaningful during
+   * `'waiting'` — a rate limit is pausing the run rather than failing it.
+   */
+  retryAtUtc: string | null;
+  /**
+   * Whether a personal DONKI API key is configured.
+   *
+   * NASA's shared `DEMO_KEY` turned out too unreliable to build on (see
+   * `nasa-donki.ts` in the ingest package) — a key is now required for these
+   * features to fetch anything at all, and this is what the renderer checks
+   * before letting a download start or a layer turn on, without the key
+   * itself ever crossing IPC.
+   */
+  hasApiKey: boolean;
 }

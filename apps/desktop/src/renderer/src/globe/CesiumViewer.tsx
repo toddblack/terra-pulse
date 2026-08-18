@@ -1,20 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Cesium from 'cesium';
-import { useGlobeStore } from '../state/useGlobeStore';
+import { useGlobeStore, type SolarEventSelection } from '../state/useGlobeStore';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { eventIdFromEntityId } from '../layers/earthquake-layer';
 import { focusAltitudeM } from './camera-focus';
 import {
   cursorForHover,
   describeBoundary,
+  describeCmeArrival,
   describeEarthquake,
   describeFault,
+  describeFlare,
   describeMagnetometer,
   type HoverTarget,
 } from './hover-target';
-import type { AntipodalEvent, EarthquakeEvent, MagnetometerReading } from '@terra-pulse/schema';
+import type {
+  AntipodalEvent,
+  CmeArrival,
+  EarthquakeEvent,
+  MagnetometerReading,
+  SolarFlare,
+} from '@terra-pulse/schema';
 import type { FaultRecord } from '../layers/fault-association';
 import { stationCodeFromEntityId } from '../layers/magnetometer-layer';
+import { flareIdFromEntityId } from '../layers/solar-flares-layer';
+import { cmeSimulationIdFromEntityId } from '../layers/cme-arrivals-layer';
 import { createLocationHighlight } from '../layers/location-highlight';
 import { watchSelection } from './selection-sync';
 import { useGlobeLayers } from './useGlobeLayers';
@@ -80,6 +90,7 @@ export function CesiumViewer() {
   const hideAntipode = useEarthquakeStore((state) => state.hideAntipode);
   const faultProbeActive = useGlobeStore((state) => state.faultProbeActive);
   const selectLocation = useGlobeStore((state) => state.selectLocation);
+  const selectSolarEvent = useGlobeStore((state) => state.selectSolarEvent);
   const setHover = useGlobeStore((state) => state.setHover);
   const location = useGlobeStore((state) => state.location);
   const fieldQuantity = useGlobeStore((state) => state.fieldQuantity);
@@ -90,10 +101,13 @@ export function CesiumViewer() {
   // The magnetopause is an instantaneous state, so it reads the playhead's
   // leading edge rather than the window.
   const solarWind = useSolarWindAt(timeWindow.endMs);
-  // Flares and CME arrivals, over the same window the earthquake layer draws —
-  // unlike the magnetopause, these are dated events with real duration rather
-  // than an instantaneous condition, so they follow the whole window.
-  const { flares: solarFlares, cmeArrivals } = useSolarEvents(timeWindow.startMs, timeWindow.endMs);
+  // Flares and CME arrivals: loaded against the whole selected span
+  // (`windowHours`), not the live `timeWindow` — same split as the earthquake
+  // layer's `loadedWindowStartMs` versus `setTimeWindow`. The live edge still
+  // reaches these two layers, through `setTimeWindow` below, which only flips
+  // a `show` flag; see `useSolarEvents`'s own doc for why a version keyed on
+  // `timeWindow` directly was a real, measured problem, not just a risk.
+  const { flares: solarFlares, cmeArrivals } = useSolarEvents(windowHours);
 
   // Resolved from the loaded set rather than held in the store, so the chord
   // follows revisions to the event like every other view does.
@@ -233,6 +247,16 @@ export function CesiumViewer() {
     magnetometerReadingsRef.current = magnetometerReadings;
   }, [magnetometerReadings]);
 
+  // Same reason again, for the two DONKI marker layers.
+  const solarFlaresRef = useRef(solarFlares);
+  useEffect(() => {
+    solarFlaresRef.current = solarFlares;
+  }, [solarFlares]);
+  const cmeArrivalsRef = useRef(cmeArrivals);
+  useEffect(() => {
+    cmeArrivalsRef.current = cmeArrivals;
+  }, [cmeArrivals]);
+
   // Globe click → store.
   //
   // Explicit picking rather than Cesium's `selectedEntityChanged`, which fires
@@ -266,11 +290,11 @@ export function CesiumViewer() {
     /**
      * One candidate found under the pointer, before priority is applied.
      *
-     * Four shapes come back, because the layers are built four different ways:
+     * Six shapes come back, because the layers are built different ways:
      *
-     * - Earthquakes, plate boundaries and magnetometer stations are
-     *   **entities**, so `picked.id` is a Cesium Entity carrying an id string
-     *   (and, for boundaries, `properties`).
+     * - Earthquakes, plate boundaries, magnetometer stations, flares and CME
+     *   arrivals are **entities**, so `picked.id` is a Cesium Entity carrying
+     *   an id string (and, for boundaries, `properties`).
      * - Faults are a batched **PolylineCollection**, so `picked.id` is the raw
      *   `FaultRecord` the layer attached at `add()` time. There is no entity to
      *   look up, which is why the layer has to carry the record itself.
@@ -279,7 +303,9 @@ export function CesiumViewer() {
       | { kind: 'fault'; fault: FaultRecord }
       | { kind: 'boundary'; pair: string; boundaryClass: string }
       | { kind: 'earthquake'; event: EarthquakeEvent }
-      | { kind: 'magnetometer'; reading: MagnetometerReading };
+      | { kind: 'magnetometer'; reading: MagnetometerReading }
+      | { kind: 'flare'; flare: SolarFlare }
+      | { kind: 'cme-arrival'; arrival: CmeArrival };
 
     function classifyPicked(picked: unknown): PickCandidate | null {
       if (picked === null || typeof picked !== 'object') return null;
@@ -320,6 +346,20 @@ export function CesiumViewer() {
         return reading ? { kind: 'magnetometer', reading } : null;
       }
 
+      const flareId = flareIdFromEntityId(entityId);
+      if (flareId !== null) {
+        const flare = solarFlaresRef.current.find((candidate) => candidate.id === flareId);
+        return flare ? { kind: 'flare', flare } : null;
+      }
+
+      const simulationId = cmeSimulationIdFromEntityId(entityId);
+      if (simulationId !== null) {
+        const arrival = cmeArrivalsRef.current.find(
+          (candidate) => candidate.simulationId === simulationId,
+        );
+        return arrival ? { kind: 'cme-arrival', arrival } : null;
+      }
+
       // Otherwise an earthquake. The dot and its emphasis ring share an event
       // id, so both resolve to the same event.
       const eventId = eventIdFromEntityId(entityId);
@@ -340,10 +380,20 @@ export function CesiumViewer() {
      * function picks among them by hand: the smaller, more specific target
      * always wins over the broad region it happens to sit inside. Earthquakes
      * and faults/boundaries essentially never coincide at pixel scale, so
-     * their relative order here rarely matters in practice.
+     * their relative order here rarely matters in practice. Flares and CME
+     * arrivals are last: several can legitimately sit at nearly the same
+     * subsolar point, and they're the layers a reader turns on last, on top
+     * of everything else already on screen.
      */
     function choosePick(candidates: readonly PickCandidate[]): PickCandidate | null {
-      for (const kind of ['earthquake', 'fault', 'boundary', 'magnetometer'] as const) {
+      for (const kind of [
+        'earthquake',
+        'fault',
+        'boundary',
+        'magnetometer',
+        'flare',
+        'cme-arrival',
+      ] as const) {
         const found = candidates.find((candidate) => candidate.kind === kind);
         if (found) return found;
       }
@@ -360,6 +410,8 @@ export function CesiumViewer() {
         | { kind: 'boundary'; pair: string; boundaryClass: string }
         | null;
       eventId: string | null;
+      /** A clicked flare or CME arrival, for the solar-event panel — its own slot, same reasoning `feature` gets one. */
+      solarEvent: SolarEventSelection | null;
     } | null => {
       // A small limit: at most a dot, its ring, a fault and a magnetometer
       // ring could ever plausibly coincide at one pixel. `drillPick` stops
@@ -378,21 +430,43 @@ export function CesiumViewer() {
             target: describeFault(chosen.fault),
             feature: { kind: 'fault', fault: chosen.fault },
             eventId: null,
+            solarEvent: null,
           };
         case 'boundary':
           return {
             target: describeBoundary(chosen.pair, chosen.boundaryClass),
             feature: { kind: 'boundary', pair: chosen.pair, boundaryClass: chosen.boundaryClass },
             eventId: null,
+            solarEvent: null,
           };
         case 'earthquake':
           return {
             target: describeEarthquake(chosen.event),
             feature: null,
             eventId: chosen.event.id,
+            solarEvent: null,
           };
         case 'magnetometer':
-          return { target: describeMagnetometer(chosen.reading), feature: null, eventId: null };
+          return {
+            target: describeMagnetometer(chosen.reading),
+            feature: null,
+            eventId: null,
+            solarEvent: null,
+          };
+        case 'flare':
+          return {
+            target: describeFlare(chosen.flare),
+            feature: null,
+            eventId: null,
+            solarEvent: { kind: 'flare', flare: chosen.flare },
+          };
+        case 'cme-arrival':
+          return {
+            target: describeCmeArrival(chosen.arrival),
+            feature: null,
+            eventId: null,
+            solarEvent: { kind: 'cme-arrival', arrival: chosen.arrival },
+          };
       }
     };
 
@@ -460,6 +534,18 @@ export function CesiumViewer() {
           viewer.selectedEntity = undefined;
           return;
         }
+      }
+
+      // A flare or CME arrival opens the solar-event panel, same "different
+      // things, different slots" reasoning as fault/boundary above — it also
+      // leaves any selected earthquake alone.
+      if (resolved?.solarEvent) {
+        selectSolarEvent(resolved.solarEvent);
+        // Same reason as the fault/boundary branch: Cesium's own left-click
+        // handler already ran and set `selectedEntity` to this same entity,
+        // which would paint the earthquake reticle onto a flare or CME dot.
+        viewer.selectedEntity = undefined;
+        return;
       }
 
       // The dot and its emphasis ring both resolve to the event id, so clicking
@@ -539,7 +625,7 @@ export function CesiumViewer() {
     // `selectLocation` and `setHover` are stable Zustand actions and the modes
     // are read through refs, so this handler is built once per viewer rather
     // than rebuilt whenever a mode toggles.
-  }, [select, selectLocation, setHover, viewerReadyToken]);
+  }, [select, selectLocation, selectSolarEvent, setHover, viewerReadyToken]);
 
   /**
    * The reticle on the selected fault, boundary or probed point.

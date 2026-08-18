@@ -8,6 +8,10 @@ describe('isAllowedExternalUrl', () => {
     ).toBe(true);
   });
 
+  it('allows api.nasa.gov, for the DONKI "get a key" button', () => {
+    expect(isAllowedExternalUrl('https://api.nasa.gov/')).toBe(true);
+  });
+
   // Every URL below must be REJECTED. If any of these ever starts returning
   // true, something has gone wrong with the validator.
   it.each([

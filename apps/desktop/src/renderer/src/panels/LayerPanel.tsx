@@ -5,10 +5,15 @@ import {
   isOverlayVisible,
 } from '../layers/registry';
 import { GEOMAGNETIC_FIELD_LAYER_ID } from '../layers/geomagnetic-field';
+import { SOLAR_FLARES_LAYER_ID } from '../layers/solar-flares-layer';
+import { CME_ARRIVALS_LAYER_ID } from '../layers/cme-arrivals-layer';
 import { FIELD_SCALES } from '../layers/field-encoding';
 import type { FieldQuantity } from '../layers/igrf';
 import { LayerGuideButton } from './LayerGuideModal';
 import styles from './LayerPanel.module.css';
+
+/** The two layers a DONKI key gates — see `DonkiKeyModal`. */
+const DONKI_GATED_LAYER_IDS = new Set([SOLAR_FLARES_LAYER_ID, CME_ARRIVALS_LAYER_ID]);
 
 /**
  * Driven entirely off the registry — adding a layer needs no edit here.
@@ -37,6 +42,8 @@ export function LayerPanel() {
   const toggleLayer = useGlobeStore((state) => state.toggleLayer);
   const fieldQuantity = useGlobeStore((state) => state.fieldQuantity);
   const setFieldQuantity = useGlobeStore((state) => state.setFieldQuantity);
+  const donkiHasApiKey = useGlobeStore((state) => state.donkiProgress.hasApiKey);
+  const openDonkiKeyModal = useGlobeStore((state) => state.openDonkiKeyModal);
 
   return (
     <div id="layer-panel" className={styles.panel}>
@@ -69,7 +76,16 @@ export function LayerPanel() {
                   type="checkbox"
                   className={styles.checkbox}
                   checked={isOverlayVisible(entry, layerVisibility)}
-                  onChange={() => toggleLayer(entry.id)}
+                  onChange={() => {
+                    const turningOn = !isOverlayVisible(entry, layerVisibility);
+                    // Turning off never needs a key; turning on does, for the
+                    // two DONKI-sourced layers only — see DonkiKeyModal.
+                    if (turningOn && DONKI_GATED_LAYER_IDS.has(entry.id) && !donkiHasApiKey) {
+                      openDonkiKeyModal({ kind: 'enable-layer', layerId: entry.id });
+                    } else {
+                      toggleLayer(entry.id);
+                    }
+                  }}
                 />
                 <span className={styles.overlayLabel}>{entry.label}</span>
                 {/* Inside the label so it sits on the row, with its own click

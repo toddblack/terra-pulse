@@ -11,7 +11,14 @@ export {
   countMissedEarthquakes,
   getEarthquakeById,
 } from './queries';
-export { readSeenThrough, writeSeenThrough, readAppState, writeAppState } from './app-state';
+export {
+  readSeenThrough,
+  writeSeenThrough,
+  readAppState,
+  writeAppState,
+  readDonkiApiKey,
+  saveDonkiApiKey,
+} from './app-state';
 export type { CatalogSignature } from './queries';
 export {
   recordArchiveChunk,
