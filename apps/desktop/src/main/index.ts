@@ -45,6 +45,11 @@ import {
   registerSpaceWeatherIpcHandlers,
   startKpPolling,
 } from './ipc/space-weather';
+import {
+  createDonkiController,
+  registerDonkiIpcHandlers,
+  startDonkiPolling,
+} from './ipc/nasa-donki';
 import { registerExternalLinkIpcHandlers } from './ipc/external-links';
 import { applyTileIdentity } from './tile-identity';
 
@@ -375,6 +380,26 @@ app
     app.on('will-quit', stopKpPolling);
     app.on('will-quit', () => {
       spaceWeather.cancel();
+    });
+
+    // Solar flares and CME arrivals — the data H1b and H2b are registered
+    // against. Same shape as space weather: a light live tail always running,
+    // a user-triggered historical backfill behind it.
+    const solarEvents = createDonkiController(db, (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('solar-events:progress', progress);
+      }
+    });
+    registerDonkiIpcHandlers(db, solarEvents);
+
+    const stopDonkiPolling = startDonkiPolling(db, () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('solar-events:updated');
+      }
+    });
+    app.on('will-quit', stopDonkiPolling);
+    app.on('will-quit', () => {
+      solarEvents.cancel();
     });
 
     // A backfill mid-flight would keep issuing requests and writing to a

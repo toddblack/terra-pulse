@@ -91,8 +91,11 @@ export function ArchivePanel() {
       : Math.round((progress.completedChunks / progress.totalChunks) * 100);
 
   return (
-    <div id="archive-panel" className={styles.panel}>
-      <h2 className={styles.heading}>Historical archive</h2>
+    <div id="archive-panel">
+      {/* h4, not h2: this now nests inside HistoricalDataPanel's own
+          CollapsibleSection, whose toggle is an h3 — an h2 here would skip
+          backwards past it in the document outline. */}
+      <h4 className={styles.heading}>Historical archive</h4>
       <p className={styles.status}>{describe(progress)}</p>
 
       {running && (

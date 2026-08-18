@@ -1,0 +1,39 @@
+/* The one card the three grouped panels used to have individually.
+   Placement belongs to App's .leftColumn. min-width keeps the column wide
+   enough for "1970–present · 294,648 events" to stay on one line; the column
+   is sized by whichever panel is widest, so this quietly sets that floor —
+   see App.module.css's .leftColumn (`width: max-content`). */
+.card {
+  min-width: 14rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 80%);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 30%);
+  color: rgb(203 213 225);
+  user-select: none;
+}
+
+/* CollapsibleSection's top border/margin exists to separate one section from
+   a *previous* sibling — the inspector stacks several of them. Here it is the
+   sole child of the card, so that border would just be a stray line under the
+   card's own padding. Targeted structurally (the `section` element, not a
+   class) so CollapsibleSection itself needs no change for this one caller. */
+.card > section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Same divider look CollapsibleSection uses between its own sections, so the
+   three grouped panels read as one family rather than three unrelated
+   things stacked in a box. Only between them, never before the first. */
+.stack > div + div {
+  margin-top: 0.875rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+}

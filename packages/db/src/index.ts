@@ -30,3 +30,13 @@ export { queryAntipodalWindow } from './antipodal-queries';
 // this package's node:sqlite-dependent source.
 export type { EarthquakeQuery, BoundingBox } from '@terra-pulse/schema';
 export * from './space-weather-queries';
+export {
+  insertSolarFlares,
+  insertCmeArrivals,
+  querySolarFlares,
+  queryCmeArrivals,
+  recordDonkiChunk,
+  completedDonkiYears,
+  donkiChunkSummary,
+} from './solar-events-queries';
+export type { DonkiSource } from './solar-events-queries';

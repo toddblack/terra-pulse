@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { CesiumViewer } from './globe/CesiumViewer';
-import { ArchivePanel } from './panels/ArchivePanel';
 import { LargeEventBanner } from './panels/LargeEventBanner';
 import { EventListPanel } from './panels/EventListPanel';
 import { MissedEventsPanel } from './panels/MissedEventsPanel';
@@ -19,7 +18,7 @@ import { useAurora } from './panels/useAurora';
 import { useMagnetometers } from './panels/useMagnetometers';
 import { useTec } from './panels/useTec';
 import { LayerGuideModal } from './panels/LayerGuideModal';
-import { SpaceWeatherArchive } from './panels/SpaceWeatherArchive';
+import { HistoricalDataPanel } from './panels/HistoricalDataPanel';
 
 export default function App() {
   // Keeps the live auroral grid current for the layer and its legend.
@@ -82,8 +81,7 @@ export default function App() {
       <CesiumViewer />
       <div className={styles.leftColumn}>
         <RangeControls />
-        <ArchivePanel />
-        <SpaceWeatherArchive />
+        <HistoricalDataPanel />
         <FaultProbeToggle />
       </div>
       <LargeEventBanner />

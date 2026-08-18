@@ -7,11 +7,14 @@ import type {
   SpaceWeatherSample,
   AntipodalWindow,
   ArchiveProgress,
+  CmeArrival,
+  DonkiProgress,
   EarthquakeEvent,
   EarthquakeQuery,
   EarthquakeSyncResult,
   MissedEvents,
   RegionalRecurrence,
+  SolarFlare,
 } from '@terra-pulse/schema';
 
 // Narrow, specific functions — never a raw ipcRenderer passthrough
@@ -203,6 +206,40 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.on('archive:progress', listener);
       return () => {
         ipcRenderer.removeListener('archive:progress', listener);
+      };
+    },
+  },
+  solarEvents: {
+    /** Flares peaking in a half-open range. Bounded on both ends, like `spaceWeather.query`. */
+    queryFlares: (request: { startUtc: string; endUtc: string }): Promise<SolarFlare[]> =>
+      ipcRenderer.invoke('solar-events:query-flares', request),
+    queryCmeArrivals: (request: { startUtc: string; endUtc: string }): Promise<CmeArrival[]> =>
+      ipcRenderer.invoke('solar-events:query-cme-arrivals', request),
+
+    status: (): Promise<DonkiProgress> => ipcRenderer.invoke('solar-events:status'),
+    // Resolves when the whole backfill settles — minutes, not milliseconds.
+    // The UI follows `onProgress` and doesn't await this.
+    start: (): Promise<DonkiProgress> => ipcRenderer.invoke('solar-events:start'),
+    cancel: (): Promise<DonkiProgress> => ipcRenderer.invoke('solar-events:cancel'),
+
+    onProgress: (callback: (progress: DonkiProgress) => void): (() => void) => {
+      const listener = (_event: unknown, progress: DonkiProgress) => {
+        callback(progress);
+      };
+      ipcRenderer.on('solar-events:progress', listener);
+      return () => {
+        ipcRenderer.removeListener('solar-events:progress', listener);
+      };
+    },
+
+    /** Fires when the live poll stores something new. */
+    onUpdated: (callback: () => void): (() => void) => {
+      const listener = () => {
+        callback();
+      };
+      ipcRenderer.on('solar-events:updated', listener);
+      return () => {
+        ipcRenderer.removeListener('solar-events:updated', listener);
       };
     },
   },

@@ -144,3 +144,28 @@ export interface CmeArrival {
 export function isDirectImpact(arrival: CmeArrival): boolean {
   return !arrival.glancingBlow && !arrival.minorImpact;
 }
+
+/**
+ * What the DONKI backfill is currently doing, as the renderer sees it.
+ *
+ * `phase` names which endpoint is being fetched, same reason
+ * `SpaceWeatherProgress` has one — flares and CME arrivals come from two
+ * different DONKI endpoints. `completedChunks`/`totalChunks` count
+ * (year, phase) pairs across *both* phases together, the same shape
+ * `ArchiveProgress` uses for the earthquake archive's (year, tier) pairs —
+ * reporting a single number per phase instead would leave "how far along is
+ * the whole backfill" needing to be computed by every consumer rather than
+ * answered here.
+ */
+export interface DonkiProgress {
+  state: 'idle' | 'running' | 'complete' | 'failed' | 'cancelled';
+  phase: 'flares' | 'cme' | null;
+  completedChunks: number;
+  totalChunks: number;
+  storedFlares: number;
+  storedCmeArrivals: number;
+  /** The year currently being fetched, if any. */
+  currentYear: number | null;
+  /** Present when `state` is 'failed'. */
+  error: string | null;
+}

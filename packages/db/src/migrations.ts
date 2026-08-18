@@ -345,4 +345,64 @@ export const migrations: Migration[] = [
       ALTER TABLE space_weather ADD COLUMN density REAL;
     `,
   },
+  {
+    id: 9,
+    name: 'solar_events',
+    // Solar flares and CME arrivals from NASA DONKI — the data H1b and H2b are
+    // registered against. See packages/ingest/src/nasa-donki.ts for the fetch
+    // side and packages/schema/src/solar-events.ts for the parsed shape.
+    //
+    // Three tables, adds only:
+    //
+    // - `solar_flares` / `cme_arrivals`: one row per DONKI record, keyed on
+    //   DONKI's own id. Both are natural keys DONKI assigns and revises in
+    //   place rather than duplicating (see nasa-donki.ts's note on why no
+    //   dedupe pass is needed), so an upsert on the key is idempotent re-ingest
+    //   with no surrogate id.
+    // - `donki_chunks`: bookkeeping only, the same role `archive_chunks` plays
+    //   for the earthquake archive. Necessary rather than decorative: DONKI is
+    //   fetched by year like the earthquake archive, and a quiet year
+    //   (legitimately few or zero M-class flares, or zero CME arrivals) is
+    //   indistinguishable from a year nobody has fetched yet if completion is
+    //   inferred from row presence. That is the exact trap
+    //   `OMNI_FIELDS_VERSION` (see space-weather.ts) exists to name — here it's
+    //   avoided from the start with real bookkeeping instead of a presence
+    //   test. One table for both sources (`source` column) rather than two,
+    //   since the only thing recorded is "this year, this source, done".
+    sql: `
+      CREATE TABLE solar_flares (
+        id TEXT PRIMARY KEY,
+        class_type TEXT NOT NULL,
+        flare_class TEXT NOT NULL,
+        magnitude REAL NOT NULL,
+        peak_time_utc TEXT NOT NULL,
+        begin_time_utc TEXT,
+        end_time_utc TEXT,
+        source_location TEXT,
+        active_region_number INTEGER,
+        link TEXT
+      );
+
+      CREATE INDEX idx_solar_flares_peak_time ON solar_flares (peak_time_utc);
+
+      CREATE TABLE cme_arrivals (
+        simulation_id TEXT PRIMARY KEY,
+        arrival_time_utc TEXT NOT NULL,
+        predicted_kp REAL,
+        glancing_blow INTEGER NOT NULL,
+        minor_impact INTEGER NOT NULL,
+        link TEXT
+      );
+
+      CREATE INDEX idx_cme_arrivals_time ON cme_arrivals (arrival_time_utc);
+
+      CREATE TABLE donki_chunks (
+        year INTEGER NOT NULL,
+        source TEXT NOT NULL CHECK (source IN ('flares', 'cme')),
+        event_count INTEGER NOT NULL,
+        completed_at TEXT NOT NULL,
+        PRIMARY KEY (year, source)
+      );
+    `,
+  },
 ];
