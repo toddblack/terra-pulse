@@ -10,6 +10,7 @@ import { DepthLegend } from './panels/DepthLegend';
 import { TimeScrubber } from './panels/TimeScrubber';
 import { EarthquakeInspector } from './panels/EarthquakeInspector';
 import { LocationPanel } from './panels/LocationPanel';
+import { SolarEventPanel } from './panels/SolarEventPanel';
 import { HoverTooltip } from './panels/HoverTooltip';
 import { useEarthquakeStore } from './state/useEarthquakeStore';
 import { playAlertSound } from './audio/alert-sound';
@@ -17,7 +18,9 @@ import styles from './App.module.css';
 import { useAurora } from './panels/useAurora';
 import { useMagnetometers } from './panels/useMagnetometers';
 import { useTec } from './panels/useTec';
+import { useDonkiStatus } from './panels/useDonkiStatus';
 import { LayerGuideModal } from './panels/LayerGuideModal';
+import { DonkiKeyModal } from './panels/DonkiKeyModal';
 import { HistoricalDataPanel } from './panels/HistoricalDataPanel';
 
 export default function App() {
@@ -25,6 +28,8 @@ export default function App() {
   useAurora();
   useMagnetometers();
   useTec();
+  // Keeps hasApiKey current for both the archive panel and the layer toggles.
+  useDonkiStatus();
 
   const load = useEarthquakeStore((state) => state.load);
   const noteSynced = useEarthquakeStore((state) => state.noteSynced);
@@ -94,10 +99,12 @@ export default function App() {
       </div>
       <EarthquakeInspector />
       <LocationPanel />
+      <SolarEventPanel />
       {/* Last, so it draws above every panel — it tracks the pointer and
           must never be occluded by the chrome it passes over. */}
       <HoverTooltip />
       <LayerGuideModal />
+      <DonkiKeyModal />
     </div>
   );
 }

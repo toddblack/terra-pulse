@@ -21,11 +21,30 @@ import { flareMarkerColorHex, flareMarkerPixelSize } from './solar-events-encodi
  * drawing — it is dated and located on the Sun, not on Earth. The subsolar
  * point is a proxy for "where the Sun is overhead", not a measurement of
  * anything at that spot.
+ *
+ * ## Built set stable, visibility live
+ *
+ * `setFlares` — driven by `useSolarEvents`, now scoped to the whole selected
+ * span rather than the live playhead window — rebuilds. `setTimeWindow` does
+ * not: it flips each entity's `show` flag against an index captured at build
+ * time, the same split `earthquake-layer.ts`'s `applyVisibility` uses. An
+ * earlier version had no such split — `setTimeWindow` was a no-op and the
+ * *query* itself followed the live window, so every playback tick did a full
+ * IPC round-trip and a full `removeAll` + re-add. That is the mistake this
+ * split exists to avoid; see CLAUDE.md's "30-second rebuild" postmortem for
+ * the earthquake-layer original of it.
  */
 export const SOLAR_FLARES_LAYER_ID = 'solar-flares';
 
+const FLARE_ID_PREFIX = 'flare-';
+
+/** The reverse of `flare-${flare.id}` below — how the pick handler maps a click back to a flare. */
+export function flareIdFromEntityId(entityId: string): string | null {
+  return entityId.startsWith(FLARE_ID_PREFIX) ? entityId.slice(FLARE_ID_PREFIX.length) : null;
+}
+
 export interface SolarFlaresLayer extends GlobeLayer {
-  /** Pushes the flares in the current display window. */
+  /** Pushes the flares in the currently loaded (whole-span) set. */
   setFlares(flares: readonly SolarFlare[]): void;
 }
 
@@ -37,10 +56,32 @@ export function createSolarFlaresLayer(): SolarFlaresLayer {
   let viewer: Cesium.Viewer | null = null;
   let source: Cesium.CustomDataSource | null = null;
   let flares: readonly SolarFlare[] = [];
+  let timeWindow: { startMs: number; endMs: number } | null = null;
+
+  /** One entry per drawn flare, captured at build time — see the module doc. */
+  interface FlareEntity {
+    timeMs: number;
+    entity: Cesium.Entity;
+  }
+  let entityIndex: FlareEntity[] = [];
+
+  function applyVisibility(): void {
+    if (timeWindow === null) {
+      for (const entry of entityIndex) entry.entity.show = true;
+      return;
+    }
+    for (const entry of entityIndex) {
+      entry.entity.show =
+        Number.isFinite(entry.timeMs) &&
+        entry.timeMs >= timeWindow.startMs &&
+        entry.timeMs <= timeWindow.endMs;
+    }
+  }
 
   function rebuild(): void {
     if (!source) return;
     source.entities.removeAll();
+    entityIndex = [];
 
     for (const flare of flares) {
       if (!flareAtLeast(flare, 'M')) continue;
@@ -48,8 +89,8 @@ export function createSolarFlaresLayer(): SolarFlaresLayer {
       const { latitudeDeg, longitudeDeg } = subsolarPoint(new Date(flare.peakTimeUtc));
       const colour = Cesium.Color.fromCssColorString(flareMarkerColorHex(flare.flareClass));
 
-      source.entities.add({
-        id: `flare-${flare.id}`,
+      const entity = source.entities.add({
+        id: `${FLARE_ID_PREFIX}${flare.id}`,
         position: Cesium.Cartesian3.fromDegrees(longitudeDeg, latitudeDeg),
         name: `${flare.classType} flare`,
         point: {
@@ -59,7 +100,11 @@ export function createSolarFlaresLayer(): SolarFlaresLayer {
           outlineWidth: 1,
         },
       });
+
+      entityIndex.push({ timeMs: Date.parse(flare.peakTimeUtc), entity });
     }
+
+    applyVisibility();
   }
 
   return {
@@ -79,13 +124,12 @@ export function createSolarFlaresLayer(): SolarFlaresLayer {
       if (viewer && !viewer.isDestroyed() && source) viewer.dataSources.remove(source, true);
       source = null;
       viewer = null;
+      entityIndex = [];
     },
 
-    setTimeWindow() {
-      // A deliberate no-op. Flares arrive already scoped to the display window
-      // via `setFlares` — the renderer re-queries main on every window change
-      // (see `useSolarEvents`) rather than holding the whole catalogue and
-      // filtering client-side, so there is nothing left for this to trim.
+    setTimeWindow(start, end) {
+      timeWindow = { startMs: start.getTime(), endMs: end.getTime() };
+      applyVisibility();
     },
 
     setVisible(next) {

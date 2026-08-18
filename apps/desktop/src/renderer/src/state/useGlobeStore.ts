@@ -2,7 +2,10 @@ import { create } from 'zustand';
 import type { FieldQuantity } from '../layers/igrf';
 import type {
   AuroraGrid,
+  CmeArrival,
+  DonkiProgress,
   MagnetometerReading,
+  SolarFlare,
   TecGrid,
   TecQuantity,
 } from '@terra-pulse/schema';
@@ -51,6 +54,44 @@ export type LocationSelection = { latitude: number; longitude: number } & (
   | { kind: 'point' }
 );
 
+/**
+ * What the DONKI key modal should do once a key is saved — it opens from two
+ * places (the archive panel's Download button, and turning on the solar-flares
+ * or CME-arrivals layer with no key configured), each wanting a different
+ * next step, so the trigger carries which.
+ */
+export type DonkiKeyModalTrigger = { kind: 'download' } | { kind: 'enable-layer'; layerId: string };
+
+/**
+ * A flare or CME arrival marker the user clicked.
+ *
+ * Its own slot rather than reusing `LocationSelection`: that one carries a
+ * coordinate that drives the recurrence/nearest-fault sections underneath it,
+ * and the subsolar point a flare or arrival is drawn at is not a place — it's
+ * "wherever the Sun happens to be overhead at that instant", and running a
+ * fault-recurrence lookup against it would answer a question nobody asked.
+ * Kept independent of the earthquake and location selections too, same
+ * reasoning `LocationSelection`'s own doc gives for staying apart from the
+ * earthquake selection: different things, different panels, closing one must
+ * not close another.
+ */
+export type SolarEventSelection =
+  | { kind: 'flare'; flare: SolarFlare }
+  | { kind: 'cme-arrival'; arrival: CmeArrival };
+
+const DONKI_IDLE: DonkiProgress = {
+  state: 'idle',
+  phase: null,
+  completedChunks: 0,
+  totalChunks: 0,
+  storedFlares: 0,
+  storedCmeArrivals: 0,
+  currentYear: null,
+  error: null,
+  retryAtUtc: null,
+  hasApiKey: false,
+};
+
 interface GlobeState {
   /** Exclusive group — exactly one basemap is active (PROJECT_PLAN §4). */
   activeBasemapId: BasemapId;
@@ -68,6 +109,8 @@ interface GlobeState {
   faultProbeActive: boolean;
   /** What the location panel is showing, or null when it is closed. */
   location: LocationSelection | null;
+  /** The flare or CME arrival marker the solar-event panel is showing, or null. */
+  selectedSolarEvent: SolarEventSelection | null;
 
   /**
    * Region size and magnitude floor for the recurrence panel.
@@ -114,6 +157,22 @@ interface GlobeState {
   /** Which TEC quantity the raster paints. */
 
   /**
+   * Latest DONKI backfill/poll status, pushed from main.
+   *
+   * Centralised here rather than held locally by `DonkiArchive` because the
+   * layer toggles need to read `hasApiKey` too, to gate turning on the
+   * solar-flares/CME-arrivals layers — the same reason `auroraGrid` and
+   * `magnetometerReadings` live here instead of in whichever panel happened
+   * to first need them.
+   */
+  donkiProgress: DonkiProgress;
+  /**
+   * Which action the DONKI key modal should take once a key is saved, or
+   * null when the modal is closed. See `DonkiKeyModalTrigger`.
+   */
+  donkiKeyModalTrigger: DonkiKeyModalTrigger | null;
+
+  /**
    * Which inspector sections are expanded, by section id.
    *
    * Missing means collapsed, which is the default for every section. The
@@ -138,6 +197,7 @@ interface GlobeState {
   setLayerVisible: (id: string, visible: boolean) => void;
   toggleFaultProbe: () => void;
   selectLocation: (selection: LocationSelection | null) => void;
+  selectSolarEvent: (selection: SolarEventSelection | null) => void;
   setRecurrenceRadiusKm: (radiusKm: number) => void;
   setRecurrenceFloor: (floor: number) => void;
   setHover: (hover: HoverState | null) => void;
@@ -149,6 +209,9 @@ interface GlobeState {
   setTecQuantity: (quantity: TecQuantity) => void;
   openGuide: (layerId: string) => void;
   closeGuide: () => void;
+  setDonkiProgress: (progress: DonkiProgress) => void;
+  openDonkiKeyModal: (trigger: DonkiKeyModalTrigger) => void;
+  closeDonkiKeyModal: () => void;
 }
 
 /**
@@ -172,6 +235,7 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   layerVisibility: defaultOverlayVisibility(),
   faultProbeActive: false,
   location: null,
+  selectedSolarEvent: null,
   recurrenceRadiusKm: DEFAULT_RECURRENCE_RADIUS_KM,
   recurrenceFloor: DEFAULT_RECURRENCE_FLOOR,
   hover: null,
@@ -184,6 +248,8 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   // The anomaly is the more analytically useful view and is one click away.
   tecQuantity: 'tec',
   openGuideLayerId: null,
+  donkiProgress: DONKI_IDLE,
+  donkiKeyModalTrigger: null,
 
   setActiveBasemap: (id) => set({ activeBasemapId: id }),
 
@@ -204,6 +270,7 @@ export const useGlobeStore = create<GlobeState>((set) => ({
     })),
 
   selectLocation: (location) => set({ location }),
+  selectSolarEvent: (selectedSolarEvent) => set({ selectedSolarEvent }),
 
   setRecurrenceRadiusKm: (recurrenceRadiusKm) => set({ recurrenceRadiusKm }),
   setRecurrenceFloor: (recurrenceFloor) => set({ recurrenceFloor }),
@@ -218,6 +285,10 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   setTecQuantity: (tecQuantity) => set({ tecQuantity }),
   openGuide: (openGuideLayerId) => set({ openGuideLayerId }),
   closeGuide: () => set({ openGuideLayerId: null }),
+
+  setDonkiProgress: (donkiProgress) => set({ donkiProgress }),
+  openDonkiKeyModal: (donkiKeyModalTrigger) => set({ donkiKeyModalTrigger }),
+  closeDonkiKeyModal: () => set({ donkiKeyModalTrigger: null }),
 
   /**
    * Absent means collapsed, so the first click on an untouched section opens

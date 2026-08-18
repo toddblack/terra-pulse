@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { EarthquakeEvent, MagnetometerReading } from '@terra-pulse/schema';
+import type { CmeArrival, EarthquakeEvent, MagnetometerReading, SolarFlare } from '@terra-pulse/schema';
 import {
   cursorForHover,
   describeBoundary,
+  describeCmeArrival,
   describeEarthquake,
   describeFault,
+  describeFlare,
   describeMagnetometer,
 } from './hover-target';
 import type { FaultRecord } from '../layers/fault-association';
@@ -165,6 +167,82 @@ describe('describeMagnetometer', () => {
     const target = describeMagnetometer(reading({ disturbance: null }));
     expect(target.detail).toBe('BRW · no reading in the last hour');
     expect(target.timeUtc).toBeNull();
+  });
+});
+
+function flare(overrides: Partial<SolarFlare> = {}): SolarFlare {
+  return {
+    id: '2026-08-10T12:34:00-FLR-001',
+    classType: 'M2.4',
+    flareClass: 'M',
+    magnitude: 2.4,
+    peakTimeUtc: '2026-08-10T13:16:00.000Z',
+    beginTimeUtc: '2026-08-10T12:34:00.000Z',
+    endTimeUtc: '2026-08-10T13:38:00.000Z',
+    sourceLocation: 'N14W102',
+    activeRegionNumber: 13842,
+    link: 'https://example.test/flr',
+    ...overrides,
+  };
+}
+
+describe('describeFlare', () => {
+  it('leads with the published class, not the split letter/magnitude', () => {
+    const target = describeFlare(flare());
+    expect(target.kind).toBe('flare');
+    expect(target.title).toBe('M2.4 flare');
+  });
+
+  it('gives the active region before the heliographic position', () => {
+    expect(describeFlare(flare()).detail).toBe('AR13842 · N14W102');
+  });
+
+  it('omits either or both when not published', () => {
+    expect(describeFlare(flare({ activeRegionNumber: null })).detail).toBe('N14W102');
+    expect(describeFlare(flare({ sourceLocation: null })).detail).toBe('AR13842');
+    expect(
+      describeFlare(flare({ activeRegionNumber: null, sourceLocation: null })).detail,
+    ).toBeNull();
+  });
+
+  it('carries peak time as the instant', () => {
+    expect(describeFlare(flare()).timeUtc).toBe('2026-08-10T13:16:00.000Z');
+  });
+});
+
+function arrival(overrides: Partial<CmeArrival> = {}): CmeArrival {
+  return {
+    simulationId: 'WSA-ENLIL/1234',
+    arrivalTimeUtc: '2026-07-05T12:00:00.000Z',
+    predictedKp: 5,
+    glancingBlow: false,
+    minorImpact: false,
+    link: 'https://example.test/enlil',
+    ...overrides,
+  };
+}
+
+describe('describeCmeArrival', () => {
+  it('says "arrival", never "impact" — every one here is model output', () => {
+    expect(describeCmeArrival(arrival()).title).toBe('CME arrival (direct)');
+  });
+
+  it('flags a glancing blow', () => {
+    expect(describeCmeArrival(arrival({ glancingBlow: true })).title).toBe(
+      'CME arrival (glancing)',
+    );
+  });
+
+  it('shows the predicted Kp when the model produced one', () => {
+    expect(describeCmeArrival(arrival({ predictedKp: 7 })).detail).toBe('predicted Kp 7');
+  });
+
+  it('does not show "Kp 0" for a run that produced no estimate at all', () => {
+    expect(describeCmeArrival(arrival({ predictedKp: null })).detail).toBeNull();
+  });
+
+  it('carries arrival time as the instant', () => {
+    expect(describeCmeArrival(arrival()).timeUtc).toBe('2026-07-05T12:00:00.000Z');
   });
 });
 

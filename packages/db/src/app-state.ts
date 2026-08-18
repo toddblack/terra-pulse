@@ -18,6 +18,16 @@ import type { DatabaseSync } from 'node:sqlite';
  */
 const SEEN_THROUGH_KEY = 'seen_through_utc';
 
+/**
+ * A personal NASA DONKI API key, if the user has saved one.
+ *
+ * Lives here rather than `.env`, which is the only mechanism that survives
+ * packaging — `dotenv.config()`'s path resolves relative to the main
+ * process bundle and only lands on a real `.env` file in dev. `.env` stays a
+ * lower-priority dev convenience underneath this.
+ */
+const DONKI_API_KEY_KEY = 'nasa_donki_api_key';
+
 export function readAppState(db: DatabaseSync, key: string): string | null {
   const row = db.prepare('SELECT value FROM app_state WHERE key = ?').get(key);
   return (row?.['value'] as string | undefined) ?? null;
@@ -37,4 +47,16 @@ export function readSeenThrough(db: DatabaseSync): string | null {
 
 export function writeSeenThrough(db: DatabaseSync, utc: string): void {
   writeAppState(db, SEEN_THROUGH_KEY, utc);
+}
+
+/** `null` when no personal key has been saved. */
+export function readDonkiApiKey(db: DatabaseSync): string | null {
+  return readAppState(db, DONKI_API_KEY_KEY);
+}
+
+/** Trims the input and rejects an empty key rather than saving a blank string. */
+export function saveDonkiApiKey(db: DatabaseSync, key: string): void {
+  const trimmed = key.trim();
+  if (trimmed.length === 0) throw new Error('DONKI API key cannot be empty');
+  writeAppState(db, DONKI_API_KEY_KEY, trimmed);
 }

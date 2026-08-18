@@ -96,6 +96,14 @@ activity*, Space Weather, doi:10.1029/2020SW002641
 | Redistributable | Yes |
 | Credential | None |
 
+| | |
+|---|---|
+| **NASA DONKI** — flares and CME arrivals (H1b, H2b) | `api.nasa.gov/DONKI/` |
+| Licence | Public domain (US Government work) |
+| Redistributable | Yes |
+| Credential | **Free personal API key required.** The original design leaned on NASA's shared `DEMO_KEY` as an optional fallback, the same shape as the Kp/Dst credential note above. Real testing turned up `403 Forbidden` on essentially every request, which looked like the shared key being unreliable — the actual cause, found afterwards, was a blank `NASA_DONKI_API_KEY=` in `.env` being resolved as a configured (empty) key rather than as unset, so `DEMO_KEY` was never actually confirmed broken. The app requires a personal key regardless: headroom (2,500/hour vs. 10) and not depending on a resource shared with every DONKI tutorial that hardcodes `DEMO_KEY`. See `packages/ingest/src/nasa-donki.ts`. This narrows standing rule 2, worth being honest about — but it's a free, instant, login-free key request, not an account with credentials, and it's scoped to DONKI alone; every other layer in this app remains fully keyless. |
+| Note | `NASA_DONKI_API_KEY` is a dev-only `.env` fallback; the primary storage is the app's own `app_state` table (`saveDonkiApiKey`/`readDonkiApiKey`), the only mechanism that survives packaging. Keys live in main only — non-negotiable #6. |
+
 ---
 
 ## Ground magnetometers
@@ -169,16 +177,6 @@ Rules of the road: <https://supermag.jhuapl.edu/info/?page=rulesoftheroad>
 | Licence | **Not verified** |
 | Credential | None |
 | Note | NASA imagery is generally freely usable and GEBCO asks for attribution, but neither has been read. Verify before publishing any exported image. |
-
----
-
-## Planned, not yet used
-
-| | |
-|---|---|
-| **NASA DONKI** — flares and CMEs (H1, H2) | `api.nasa.gov/DONKI/` |
-| Credential | **Free API key required.** A key is a different thing from an account: it can ship as an optional config value with NASA's shared `DEMO_KEY` as a fallback, so the app still works for someone who never sets one. That is what makes it acceptable under standing rule 2 where SuperMAG was not. |
-| Note | `NASA_DONKI_API_KEY` already has a slot in `.env`. Keys live in main only — non-negotiable #6. |
 
 ---
 

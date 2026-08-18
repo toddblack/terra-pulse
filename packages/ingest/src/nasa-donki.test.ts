@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { flareAtLeast, isDirectImpact } from '@terra-pulse/schema';
-import { parseCmeArrivals, parseFlareClass, parseFlares } from './nasa-donki';
+import {
+  DONKI_DEMO_KEY,
+  DonkiRateLimitError,
+  fetchSolarFlares,
+  parseCmeArrivals,
+  parseFlareClass,
+  parseFlares,
+} from './nasa-donki';
 
 /** DONKI's real flare shape, trimmed. Note the seconds-less timestamps. */
 const flare = (overrides: Record<string, unknown> = {}) => ({
@@ -172,5 +179,19 @@ describe('parseCmeArrivals', () => {
 
   it('rejects a payload that is not an array', () => {
     expect(() => parseCmeArrivals(null)).toThrow();
+  });
+});
+
+describe('rate limiting', () => {
+  it('throws DonkiRateLimitError, not a plain Error, on HTTP 429', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+    });
+
+    await expect(
+      fetchSolarFlares(new Date('2026-01-01'), new Date('2026-01-02'), DONKI_DEMO_KEY, fetchImpl),
+    ).rejects.toBeInstanceOf(DonkiRateLimitError);
   });
 });

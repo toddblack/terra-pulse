@@ -221,6 +221,9 @@ contextBridge.exposeInMainWorld('terraPulse', {
     // The UI follows `onProgress` and doesn't await this.
     start: (): Promise<DonkiProgress> => ipcRenderer.invoke('solar-events:start'),
     cancel: (): Promise<DonkiProgress> => ipcRenderer.invoke('solar-events:cancel'),
+    // Never returns the key itself — only ever the resulting status.
+    saveApiKey: (key: string): Promise<DonkiProgress> =>
+      ipcRenderer.invoke('solar-events:save-api-key', key),
 
     onProgress: (callback: (progress: DonkiProgress) => void): (() => void) => {
       const listener = (_event: unknown, progress: DonkiProgress) => {

@@ -390,13 +390,14 @@ app
         mainWindow.webContents.send('solar-events:progress', progress);
       }
     });
-    registerDonkiIpcHandlers(db, solarEvents);
-
-    const stopDonkiPolling = startDonkiPolling(db, () => {
+    const notifySolarEventsUpdated = () => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('solar-events:updated');
       }
-    });
+    };
+    registerDonkiIpcHandlers(db, solarEvents, notifySolarEventsUpdated);
+
+    const stopDonkiPolling = startDonkiPolling(db, notifySolarEventsUpdated);
     app.on('will-quit', stopDonkiPolling);
     app.on('will-quit', () => {
       solarEvents.cancel();

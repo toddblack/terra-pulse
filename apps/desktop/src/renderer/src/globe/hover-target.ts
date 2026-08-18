@@ -8,14 +8,23 @@
  */
 import {
   STATION_DISTURBED_NT,
+  isDirectImpact,
+  type CmeArrival,
   type EarthquakeEvent,
   type MagnetometerReading,
+  type SolarFlare,
 } from '@terra-pulse/schema';
 import { depthClass } from '../layers/earthquake-encoding';
 import { formatSlipRate, formatSlipType, type FaultRecord } from '../layers/fault-association';
 import { plateBoundaryLabel, plateClassLabel } from '../layers/plate-association';
 
-export type HoverKind = 'earthquake' | 'fault' | 'boundary' | 'magnetometer';
+export type HoverKind =
+  | 'earthquake'
+  | 'fault'
+  | 'boundary'
+  | 'magnetometer'
+  | 'flare'
+  | 'cme-arrival';
 
 export interface HoverTarget {
   kind: HoverKind;
@@ -119,6 +128,45 @@ export function describeMagnetometer(reading: MagnetometerReading): HoverTarget 
       disturbed ? ' · disturbed' : ''
     }`,
     timeUtc: disturbance.observedAtUtc,
+  };
+}
+
+/**
+ * A solar flare: its class and, when known, where on the Sun it came from.
+ *
+ * Active region number leads over heliographic position — a bare region
+ * number ("AR13842") is recognisable at a glance, `N14W102` needs a moment's
+ * translation. Both are optional in the payload, so either or neither may
+ * appear.
+ */
+export function describeFlare(flare: SolarFlare): HoverTarget {
+  const parts: string[] = [];
+  if (flare.activeRegionNumber !== null) parts.push(`AR${String(flare.activeRegionNumber)}`);
+  if (flare.sourceLocation !== null) parts.push(flare.sourceLocation);
+
+  return {
+    kind: 'flare',
+    title: `${flare.classType} flare`,
+    detail: parts.length > 0 ? parts.join(' · ') : null,
+    timeUtc: flare.peakTimeUtc,
+  };
+}
+
+/**
+ * A CME arrival: direct or glancing, and the model's predicted Kp if it
+ * produced one.
+ *
+ * Every run here is WSA-ENLIL *model output*, not something DONKI recorded
+ * happening — the title says "arrival", not "impact", to keep that honest.
+ */
+export function describeCmeArrival(arrival: CmeArrival): HoverTarget {
+  return {
+    kind: 'cme-arrival',
+    title: isDirectImpact(arrival) ? 'CME arrival (direct)' : 'CME arrival (glancing)',
+    // Null means the model run produced no Kp estimate at all, not that it
+    // predicted zero — so it is omitted rather than shown as "Kp 0".
+    detail: arrival.predictedKp === null ? null : `predicted Kp ${String(arrival.predictedKp)}`,
+    timeUtc: arrival.arrivalTimeUtc,
   };
 }
 
