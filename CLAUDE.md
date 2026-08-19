@@ -1913,21 +1913,36 @@ the same shape H3b already proved.
 - **Next:** H1b remains the one hypothesis needing new ingest (GOES XRS
   1996-2016 flares); H5 needs the completeness map.
 
-**Requested, not yet built: tabbed Analyze results.** Right now
-`AnalyzeShell` holds exactly one `AnalysisResult` (`useAnalysisStore`), so
-running a second hypothesis replaces whatever the first one showed —
-switching the hypothesis selector away and back loses the result rather than
-restoring it. The user asked (2026-08-19) whether the top hypothesis switch
-should behave like real tabs instead: each hypothesis keeps its own
-last-run result live underneath it, so switching between H4c/H3b/H2b (and
-later H1b/H5) shows whichever result that tab last produced rather than an
-empty "not run yet" state. Not designed in detail yet — likely shape is
-`useAnalysisStore` keyed by hypothesis id (`Record<HypothesisId,
-AnalysisResult | null>` plus a per-hypothesis `running`/`error`) rather than
-a single slot, with the tab strip's existing `implementedHypotheses.map`
-loop staying mostly as-is. Confirm the exact interaction (does switching
-tabs cancel an in-flight run on the tab being left, or let it finish in the
-background and land whenever it resolves?) before implementing.
+**Tabbed Analyze results — shipped (2026-08-19).** `useAnalysisStore` is now
+keyed by hypothesis (`Record<HypothesisId, {result, running, error}>`) rather
+than one shared slot, so switching the hypothesis tab strip no longer clears
+whatever the previous tab had. The record is written out explicitly for all
+three ids rather than built from an array, so widening `HypothesisId` — the
+next candidate is H1b — fails to compile here until this record grows too,
+the same forcing function `HYPOTHESIS_COPY` already relies on.
+
+- **Switching tabs never cancels an in-flight run** — confirmed with the
+  user rather than assumed, since the alternative (cancel-on-leave) was
+  equally plausible and there's no cancel endpoint on the engine side
+  anyway. A run left going lands in its own tab's slot whenever it
+  resolves, whichever tab is on screen at the time.
+- **Every `set()` in `run()` uses the functional form**, not a closed-over
+  snapshot — two hypotheses running concurrently (start H4c, switch tabs,
+  start H3b before H4c finishes) each write against the *latest* state, so
+  neither can clobber the other's slot on completion.
+- **Each tab shows its own running/error status as a small dot**, not text —
+  pulsing cyan while that hypothesis's run is in flight, red on error —
+  because a run left going in the background has no other visible trace
+  once you've switched away from its tab. Unlike the collapsible-section
+  disclosure state (deliberately neutral, no hue — see above), this *is*
+  colour-coded: it's operational status, not a significance verdict.
+- **Verified against the real engine and dev database**, not just unit
+  tests: built the app, ran H4c to completion, confirmed switching to H3b's
+  tab shows the empty "not run yet" state rather than H4c's result, started
+  H3b and switched back to H4c mid-run to confirm its table is byte-identical
+  and the H3b tab carries the running dot while inactive, then confirmed
+  H3b's own result lands correctly and H4c's is still untouched after a full
+  round trip.
 
 ## Non-negotiables
 
