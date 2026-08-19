@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   MIN_INTERVALS_FOR_SUMMARY,
@@ -138,6 +141,48 @@ describe('declusterGardnerKnopoff', () => {
     const sequence = [quake('main', 0, 7)];
     for (let i = 1; i <= 40; i += 1) sequence.push(quake(`aft${i}`, i * 5, 5.6));
     expect(declusterGardnerKnopoff(sequence)).toHaveLength(1);
+  });
+
+  /**
+   * Cross-language parity with the Phase 4 engine's independent Python port
+   * (`engine/terra_pulse_engine/pipeline/decluster.py`). Both read the same
+   * committed fixture — real M5.0+ events from 2011-01-01 to 2011-06-01
+   * including the Tohoku M9.1 sequence — so if the two implementations ever
+   * disagree on real data, this test fails on one side while
+   * `engine/tests/test_decluster.py::test_cross_language_parity_fixture`
+   * fails on the other. That pairing, not either test alone, is the signal.
+   */
+  it('agrees with the Python engine on a real 2011 slice (gk_parity.json)', () => {
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const fixturePath = join(__dirname, '../../../engine/tests/fixtures/gk_parity.json');
+    const fixture = JSON.parse(readFileSync(fixturePath, 'utf-8')) as {
+      events: { id: string; timeMs: number; latitude: number; longitude: number; magnitude: number }[];
+      independentIds: string[];
+    };
+
+    const events: EarthquakeEvent[] = fixture.events.map((e) => ({
+      id: e.id,
+      source: 'usgs',
+      magnitude: e.magnitude,
+      magnitudeType: 'mww',
+      place: 'fixture',
+      timeUtc: new Date(e.timeMs).toISOString(),
+      updatedUtc: new Date(e.timeMs).toISOString(),
+      longitude: e.longitude,
+      latitude: e.latitude,
+      depthKm: 10,
+      status: 'reviewed',
+      tsunami: false,
+      alertLevel: null,
+      significance: null,
+      url: 'https://example.test',
+    }));
+
+    const independentIds = declusterGardnerKnopoff(events)
+      .map((e) => e.id)
+      .sort();
+
+    expect(independentIds).toEqual([...fixture.independentIds].sort());
   });
 });
 

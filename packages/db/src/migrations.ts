@@ -405,4 +405,26 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    id: 10,
+    name: 'space_weather_xray_flux',
+    // GOES X-ray flux (0.1-0.8 nm / 1-8 Å, the channel flare classification is
+    // defined on), riding the same hourly row every other space-weather
+    // quantity does. See SpaceWeatherSample.xrayFlux in packages/schema for
+    // why this is the long channel specifically, not the short one GOES also
+    // publishes.
+    //
+    // Unlike Kp/Dst/wind, there is no historical backfill for this column yet
+    // — SWPC's JSON product is a live-only rolling window, and a real archive
+    // (NOAA NCEI, per-satellite-era netCDF/CSV files) is a separate, larger
+    // undertaking. Adding the column now costs nothing and means a future
+    // historical ingest needs no migration of its own — it would insert into
+    // rows that already exist, the same as any other index's backfill would.
+    //
+    // Adds only, so the create-copy-drop-rename pattern at the top of this
+    // file doesn't apply.
+    sql: `
+      ALTER TABLE space_weather ADD COLUMN xray_flux REAL;
+    `,
+  },
 ];

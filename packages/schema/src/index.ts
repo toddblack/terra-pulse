@@ -8,3 +8,5 @@ export * from './aurora';
 export * from './space-weather';
 export * from './ionosphere';
 export * from './solar-events';
+export * from './hypotheses';
+export * from './analysis';

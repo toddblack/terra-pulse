@@ -8,12 +8,16 @@ import type {
   SpaceWeatherProgress,
   SpaceWeatherSample,
   AntipodalWindow,
+  AnalysisRunOutcome,
   ArchiveProgress,
   CmeArrival,
   DonkiProgress,
   EarthquakeEvent,
   EarthquakeQuery,
   EarthquakeSyncResult,
+  EngineStatus,
+  HypothesisId,
+  HypothesisSummary,
   MissedEvents,
   RegionalRecurrence,
   SolarFlare,
@@ -100,6 +104,14 @@ declare global {
       shell: {
         /** Resolves false if main refused to open the URL. */
         openExternal(url: string): Promise<boolean>;
+      };
+      analysis: {
+        status(): Promise<EngineStatus>;
+        hypotheses(): Promise<HypothesisSummary[]>;
+        /** Sends only a hypothesis id — main assembles every registered parameter. */
+        run(hypothesisId: HypothesisId): Promise<AnalysisRunOutcome>;
+        /** Subscribe to engine process status changes; returns an unsubscribe function. */
+        onEngineStatus(callback: (status: EngineStatus) => void): () => void;
       };
     };
   }

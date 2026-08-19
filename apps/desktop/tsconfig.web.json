@@ -10,5 +10,6 @@
       "@renderer/*": ["./src/renderer/src/*"]
     }
   },
-  "include": ["src/renderer/src/**/*"]
+  "include": ["src/renderer/src/**/*"],
+  "exclude": ["src/renderer/src/analyze/explore-purity.test.ts"]
 }

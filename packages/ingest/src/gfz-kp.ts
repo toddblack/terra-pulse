@@ -157,12 +157,14 @@ export function parseGfzKp(text: string): SpaceWeatherSample[] {
           timeUtc: new Date(Date.UTC(year, month - 1, day, startHour + offset)).toISOString(),
           kp,
           // Never a value. GFZ publishes Kp, ap, sunspot number and F10.7 —
-          // Dst comes from Kyoto via OMNI, and the solar wind from OMNI and
-          // SWPC. None of them may be invented here.
+          // Dst comes from Kyoto via OMNI, the solar wind from OMNI and SWPC,
+          // and X-ray flux from GOES via SWPC. None of them may be invented
+          // here.
           dst: null,
           windSpeed: null,
           density: null,
           bzGsm: null,
+          xrayFlux: null,
         });
       }
     }

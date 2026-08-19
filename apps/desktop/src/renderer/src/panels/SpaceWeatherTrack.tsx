@@ -6,16 +6,22 @@ import {
   KP_MAX,
   KP_STORM_THRESHOLD,
   WIND_SPEED_MAX,
+  XRAY_EMPHASIS_FLUX,
+  XRAY_FLUX_MAX,
+  XRAY_FLUX_MIN,
   type SpaceWeatherSample,
 } from '@terra-pulse/schema';
-import { useEarthquakeStore } from '../state/useEarthquakeStore';
+import { useEarthquakeStore, selectEventById } from '../state/useEarthquakeStore';
 import { useNow } from '../globe/useNow';
 import { displayWindow } from '../globe/display-window';
+import { useEarthquakesUpToPlayhead } from '../globe/useVisibleEarthquakes';
 import { useSpaceWeather } from './useSpaceWeather';
 import {
   bucketsForWidth,
   COVERAGE_CAPTION_BELOW,
+  fluxToClassLabel,
   GEOMAGNETIC_SPEC,
+  heightOf,
   layoutTrack,
   measuredFraction,
   nearestBarIndex,
@@ -23,8 +29,16 @@ import {
   SOLAR_WIND_SPEC,
   ticksForWidth,
   trackTicks,
+  XRAY_SPEC,
   type TrackBar,
 } from './space-weather-track';
+import {
+  EARTHQUAKE_MAGNITUDE_MAX,
+  layoutEarthquakeTrack,
+  peakEarthquake,
+  type EarthquakeBar,
+} from './earthquake-track';
+import { LayerGuideButton } from './LayerGuideModal';
 import styles from './SpaceWeatherTrack.module.css';
 
 /** Assumed track width until the element measures itself. */
@@ -57,8 +71,7 @@ function formatBarTime(timeUtc: string): string {
  */
 function describeBar(
   bar: TrackBar,
-  unit: string,
-  digits: number,
+  format: (value: number) => string,
   secondary: (value: number) => string,
   withTime: boolean,
 ): string {
@@ -72,16 +85,31 @@ function describeBar(
     // Explicitly, rather than an em dash that reads as "zero" at a glance.
     parts.push('not measured');
   } else if (bar.typical === null) {
-    parts.push(`${unit} —`);
+    parts.push('—');
   } else if (bar.peak !== null && bar.peak > bar.typical) {
-    parts.push(`${unit} ${bar.typical.toFixed(digits)}, peak ${bar.peak.toFixed(digits)}`);
+    parts.push(`${format(bar.typical)}, peak ${format(bar.peak)}`);
   } else {
-    parts.push(`${unit} ${bar.typical.toFixed(digits)}`);
+    parts.push(format(bar.typical));
   }
 
   if (bar.secondary !== null) parts.push(secondary(bar.secondary));
 
   return parts.join(' · ');
+}
+
+/** The earthquake row's readout — magnitude and count, not a bar/cap pair. */
+function describeEarthquakeBar(bar: EarthquakeBar): string {
+  if (bar.magnitude === null) return 'no events';
+  const events = bar.count === 1 ? '1 event' : `${String(bar.count)} events`;
+  return `M${bar.magnitude.toFixed(1)} · ${events}`;
+}
+
+/** 3px at nothing recorded up to 9px at the fixed magnitude ceiling. */
+const MIN_DOT_PX = 3;
+const MAX_DOT_PX = 9;
+function earthquakeDotPx(magnitude: number): number {
+  const t = Math.min(Math.max(magnitude, 0), EARTHQUAKE_MAGNITUDE_MAX) / EARTHQUAKE_MAGNITUDE_MAX;
+  return MIN_DOT_PX + t * (MAX_DOT_PX - MIN_DOT_PX);
 }
 
 /**
@@ -114,7 +142,19 @@ function describeBar(
  */
 export function SpaceWeatherTrack() {
   const [width, setWidth] = useState(FALLBACK_WIDTH);
-  const [hovered, setHovered] = useState(NO_BAR);
+  // A fraction of the track (0-1), not a bar index. Bucket *counts* genuinely
+  // differ between rows — `downsampleSpaceWeather` caps its output at
+  // `Math.min(count, samples.length)`, so a live window with fewer hourly
+  // samples than the pixel-derived bucket count gives the Kp/wind/flux rows
+  // *fewer* bars than the earthquake row's `layoutEarthquakeTrack`, which
+  // always makes exactly `count`. Sharing one raw index across arrays of
+  // different lengths was the actual bug this replaced: at the live edge,
+  // the shared index (valid against the shorter geomagnetic array) pointed
+  // at roughly a third of the way into the longer earthquake array — found
+  // in the field, not by a test. A fraction means the same position no
+  // matter how many bars a row ended up with; each row resolves its own
+  // nearest bar from it below.
+  const [hoveredFraction, setHoveredFraction] = useState<number | null>(null);
   const plotRef = useRef<HTMLDivElement | null>(null);
 
   const windowHours = useEarthquakeStore((state) => state.windowHours);
@@ -130,17 +170,34 @@ export function SpaceWeatherTrack() {
   const state = useSpaceWeather(startMs, endMs);
   const samples = state.status === 'ready' ? state.samples : NO_SAMPLES;
 
-  // Bucketed once and laid out twice: the two rows must land on identical x
-  // positions or reading down a column would compare different hours.
-  const { geomagnetic, solarWind } = useMemo(() => {
-    const count = bucketsForWidth(width);
-    const reduced = downsampleSpaceWeather(samples, count);
-    const barWidth = 1 / Math.max(count, 1);
+  // Same projection the globe, the event list and the legend's count use —
+  // "what's actually on screen right now" — so this row cannot show an
+  // earthquake the globe itself is hiding, or vice versa.
+  const earthquakeEvents = useEarthquakesUpToPlayhead();
+
+  // The *nominal* bucket count for the pixel width — not the number of bars
+  // any given row actually ends up with. `downsampleSpaceWeather` caps its
+  // output at `Math.min(bucketCount, samples.length)`, so a row backed by
+  // sparse data can have fewer. Used directly only for the earthquake row
+  // (which always makes exactly this many) and for sizing a keyboard step.
+  const bucketCount = useMemo(() => bucketsForWidth(width), [width]);
+
+  // Bucketed once and laid out three times: all three space-weather rows
+  // must land on identical x positions or reading down a column would
+  // compare different hours. The earthquake row uses `bucketCount` directly
+  // rather than `downsampleSpaceWeather`'s index-based scheme — see
+  // `earthquake-track.ts` for why an irregular point series needs bins cut
+  // from the window itself.
+  const { geomagnetic, solarWind, xray, earthquakes } = useMemo(() => {
+    const reduced = downsampleSpaceWeather(samples, bucketCount);
+    const barWidth = 1 / Math.max(bucketCount, 1);
     return {
       geomagnetic: layoutTrack(reduced, startMs, endMs, barWidth, GEOMAGNETIC_SPEC),
       solarWind: layoutTrack(reduced, startMs, endMs, barWidth, SOLAR_WIND_SPEC),
+      xray: layoutTrack(reduced, startMs, endMs, barWidth, XRAY_SPEC),
+      earthquakes: layoutEarthquakeTrack(earthquakeEvents, startMs, endMs, bucketCount),
     };
-  }, [samples, startMs, endMs, width]);
+  }, [samples, startMs, endMs, bucketCount, earthquakeEvents]);
 
   const ticks = useMemo(
     () => trackTicks(startMs, endMs, ticksForWidth(width)),
@@ -148,17 +205,54 @@ export function SpaceWeatherTrack() {
   );
 
   const peak = useMemo(() => peakOf(samples), [samples]);
+  const earthquakePeak = useMemo(() => peakEarthquake(earthquakes), [earthquakes]);
 
-  const track = useCallback(
-    (clientX: number) => {
-      const node = plotRef.current;
-      if (!node) return;
-      const box = node.getBoundingClientRect();
-      if (box.width <= 0) return;
-      setHovered(nearestBarIndex(geomagnetic, (clientX - box.left) / box.width));
-    },
-    [geomagnetic],
+  // Each row resolves the shared fraction against its *own* bars — see the
+  // note on `hoveredFraction` above for why this can't be one shared index.
+  const geoHovered = useMemo(
+    () => (hoveredFraction === null ? NO_BAR : nearestBarIndex(geomagnetic, hoveredFraction)),
+    [geomagnetic, hoveredFraction],
   );
+  const windHovered = useMemo(
+    () => (hoveredFraction === null ? NO_BAR : nearestBarIndex(solarWind, hoveredFraction)),
+    [solarWind, hoveredFraction],
+  );
+  const xrayHovered = useMemo(
+    () => (hoveredFraction === null ? NO_BAR : nearestBarIndex(xray, hoveredFraction)),
+    [xray, hoveredFraction],
+  );
+  const quakeHovered = useMemo(
+    () => (hoveredFraction === null ? NO_BAR : nearestBarIndex(earthquakes, hoveredFraction)),
+    [earthquakes, hoveredFraction],
+  );
+
+  // §5.5: "click any quake → the timeline centers on it." The window never
+  // actually needs to move to satisfy that — a quake is only clickable while
+  // its dot is shown, which means its time already fell inside the currently
+  // displayed window — so "centering" is a persistent guide line at its exact
+  // position rather than a change to windowHours/playheadMs. Moving the
+  // window instead would risk hiding *other* events between the clicked one
+  // and now, in live mode, for a feature whose whole point is orientation.
+  const selectedEventId = useEarthquakeStore((state) => state.selectedEventId);
+  const selectedEvent = useEarthquakeStore((state) => selectEventById(state, selectedEventId));
+  const selectedFraction = useMemo(() => {
+    if (selectedEvent === null) return null;
+    const eventMs = Date.parse(selectedEvent.timeUtc);
+    if (!Number.isFinite(eventMs) || endMs <= startMs) return null;
+    const fraction = (eventMs - startMs) / (endMs - startMs);
+    // Not clamped — out of [0,1] means the selection is a stale one whose
+    // window has since moved on, and drawing it off-track would be wrong in
+    // a way clamping it to an edge would only hide.
+    return fraction >= 0 && fraction <= 1 ? fraction : null;
+  }, [selectedEvent, startMs, endMs]);
+
+  const track = useCallback((clientX: number) => {
+    const node = plotRef.current;
+    if (!node) return;
+    const box = node.getBoundingClientRect();
+    if (box.width <= 0) return;
+    setHoveredFraction((clientX - box.left) / box.width);
+  }, []);
 
   /**
    * Measures the first row and keeps the reference the hover lookup needs.
@@ -188,34 +282,40 @@ export function SpaceWeatherTrack() {
 
   const hasData = samples.length > 0;
   const hasWind = solarWind.some((bar) => bar.typical !== null);
+  const hasFlux = xray.some((bar) => bar.typical !== null);
   // Reported beside the peak when the row saw materially less than the window:
   // a peak drawn from a third of the hours is a different claim from one drawn
   // from all of them, and nothing else on screen tells them apart.
   const windCoverage = measuredFraction(solarWind);
   const geoCoverage = measuredFraction(geomagnetic);
+  const fluxCoverage = measuredFraction(xray);
 
-  /** Shared by both rows: pointer, keyboard and the resize observer. */
+  /** Shared by every row: pointer, keyboard and the resize observer. */
   const plotHandlers = {
     onPointerMove: (event: React.PointerEvent) => {
       track(event.clientX);
     },
     onPointerLeave: () => {
-      setHovered(NO_BAR);
+      setHoveredFraction(null);
     },
     tabIndex: 0,
     onFocus: () => {
-      if (hovered === NO_BAR && geomagnetic.length > 0) setHovered(geomagnetic.length - 1);
+      // Starts at the live edge, same as before — 1 is "now" on a 0-1 track.
+      if (hoveredFraction === null) setHoveredFraction(1);
     },
     onBlur: () => {
-      setHovered(NO_BAR);
+      setHoveredFraction(null);
     },
     onKeyDown: (event: React.KeyboardEvent) => {
-      if (geomagnetic.length === 0) return;
-      const from = hovered === NO_BAR ? geomagnetic.length - 1 : hovered;
-      if (event.key === 'ArrowLeft') setHovered(Math.max(0, from - 1));
-      else if (event.key === 'ArrowRight') setHovered(Math.min(geomagnetic.length - 1, from + 1));
-      else if (event.key === 'Home') setHovered(0);
-      else if (event.key === 'End') setHovered(geomagnetic.length - 1);
+      if (bucketCount === 0) return;
+      // One nominal bucket's width — the same step size regardless of which
+      // row happens to have fewer bars than that due to sparse data.
+      const step = 1 / bucketCount;
+      const from = hoveredFraction ?? 1;
+      if (event.key === 'ArrowLeft') setHoveredFraction(Math.max(0, from - step));
+      else if (event.key === 'ArrowRight') setHoveredFraction(Math.min(1, from + step));
+      else if (event.key === 'Home') setHoveredFraction(0);
+      else if (event.key === 'End') setHoveredFraction(1);
       else return;
       event.preventDefault();
     },
@@ -225,16 +325,23 @@ export function SpaceWeatherTrack() {
     <div className={styles.track} id="space-weather-track">
       <Row
         label="Geomagnetic"
+        guideId="track-geomagnetic"
         bars={geomagnetic}
-        hovered={hovered}
+        hovered={geoHovered}
         ticks={ticks}
         thresholdFraction={KP_STORM_THRESHOLD / KP_MAX}
         plotRef={registerPlot}
         handlers={plotHandlers}
+        selectedFraction={selectedFraction}
         ariaLabel="Geomagnetic activity over the visible window"
         readout={
-          hovered >= 0 && geomagnetic[hovered]
-            ? describeBar(geomagnetic[hovered], 'Kp', 1, (v) => `Dst ${String(Math.round(v))} nT`, true)
+          geoHovered >= 0 && geomagnetic[geoHovered]
+            ? describeBar(
+                geomagnetic[geoHovered],
+                (v) => `Kp ${v.toFixed(1)}`,
+                (v) => `Dst ${String(Math.round(v))} nT`,
+                true,
+              )
             : null
         }
         caption={
@@ -264,15 +371,22 @@ export function SpaceWeatherTrack() {
 
       <Row
         label="Solar wind"
+        guideId="track-solar-wind"
         bars={solarWind}
-        hovered={hovered}
+        hovered={windHovered}
         ticks={ticks}
         thresholdFraction={FAST_WIND_THRESHOLD / WIND_SPEED_MAX}
         handlers={plotHandlers}
+        selectedFraction={selectedFraction}
         ariaLabel="Solar wind speed over the visible window"
         readout={
-          hovered >= 0 && solarWind[hovered]
-            ? describeBar(solarWind[hovered], 'km/s', 0, (v) => `Bz ${v.toFixed(1)} nT`, false)
+          windHovered >= 0 && solarWind[windHovered]
+            ? describeBar(
+                solarWind[windHovered],
+                (v) => `km/s ${v.toFixed(0)}`,
+                (v) => `Bz ${v.toFixed(1)} nT`,
+                false,
+              )
             : null
         }
         caption={
@@ -291,6 +405,66 @@ export function SpaceWeatherTrack() {
             // The common case until the archive is downloaded, and a genuine
             // one before 1963 — said plainly rather than drawn as calm wind.
             'not measured in this window'
+          )
+        }
+      />
+
+      <Row
+        label="X-ray flux"
+        guideId="track-xray-flux"
+        bars={xray}
+        hovered={xrayHovered}
+        ticks={ticks}
+        // Log-scaled, unlike Kp's and wind's linear thresholds — a naive
+        // emphasisAt/scaleMax division would put M-class near the very
+        // bottom of a row where the ordinary range spans nine decades.
+        thresholdFraction={heightOf(XRAY_EMPHASIS_FLUX, XRAY_FLUX_MAX, XRAY_FLUX_MIN)}
+        handlers={plotHandlers}
+        selectedFraction={selectedFraction}
+        ariaLabel="GOES X-ray flux over the visible window"
+        readout={
+          xrayHovered >= 0 && xray[xrayHovered]
+            ? describeBar(xray[xrayHovered], fluxToClassLabel, () => '', false)
+            : null
+        }
+        caption={
+          hasFlux ? (
+            <>
+              peak {peak.xrayFlux === null ? '—' : fluxToClassLabel(peak.xrayFlux)}
+              {fluxCoverage < COVERAGE_CAPTION_BELOW && (
+                <span className={styles.coverage}>
+                  {' '}
+                  · {Math.round(fluxCoverage * 100)}% measured
+                </span>
+              )}
+            </>
+          ) : (
+            // Live poll only, no historical archive — the common case for any
+            // window that reaches back further than the last few days.
+            'not measured in this window'
+          )
+        }
+      />
+
+      <EarthquakeRow
+        bars={earthquakes}
+        hovered={quakeHovered}
+        ticks={ticks}
+        handlers={plotHandlers}
+        selectedFraction={selectedFraction}
+        readout={
+          quakeHovered >= 0 && earthquakes[quakeHovered]
+            ? describeEarthquakeBar(earthquakes[quakeHovered])
+            : null
+        }
+        caption={
+          earthquakePeak.count > 0 ? (
+            <>
+              peak M{earthquakePeak.magnitude?.toFixed(1) ?? '—'} · {earthquakePeak.count.toLocaleString()}{' '}
+              events
+            </>
+          ) : (
+            'no events in this window'
           )
         }
       />
@@ -322,6 +496,8 @@ export function SpaceWeatherTrack() {
 
 interface RowProps {
   label: string;
+  /** Looked up in track-guides.ts for the row's `?` button. */
+  guideId: string;
   bars: TrackBar[];
   hovered: number;
   ticks: { x: number; timeUtc: string }[];
@@ -330,6 +506,8 @@ interface RowProps {
   /** Only the first row is measured; both are the same width. */
   plotRef?: (node: HTMLDivElement | null) => (() => void) | void;
   handlers: Record<string, unknown>;
+  /** Where the selected earthquake sits, 0-1, or null when nothing is selected. */
+  selectedFraction: number | null;
   ariaLabel: string;
   readout: string | null;
   caption: React.ReactNode;
@@ -343,12 +521,14 @@ interface RowProps {
  */
 function Row({
   label,
+  guideId,
   bars,
   hovered,
   ticks,
   thresholdFraction,
   plotRef,
   handlers,
+  selectedFraction,
   ariaLabel,
   readout,
   caption,
@@ -358,7 +538,10 @@ function Row({
   return (
     <div className={styles.row}>
       <div className={styles.header}>
-        <span className={styles.title}>{label}</span>
+        <span className={styles.titleGroup}>
+          <span className={styles.title}>{label}</span>
+          <LayerGuideButton layerId={guideId} />
+        </span>
         {readout !== null ? (
           <span className={styles.readout}>{readout}</span>
         ) : (
@@ -395,6 +578,18 @@ function Row({
           <span
             className={styles.guide}
             style={{ left: `${String((hoveredBar.x + hoveredBar.width / 2) * 100)}%` }}
+            aria-hidden="true"
+          />
+        )}
+
+        {/* §5.5's "click a quake, the timeline centers on it" — a persistent
+            marker at the selected event's own position, distinct from the
+            transient hover guide above (dashed vs. solid) so the two don't
+            get mistaken for each other when both are on screen at once. */}
+        {selectedFraction !== null && (
+          <span
+            className={styles.selectionGuide}
+            style={{ left: `${String(selectedFraction * 100)}%` }}
             aria-hidden="true"
           />
         )}
@@ -447,6 +642,119 @@ function Row({
                 />
               )}
             </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+interface EarthquakeRowProps {
+  bars: EarthquakeBar[];
+  hovered: number;
+  ticks: { x: number; timeUtc: string }[];
+  handlers: Record<string, unknown>;
+  selectedFraction: number | null;
+  readout: string | null;
+  caption: React.ReactNode;
+}
+
+/**
+ * §5.5's third row: a marker, sized by magnitude, for each bucket's largest
+ * event.
+ *
+ * **Deliberately not a `Row`.** That component's whole shape — bars, caps,
+ * an "unmeasured" gap state, a threshold line — describes a *measured*
+ * continuous quantity, and Kp/wind genuinely are ones. An earthquake bucket
+ * either had a largest event or it didn't; there is no "instrument was
+ * down" state to distinguish from a real quiet stretch, and no reference
+ * threshold to draw a dashed line at. A short, honest markup for what this
+ * actually is, rather than bending three unrelated flags on `TrackBar` to
+ * mean something they were never built to mean.
+ *
+ * **Deliberately shorter than the other two rows.** A dot conveys magnitude
+ * through its own size, not through how far up the row it sits, so it never
+ * needed a full-height plot — and the panel is centred, so every rem this
+ * row costs is paid twice over in the inspector's clearance (see
+ * `EarthquakeInspector.module.css`). `styles.markerPlot` is about half
+ * `styles.plot`'s height for exactly that reason.
+ */
+function EarthquakeRow({
+  bars,
+  hovered,
+  ticks,
+  handlers,
+  selectedFraction,
+  readout,
+  caption,
+}: EarthquakeRowProps) {
+  return (
+    <div className={styles.row}>
+      <div className={styles.header}>
+        <span className={styles.titleGroup}>
+          <span className={styles.title}>Earthquakes</span>
+          <LayerGuideButton layerId="track-earthquakes" />
+        </span>
+        {readout !== null ? (
+          <span className={styles.readout}>{readout}</span>
+        ) : (
+          <span className={styles.peak}>{caption}</span>
+        )}
+      </div>
+
+      <div
+        className={styles.markerPlot}
+        role="group"
+        aria-label="Earthquakes over the visible window, sized by magnitude"
+        {...handlers}
+      >
+        {ticks.map((tick) => (
+          <span
+            key={tick.timeUtc}
+            className={styles.tickLine}
+            style={{ left: `${String(tick.x * 100)}%` }}
+            aria-hidden="true"
+          />
+        ))}
+
+        {hovered >= 0 && bars[hovered] && (
+          <span
+            className={styles.guide}
+            style={{ left: `${String((bars[hovered].x + bars[hovered].width / 2) * 100)}%` }}
+            aria-hidden="true"
+          />
+        )}
+
+        {selectedFraction !== null && (
+          <span
+            className={styles.selectionGuide}
+            style={{ left: `${String(selectedFraction * 100)}%` }}
+            aria-hidden="true"
+          />
+        )}
+
+        {bars.map((bar, index) => {
+          if (bar.magnitude === null) return null;
+          const sizePx = earthquakeDotPx(bar.magnitude);
+          const isHovered = index === hovered;
+
+          return (
+            <span
+              key={bar.timeUtc}
+              className={[
+                styles.dot,
+                bar.emphasized ? styles.dotEmphasized : '',
+                isHovered ? styles.dotHovered : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              style={{
+                left: `${String((bar.x + bar.width / 2) * 100)}%`,
+                width: `${String(sizePx)}px`,
+                height: `${String(sizePx)}px`,
+                marginLeft: `${String(-sizePx / 2)}px`,
+              }}
+            />
           );
         })}
       </div>

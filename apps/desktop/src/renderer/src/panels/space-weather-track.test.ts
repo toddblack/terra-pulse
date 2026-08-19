@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { SpaceWeatherBucket, SpaceWeatherSample } from '@terra-pulse/schema';
+import { XRAY_FLUX_MAX, XRAY_FLUX_MIN } from '@terra-pulse/schema';
 import {
   bucketsForWidth,
   COVERAGE_CAPTION_BELOW,
+  fluxToClassLabel,
   GEOMAGNETIC_SPEC,
   layoutTrack,
   measuredFraction,
@@ -11,6 +13,7 @@ import {
   SOLAR_WIND_SPEC,
   ticksForWidth,
   trackTicks,
+  XRAY_SPEC,
 } from './space-weather-track';
 
 const START = Date.UTC(2020, 0, 1);
@@ -20,10 +23,11 @@ const at = (hour: number, kp: number | null, dst: number | null): SpaceWeatherSa
   timeUtc: new Date(Date.UTC(2020, 0, 1, hour)).toISOString(),
   kp,
   dst,
-  // The track draws Kp and Dst; the wind fields ride the same rows.
+  // The track draws Kp and Dst; the wind and flux fields ride the same rows.
   windSpeed: null,
   density: null,
   bzGsm: null,
+  xrayFlux: null,
 });
 
 /** A bucket at a given hour of 2020-01-01. */
@@ -52,6 +56,10 @@ const bucket = (
   // Defaults to "measured throughout" when a speed is given, so only the tests
   // that care about coverage have to say anything about it.
   windSpeedHours: wind.measuredHours ?? (wind.typical == null ? 0 : hours),
+  // Not exercised by these tests — the flux row has its own coverage.
+  peakXrayFlux: null,
+  typicalXrayFlux: null,
+  xrayFluxHours: 0,
 });
 
 describe('layoutTrack', () => {
@@ -128,6 +136,9 @@ describe('layoutTrack', () => {
       hours: 1,
       kpHours: 1,
       windSpeedHours: 0,
+      peakXrayFlux: null,
+      typicalXrayFlux: null,
+      xrayFluxHours: 0,
     };
     expect(layoutTrack([outside, bucket(3, 1, 1)], START, END, 0.01)).toHaveLength(1);
   });
@@ -144,6 +155,9 @@ describe('layoutTrack', () => {
       hours: 1,
       kpHours: 1,
       windSpeedHours: 0,
+      peakXrayFlux: null,
+      typicalXrayFlux: null,
+      xrayFluxHours: 0,
     };
     expect(layoutTrack([broken], START, END, 0.01)).toHaveLength(0);
   });
@@ -450,6 +464,37 @@ describe('nearestBarIndex', () => {
   it('reports nothing to point at for an empty track', () => {
     expect(nearestBarIndex([], 0.5)).toBe(-1);
   });
+
+  it('resolves the same position independently on arrays of different length — the actual bug', () => {
+    // Found in the field: a live window with fewer hourly samples than the
+    // pixel-derived bucket count gives `downsampleSpaceWeather` fewer bars
+    // than the earthquake row's `layoutEarthquakeTrack`, which always makes
+    // exactly `bucketCount`. Sharing one array's resolved *index* on the
+    // other pointed at roughly a third of the way into the longer array
+    // when hovering the live edge, instead of the live edge itself. The fix
+    // is that every row calls this function on its *own* bars from the same
+    // fraction — never reuses another row's resolved index.
+    const short = layoutTrack(
+      [bucket(0, 1, 1), bucket(12, 2, 2), bucket(23, 3, 3)], // 3 real hourly samples
+      START,
+      END,
+      1 / 3,
+    );
+    const long = layoutTrack(
+      Array.from({ length: 24 }, (_, hour) => bucket(hour, 1, 1)), // full pixel resolution
+      START,
+      END,
+      1 / 24,
+    );
+    expect(short).toHaveLength(3);
+    expect(long).toHaveLength(24);
+
+    // Hovering the live edge (fraction 1) must resolve to *each* array's own
+    // last bar, not to index 2 reused against the 24-long array (which would
+    // land at bar 2 of 24 — about 8% in, not the live edge).
+    expect(nearestBarIndex(short, 1)).toBe(short.length - 1);
+    expect(nearestBarIndex(long, 1)).toBe(long.length - 1);
+  });
 });
 
 describe('peakOf', () => {
@@ -467,16 +512,106 @@ describe('peakOf', () => {
   });
 
   it('handles an empty series', () => {
-    expect(peakOf([])).toEqual({ kp: null, dst: null, windSpeed: null, bzGsm: null });
+    expect(peakOf([])).toEqual({
+      kp: null,
+      dst: null,
+      windSpeed: null,
+      bzGsm: null,
+      xrayFlux: null,
+    });
   });
 
   it('takes each quantity in its own disturbed direction', () => {
     // Kp and speed go up, Dst and Bz go down. Taking the maximum of the latter
-    // two would headline the calmest hour of the window.
+    // two would headline the calmest hour of the window. Flux goes up too,
+    // same as Kp and speed.
     const windy: SpaceWeatherSample[] = [
-      { timeUtc: '2020-01-01T00:00:00.000Z', kp: 3, dst: -20, windSpeed: 400, density: 5, bzGsm: 4 },
-      { timeUtc: '2020-01-01T01:00:00.000Z', kp: 7, dst: -5, windSpeed: 820, density: 2, bzGsm: -14 },
+      { timeUtc: '2020-01-01T00:00:00.000Z', kp: 3, dst: -20, windSpeed: 400, density: 5, bzGsm: 4, xrayFlux: 1e-7 },
+      { timeUtc: '2020-01-01T01:00:00.000Z', kp: 7, dst: -5, windSpeed: 820, density: 2, bzGsm: -14, xrayFlux: 3e-5 },
     ];
-    expect(peakOf(windy)).toEqual({ kp: 7, dst: -20, windSpeed: 820, bzGsm: -14 });
+    expect(peakOf(windy)).toEqual({ kp: 7, dst: -20, windSpeed: 820, bzGsm: -14, xrayFlux: 3e-5 });
+  });
+});
+
+describe('fluxToClassLabel', () => {
+  it('matches NOAA notation for each class, magnitude as flux over the decade floor', () => {
+    expect(fluxToClassLabel(1.2e-5)).toBe('M1.2');
+    expect(fluxToClassLabel(4.5e-6)).toBe('C4.5');
+    expect(fluxToClassLabel(1e-4)).toBe('X1.0');
+    expect(fluxToClassLabel(2.8e-3)).toBe('X28.0'); // roughly the largest ever recorded
+  });
+
+  it('is the inverse of the class notation DONKI publishes', () => {
+    // M2.4 means 2.4e-5 exactly, the same relationship parseFlareClass reads
+    // out of DONKI's classType string in the other direction.
+    expect(fluxToClassLabel(2.4e-5)).toBe('M2.4');
+  });
+
+  it('labels below-A flux on the A decade rather than showing nothing', () => {
+    expect(fluxToClassLabel(4e-9)).toBe('<A0.4');
+  });
+
+  it('returns an em dash for a non-finite or non-positive flux', () => {
+    expect(fluxToClassLabel(0)).toBe('—');
+    expect(fluxToClassLabel(-1e-7)).toBe('—');
+    expect(fluxToClassLabel(Number.NaN)).toBe('—');
+  });
+});
+
+describe('X-ray flux (log scale)', () => {
+  const fluxBucket = (typical: number | null, peak: number | null): SpaceWeatherBucket => ({
+    timeUtc: new Date(START).toISOString(),
+    typicalKp: null,
+    peakKp: null,
+    peakDst: null,
+    typicalWindSpeed: null,
+    peakWindSpeed: null,
+    peakBzGsm: null,
+    hours: 1,
+    kpHours: 0,
+    windSpeedHours: 0,
+    typicalXrayFlux: typical,
+    peakXrayFlux: peak,
+    xrayFluxHours: typical === null ? 0 : 1,
+  });
+
+  it('sits at the bottom for the domain floor and the top for the ceiling', () => {
+    const [floor] = layoutTrack([fluxBucket(XRAY_FLUX_MIN, XRAY_FLUX_MIN)], START, END, 0.01, XRAY_SPEC);
+    expect(floor?.typicalHeight).toBeCloseTo(0, 5);
+
+    const [ceiling] = layoutTrack([fluxBucket(XRAY_FLUX_MAX, XRAY_FLUX_MAX)], START, END, 0.01, XRAY_SPEC);
+    expect(ceiling?.typicalHeight).toBeCloseTo(1, 5);
+  });
+
+  it('gives equal height to each decade, which a linear scale could not', () => {
+    // The whole reason this needs a log scale: C-class and X-class are four
+    // decades apart, and a linear 0-XRAY_FLUX_MAX scale would draw anything
+    // below M-class as indistinguishable from zero.
+    const [c] = layoutTrack([fluxBucket(1e-6, 1e-6)], START, END, 0.01, XRAY_SPEC);
+    const [m] = layoutTrack([fluxBucket(1e-5, 1e-5)], START, END, 0.01, XRAY_SPEC);
+    const [x] = layoutTrack([fluxBucket(1e-4, 1e-4)], START, END, 0.01, XRAY_SPEC);
+
+    const stepCM = (m?.typicalHeight ?? 0) - (c?.typicalHeight ?? 0);
+    const stepMX = (x?.typicalHeight ?? 0) - (m?.typicalHeight ?? 0);
+    expect(stepCM).toBeCloseTo(stepMX, 5);
+  });
+
+  it('never goes negative below the domain floor', () => {
+    const [below] = layoutTrack([fluxBucket(1e-11, 1e-11)], START, END, 0.01, XRAY_SPEC);
+    expect(below?.typicalHeight).toBe(0);
+  });
+
+  it('flags M-class and above as emphasized, matching the flare layer floor', () => {
+    const [m] = layoutTrack([fluxBucket(1e-5, 1e-5)], START, END, 0.01, XRAY_SPEC);
+    const [c] = layoutTrack([fluxBucket(9e-6, 9e-6)], START, END, 0.01, XRAY_SPEC);
+    expect(m?.typicalStormy).toBe(true);
+    expect(c?.typicalStormy).toBe(false);
+  });
+
+  it('leaves Kp and wind speed exactly linear — scaleMin unset', () => {
+    // Regression guard for the heightOf generalisation: passing an extra
+    // parameter through must not change either existing row's numbers.
+    const [half] = layoutTrack([{ ...fluxBucket(null, null), typicalKp: 4.5 }], START, END, 0.01, GEOMAGNETIC_SPEC);
+    expect(half?.typicalHeight).toBeCloseTo(0.5, 5);
   });
 });

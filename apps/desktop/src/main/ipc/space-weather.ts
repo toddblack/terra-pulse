@@ -3,8 +3,10 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   fetchGfzKpArchive,
   fetchGfzKpNowcast,
+  fetchLatestGoesXray,
   fetchLatestSolarWind,
   fetchOmniYear,
+  fetchRecentGoesXray,
   fetchRecentSolarWind,
 } from '@terra-pulse/ingest';
 import {
@@ -265,6 +267,13 @@ export function createSpaceWeatherController(
           insertSpaceWeather(db, await fetchRecentSolarWind());
         }
 
+        // And the last seven days of X-ray flux, on the same reasoning — it
+        // has no historical archive at all, so this is the only way a fresh
+        // install shows more than a few polls' worth on the flux row.
+        if (!cancelled) {
+          insertSpaceWeather(db, await fetchRecentGoesXray());
+        }
+
         currentYear = null;
         phase = null;
         state = cancelled ? 'cancelled' : 'complete';
@@ -317,17 +326,19 @@ export function startKpPolling(
     if (inFlight) return;
     inFlight = true;
 
-    // Settled, not all-or-nothing: GFZ and SWPC are unrelated services, and one
-    // being down must not cost the other its update. A rejected half is logged
-    // and retried on the next tick.
+    // Settled, not all-or-nothing: GFZ and SWPC are unrelated services (and
+    // GOES flux and solar wind are two different SWPC products besides), so
+    // one being down must not cost the others their update. A rejected leg
+    // is logged and retried on the next tick.
     void Promise.allSettled([
       fetchGfzKpNowcast(),
       fetchLatestSolarWind(),
+      fetchLatestGoesXray(),
     ]).then((results) => {
       inFlight = false;
       if (stopped) return;
 
-      const labels = ['Kp nowcast', 'solar wind'];
+      const labels = ['Kp nowcast', 'solar wind', 'GOES X-ray flux'];
       for (const [index, result] of results.entries()) {
         if (result.status === 'fulfilled') {
           insertSpaceWeather(db, result.value);

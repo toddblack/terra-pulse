@@ -3,6 +3,9 @@ import {
   KP_MAX,
   KP_STORM_THRESHOLD,
   WIND_SPEED_MAX,
+  XRAY_EMPHASIS_FLUX,
+  XRAY_FLUX_MAX,
+  XRAY_FLUX_MIN,
   type SpaceWeatherBucket,
   type SpaceWeatherSample,
 } from '@terra-pulse/schema';
@@ -62,6 +65,13 @@ export interface TrackSpec {
   secondaryOf: (bucket: SpaceWeatherBucket) => number | null;
   /** Full height of the row. Fixed, never fitted to the window. */
   scaleMax: number;
+  /**
+   * When present, the row is **log-scaled** between this and `scaleMax`
+   * instead of linear from zero — X-ray flux is the one quantity here that
+   * needs it, spanning nine decades from background to the largest flares.
+   * Kp and wind speed leave this unset and stay linear, exactly as before.
+   */
+  scaleMin?: number;
   /** At or above this, the mark takes the emphasis colour. */
   emphasisAt: number;
   /** How many of the interval's hours carried this row's quantity. */
@@ -86,6 +96,21 @@ export const SOLAR_WIND_SPEC: TrackSpec = {
   scaleMax: WIND_SPEED_MAX,
   emphasisAt: FAST_WIND_THRESHOLD,
   measuredHoursOf: (b) => b.windSpeedHours,
+};
+
+/**
+ * X-ray flux, log-scaled 1e-9 to 1e-3 W/m² — the only row here with no
+ * secondary quantity, since nothing else rides the same hour that flux would
+ * meaningfully annotate the way Dst marks Kp and Bz marks wind speed.
+ */
+export const XRAY_SPEC: TrackSpec = {
+  typicalOf: (b) => b.typicalXrayFlux,
+  peakOf: (b) => b.peakXrayFlux,
+  secondaryOf: () => null,
+  scaleMax: XRAY_FLUX_MAX,
+  scaleMin: XRAY_FLUX_MIN,
+  emphasisAt: XRAY_EMPHASIS_FLUX,
+  measuredHoursOf: (b) => b.xrayFluxHours,
 };
 
 /**
@@ -138,8 +163,8 @@ export function layoutTrack(
     bars.push({
       x: (timeMs - startMs) / span,
       width: barWidth,
-      typicalHeight: heightOf(typical, spec.scaleMax),
-      peakHeight: heightOf(peak, spec.scaleMax),
+      typicalHeight: heightOf(typical, spec.scaleMax, spec.scaleMin),
+      peakHeight: heightOf(peak, spec.scaleMax, spec.scaleMin),
       peakStormy: peak !== null && peak >= spec.emphasisAt,
       typicalStormy: typical !== null && typical >= spec.emphasisAt,
       timeUtc: bucket.timeUtc,
@@ -161,9 +186,20 @@ export function layoutTrack(
  * `WIND_SPEED_MAX` clips 0.035% of measured hours — about one in 2,900 — to
  * keep the ordinary range across most of the row rather than a third of it.
  * Kp cannot clip: 9 is the top of the scale by definition.
+ *
+ * With `scaleMin` given, the height is **log-scaled** between it and
+ * `scaleMax` instead of linear from zero — X-ray flux needs this (it spans
+ * nine decades) and Kp/wind speed don't (`scaleMin` is `undefined` for both,
+ * so they take the exact linear path this always used). A non-positive value
+ * has no logarithm and heights below `scaleMin` clamp to 0 rather than going
+ * negative, the same direction `scaleMax` already clips at the top.
  */
-function heightOf(value: number | null, scaleMax: number): number {
-  return value === null ? 0 : Math.min(value / scaleMax, 1);
+export function heightOf(value: number | null, scaleMax: number, scaleMin?: number): number {
+  if (value === null) return 0;
+  if (scaleMin === undefined) return Math.min(value / scaleMax, 1);
+  if (value <= 0) return 0;
+  const t = (Math.log10(value) - Math.log10(scaleMin)) / (Math.log10(scaleMax) - Math.log10(scaleMin));
+  return Math.min(Math.max(t, 0), 1);
 }
 
 /**
@@ -221,11 +257,13 @@ export function peakOf(samples: readonly SpaceWeatherSample[]): {
   dst: number | null;
   windSpeed: number | null;
   bzGsm: number | null;
+  xrayFlux: number | null;
 } {
   let kp: number | null = null;
   let dst: number | null = null;
   let windSpeed: number | null = null;
   let bzGsm: number | null = null;
+  let xrayFlux: number | null = null;
 
   for (const sample of samples) {
     if (sample.kp !== null && (kp === null || sample.kp > kp)) kp = sample.kp;
@@ -234,9 +272,41 @@ export function peakOf(samples: readonly SpaceWeatherSample[]): {
       windSpeed = sample.windSpeed;
     }
     if (sample.bzGsm !== null && (bzGsm === null || sample.bzGsm < bzGsm)) bzGsm = sample.bzGsm;
+    if (sample.xrayFlux !== null && (xrayFlux === null || sample.xrayFlux > xrayFlux)) {
+      xrayFlux = sample.xrayFlux;
+    }
   }
 
-  return { kp, dst, windSpeed, bzGsm };
+  return { kp, dst, windSpeed, bzGsm, xrayFlux };
+}
+
+/**
+ * A raw flux value as NOAA's own flare-class notation — "M1.2", "C4.5" — the
+ * form every space-weather source uses instead of scientific notation.
+ *
+ * Each letter is exactly one decade of the 0.1-0.8 nm flux this row plots:
+ * A ≥ 1e-8, B ≥ 1e-7, C ≥ 1e-6, M ≥ 1e-5, X ≥ 1e-4 W/m². The magnitude after
+ * the letter is the flux divided by its decade's own floor, so "M1.2" means
+ * 1.2e-5 exactly the way DONKI's own `classType` field does — this is the
+ * inverse of `parseFlareClass` in `packages/ingest/src/nasa-donki.ts`, for a
+ * continuous flux reading rather than a published class string.
+ */
+export function fluxToClassLabel(flux: number): string {
+  if (!Number.isFinite(flux) || flux <= 0) return '—';
+
+  const classes: readonly [string, number][] = [
+    ['X', 1e-4],
+    ['M', 1e-5],
+    ['C', 1e-6],
+    ['B', 1e-7],
+    ['A', 1e-8],
+  ];
+  for (const [letter, floor] of classes) {
+    if (flux >= floor) return `${letter}${(flux / floor).toFixed(1)}`;
+  }
+  // Below A-class — background level, which still has a well-defined
+  // magnitude on the same A-decade rather than nothing to show at all.
+  return `<A${(flux / 1e-8).toFixed(1)}`;
 }
 
 /* ------------------------------------------------------------------ ticks */
@@ -456,9 +526,24 @@ export function ticksForWidth(pixelWidth: number): number {
  * column under the pointer answers — the same reason a crosshair exists on a
  * dense line chart.
  *
+ * Structurally typed on just `x`/`width` rather than the full `TrackBar`, so
+ * the earthquake row's `EarthquakeBar` — a different shape, laid out by
+ * `earthquake-track.ts` rather than this module — can use the same lookup
+ * instead of a duplicate. Every row resolves its *own* nearest bar from a
+ * shared fraction this way; sharing one row's resolved *index* across rows
+ * of different lengths was the actual bug this replaced (found in the
+ * field: `downsampleSpaceWeather` caps its output at
+ * `Math.min(bucketCount, samples.length)`, so a live window with fewer
+ * hourly samples than the pixel-derived bucket count leaves the
+ * space-weather rows shorter than the earthquake row, which always makes
+ * exactly `bucketCount`).
+ *
  * Returns -1 when there is nothing to point at.
  */
-export function nearestBarIndex(bars: readonly TrackBar[], fraction: number): number {
+export function nearestBarIndex(
+  bars: readonly { x: number; width: number }[],
+  fraction: number,
+): number {
   let best = -1;
   let bestDistance = Infinity;
 

@@ -1,6 +1,6 @@
 # HYPOTHESES.md — Pre-Registration Log
 
-**Last updated:** 2026-08-17
+**Last updated:** 2026-08-18
 
 ---
 
@@ -364,6 +364,11 @@ denominator.
 | **Trigger threshold** | Kp ≥ 6 **or** Dst ≤ −100 nT (registered as two separate trigger definitions) |
 | **Lag windows** | 0–24h, 24–48h, 48–72h (3 windows) |
 | **Time range** | 1963-01-01 onward — the span where *both* indices exist |
+| **Episode definition** | A trigger is the first hour of a maximal run of consecutive hours meeting a threshold (Kp ≥ 6, or Dst ≤ −100 nT — each its own run); a missing or null hour ends the run. |
+| **Baseline window** | Poisson expectation estimated within a moving window of ±182.625 days (one year total) centred on each trigger, not pooled across the record. |
+| **Null model** | Trigger onsets redrawn uniformly without replacement from eligible hours (hours where a full-duration window could have started) within the analysis span. |
+| **Tail** | One-sided upper. |
+| **Effective span** | 1970-01-01 onward in practice — see below. |
 | **Tests in family** | 6 (2 trigger definitions × 3 lags) |
 | **Mechanism plausibility** | Low |
 | **Result** | — |
@@ -395,6 +400,49 @@ Three parameters worth stating explicitly, since rule 2 requires it:
   own entry with its own completeness handling: the earthquake catalogue's M4.5
   completeness begins in 1970 and M5.5 is the only floor flat since then, so a
   longer Kp axis does not by itself buy testable overlap.
+
+**Five more parameters, completed 2026-08-18 before the first run.** The entry
+above specified the trigger, the lag windows and the time range, but left how a
+run of qualifying hours becomes one *trigger instant*, how wide the moving
+baseline window is, how the null is drawn, and which tail is tested — all
+implied rather than explicit, which rule 2 forbids. Nothing below was chosen
+after seeing a result: H4c has never been run, its status is still "Not yet
+run", so this completes the registration rather than amending it (rule 3 exists
+to stop edits *after* a result is known; there is no result here to protect).
+
+- **Episode definition.** A maximal run of consecutive hours meeting the
+  threshold becomes one trigger, dated to its first hour; Kp and Dst are swept
+  independently. A missing or null hour ends the run rather than being treated
+  as passing through it — the same rule H3b already registers for its own
+  measured-hours requirement, applied here for the same reason.
+- **Baseline window.** ±182.625 days (one year total), centred on each trigger,
+  not pooled across the record — H1b's own registered mitigation for the same
+  measured problem: M5.0+ events per decade rise 36% from the 1970s to the
+  2010s (see H1b above), which is network growth, not seismicity. A pooled
+  baseline would let late-record windows show a manufactured excess and
+  early ones a manufactured deficit. One year is chosen a priori as the
+  shortest window that still averages over a full annual cycle.
+- **Null model.** Trigger onsets are redrawn uniformly without replacement
+  from eligible hours (hours where a full-duration episode could have started)
+  within the analysis span — matching H2b's registered wording, "against
+  permuted arrival times". A circular time-shift null, which preserves
+  trigger clustering, is a defensible alternative but is a *different* null
+  and would need its own registered entry.
+- **Tail.** One-sided upper — the statement is framed as an elevated rate, not
+  a changed one.
+- **Effective span.** Registered as 1963-01-01 onward, because that is where
+  Kp and Dst both exist. But the *target* set is declustered global M5.0+, and
+  this app's M5.0+ catalogue is only global-complete from **1970-01-01** — the
+  same boundary the earthquake archive's own Tier 1 backfill uses. The deep
+  tier reaches back to 1900, but deliberately only for M7.5+: that floor is
+  rare and large enough to survive sparse historical records (USGS lists 0–3
+  M7.5+ events per decade through the 1890s, jumping to 40 once instrumental
+  seismology arrives in 1900–10 — see the deep-archive-tier entry in
+  `CLAUDE.md`). M5.0+ is thousands of events a year with no comparable
+  pre-1970 record; extending it back the way the M7.5+ tier was would mean
+  counting an era that mostly wasn't detected, not a sparse-but-real one. The
+  run therefore covers 1970–present, not 1963–present, and reports the
+  truncation explicitly rather than absorbing it silently.
 
 ### H4b — Local magnetometer disturbance and local seismicity
 

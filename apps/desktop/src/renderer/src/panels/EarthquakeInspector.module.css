@@ -56,10 +56,28 @@
      net is ~4.3rem and this became 27rem. Any further row costs the same way;
      the cheap alternative is a row the reader can collapse, not a shorter one.
 
+     A third row — earthquake markers, §5.5 — followed that advice instead of
+     re-shrinking the first two: `.markerPlot` is 0.75rem, about half `.plot`,
+     because a marker's size already carries its magnitude and never needed the
+     full amplitude. Raw addition is header (~0.9rem) + row gap (0.1rem) +
+     plot (0.75rem) + track gap (0.3rem) ≈ 2.05rem, doubled to ~4.1rem here —
+     27rem → 31rem.
+
+     A fourth — GOES X-ray flux, also §5.5 — is a full bar/cap row like Kp and
+     wind, not a compact marker strip like the earthquake row, because typical
+     and peak are both real, distinct statistics here (median vs. max of
+     hourly flux peaks — see space-weather.ts). Same ~2.5rem raw cost the
+     solar wind row paid the first time: header (~0.9rem) + row gap (0.1rem) +
+     plot (1.5rem) + track gap (0.3rem) ≈ 2.8rem, doubled to ~5.6rem —
+     31rem → 37rem. Unlike the 27rem number above, neither of the last two
+     increases has been checked against the running app; revisit both once
+     someone has actually looked at the panel with all four rows and
+     something is off.
+
      Being centred is what makes this expensive — the clearance has to be paid
      at the top as well, where nothing is in the way. If the panel ever stops
      pointing at the centred event, revisit this along with it. */
-  max-height: calc(100vh - 27rem);
+  max-height: calc(100vh - 37rem);
   overflow-y: auto;
 }
 

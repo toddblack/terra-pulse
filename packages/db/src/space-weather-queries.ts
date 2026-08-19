@@ -8,6 +8,7 @@ interface Row {
   wind_speed: number | null;
   density: number | null;
   bz_gsm: number | null;
+  xray_flux: number | null;
 }
 
 /**
@@ -33,14 +34,15 @@ export function insertSpaceWeather(
   if (samples.length === 0) return 0;
 
   const statement = db.prepare(`
-    INSERT INTO space_weather (time_utc, kp, dst, wind_speed, density, bz_gsm)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO space_weather (time_utc, kp, dst, wind_speed, density, bz_gsm, xray_flux)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(time_utc) DO UPDATE SET
       kp = COALESCE(excluded.kp, kp),
       dst = COALESCE(excluded.dst, dst),
       wind_speed = COALESCE(excluded.wind_speed, wind_speed),
       density = COALESCE(excluded.density, density),
-      bz_gsm = COALESCE(excluded.bz_gsm, bz_gsm)
+      bz_gsm = COALESCE(excluded.bz_gsm, bz_gsm),
+      xray_flux = COALESCE(excluded.xray_flux, xray_flux)
   `);
 
   db.exec('SAVEPOINT insert_space_weather');
@@ -53,6 +55,7 @@ export function insertSpaceWeather(
         sample.windSpeed,
         sample.density,
         sample.bzGsm,
+        sample.xrayFlux,
       );
     }
     db.exec('RELEASE insert_space_weather');
@@ -80,7 +83,7 @@ export function querySpaceWeather(
 ): SpaceWeatherSample[] {
   const rows = db
     .prepare(
-      `SELECT time_utc, kp, dst, wind_speed, density, bz_gsm
+      `SELECT time_utc, kp, dst, wind_speed, density, bz_gsm, xray_flux
          FROM space_weather
         WHERE time_utc >= ? AND time_utc < ?
         ORDER BY time_utc`,
@@ -94,6 +97,7 @@ export function querySpaceWeather(
     windSpeed: row.wind_speed,
     density: row.density,
     bzGsm: row.bz_gsm,
+    xrayFlux: row.xray_flux,
   }));
 }
 

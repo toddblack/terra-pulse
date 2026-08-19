@@ -173,12 +173,13 @@ export function parseSwpcSolarWind(payload: unknown): SpaceWeatherSample[] {
 
     samples.push({
       timeUtc,
-      // This product carries neither, and a zero would be a measurement.
+      // This product carries none of these, and a zero would be a measurement.
       kp: null,
       dst: null,
       windSpeed,
       density,
       bzGsm,
+      xrayFlux: null,
     });
   }
 

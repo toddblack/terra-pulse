@@ -21,6 +21,47 @@ export default defineConfig([
     extends: [reactHooks.configs.flat.recommended],
   },
   {
+    // Structural half of non-negotiable #1 (Explore never displays
+    // significance claims): Explore code cannot import Analyze's directory
+    // or its result types, even by accident. See
+    // `apps/desktop/src/renderer/src/analyze/explore-purity.test.ts` for the
+    // scan that catches what this rule structurally can't (a p-value typed
+    // into JSX by hand rather than imported).
+    files: [
+      'apps/desktop/src/renderer/src/{panels,layers,globe,state}/**/*.{ts,tsx}',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/analyze/*', '**/analyze'],
+              message: 'Explore code must not import from analyze/ — see non-negotiable #1.',
+            },
+          ],
+          paths: [
+            {
+              name: '@terra-pulse/schema',
+              importNames: [
+                'AnalysisResult',
+                'AnalysisTestResult',
+                'AnalysisRunOutcome',
+                'EngineStatus',
+                'HypothesisSummary',
+                'HypothesisId',
+                'CorrectionInfo',
+                'NullInfo',
+              ],
+              message:
+                'Analysis result types must not reach Explore code — see non-negotiable #1.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.test.{ts,tsx}'],
     rules: {
       // Asserting on a mock (`expect(viewer.dataSources.add)`) necessarily

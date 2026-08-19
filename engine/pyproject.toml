@@ -1,0 +1,33 @@
+[project]
+name = "terra-pulse-engine"
+version = "0.1.0"
+description = "Terra Pulse statistical engine — pre-registered hypothesis testing (Phase 4)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn>=0.32",
+  "numpy>=2.1",
+  "scipy>=1.14",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "httpx>=0.27",
+  "ruff>=0.7",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["terra_pulse_engine*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: calibration-style tests that run many permutation batches"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
