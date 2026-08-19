@@ -4,7 +4,29 @@ import { join } from 'node:path';
 import { ipcMain } from 'electron';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  ARCHIVE_START_YEAR,
   CONTRACT_VERSION,
+  H2B_DECLUSTERING,
+  H2B_ITERATIONS,
+  H2B_LAG_WINDOWS_HOURS,
+  H2B_NULL_MODEL,
+  H2B_Q,
+  H2B_REQUESTED_START_UTC,
+  H2B_SEED,
+  H2B_SPATIAL_SPLIT_DEGREES,
+  H2B_TAIL,
+  H2B_TARGET_MIN_MAGNITUDE,
+  H3B_BASELINE_WINDOW_DAYS,
+  H3B_DECLUSTERING,
+  H3B_ITERATIONS,
+  H3B_LAG_WINDOWS_HOURS,
+  H3B_NULL_MODEL,
+  H3B_Q,
+  H3B_REQUESTED_START_UTC,
+  H3B_SEED,
+  H3B_TAIL,
+  H3B_TARGET_MIN_MAGNITUDE,
+  H3B_TRIGGERS,
   H4C_BASELINE_WINDOW_DAYS,
   H4C_DECLUSTERING,
   H4C_ITERATIONS,
@@ -17,14 +39,27 @@ import {
   H4C_TARGET_MIN_MAGNITUDE,
   H4C_TRIGGERS,
   REGISTERED_MATRIX_TESTS,
+  isDirectImpact,
   type AnalysisResult,
   type AnalysisRunOutcome,
   type EngineStatus,
   type HypothesisId,
   type HypothesisSummary,
 } from '@terra-pulse/schema';
-import { queryAnalysisCatalog } from '@terra-pulse/db';
+import { queryAnalysisCatalog, queryCmeArrivals } from '@terra-pulse/db';
 import { querySpaceWeather } from '@terra-pulse/db';
+
+/**
+ * Catalogue queries always reach back to the earthquake archive's own
+ * completeness floor, regardless of which hypothesis is asking — declustering
+ * benefits from full context (a pre-boundary mainshock can still correctly
+ * claim a post-boundary aftershock), and each hypothesis module filters its
+ * own *target* set to its own registered start afterward. Sending H4c a
+ * narrower catalogue would change nothing (it already filters to 1970), and
+ * sending H3b one bounded at its own 1995 start would lose real declustering
+ * context across that boundary.
+ */
+const CATALOG_QUERY_START_UTC = `${String(ARCHIVE_START_YEAR)}-01-01T00:00:00.000Z`;
 
 /** Fixed rather than ephemeral: adopt-if-running needs a port both sides agree on ahead of time. */
 const DEFAULT_PORT = 8787;
@@ -328,7 +363,7 @@ export function createEngineController(options: EngineControllerOptions): Engine
 function buildH4cRequest(db: DatabaseSync, nowUtc: string): unknown {
   const catalog = queryAnalysisCatalog(db, {
     minMagnitude: H4C_TARGET_MIN_MAGNITUDE,
-    startUtc: H4C_REQUESTED_START_UTC,
+    startUtc: CATALOG_QUERY_START_UTC,
     endUtc: nowUtc,
   });
   const series = querySpaceWeather(db, H4C_REQUESTED_START_UTC, nowUtc);
@@ -355,11 +390,101 @@ function buildH4cRequest(db: DatabaseSync, nowUtc: string): unknown {
       timeMs: series.map((sample) => Date.parse(sample.timeUtc)),
       kp: series.map((sample) => sample.kp),
       dst: series.map((sample) => sample.dst),
+      windSpeed: series.map((sample) => sample.windSpeed),
     },
   };
 }
 
-const SUPPORTED_HYPOTHESES: readonly HypothesisId[] = ['H4c'];
+/**
+ * H3b's request, built the same way — see `buildH4cRequest`'s doc. Proves
+ * the same assembly shape generalizes: only the constants imported and the
+ * `hypothesisId` literal differ.
+ */
+function buildH3bRequest(db: DatabaseSync, nowUtc: string): unknown {
+  const catalog = queryAnalysisCatalog(db, {
+    minMagnitude: H3B_TARGET_MIN_MAGNITUDE,
+    startUtc: CATALOG_QUERY_START_UTC,
+    endUtc: nowUtc,
+  });
+  const series = querySpaceWeather(db, H3B_REQUESTED_START_UTC, nowUtc);
+
+  return {
+    contractVersion: CONTRACT_VERSION,
+    hypothesisId: 'H3b',
+    parameters: {
+      targetMinMagnitude: H3B_TARGET_MIN_MAGNITUDE,
+      triggers: H3B_TRIGGERS,
+      lagWindowsHours: H3B_LAG_WINDOWS_HOURS,
+      declustering: H3B_DECLUSTERING,
+      baselineWindowDays: H3B_BASELINE_WINDOW_DAYS,
+      nullModel: H3B_NULL_MODEL,
+      tail: H3B_TAIL,
+      iterations: H3B_ITERATIONS,
+      seed: H3B_SEED,
+      q: H3B_Q,
+      requestedStartUtc: H3B_REQUESTED_START_UTC,
+      registeredMatrixTests: REGISTERED_MATRIX_TESTS,
+    },
+    catalog,
+    series: {
+      timeMs: series.map((sample) => Date.parse(sample.timeUtc)),
+      kp: series.map((sample) => sample.kp),
+      dst: series.map((sample) => sample.dst),
+      windSpeed: series.map((sample) => sample.windSpeed),
+    },
+  };
+}
+
+/**
+ * H2b's request — a genuinely different shape from H4c/H3b's, not just new
+ * constants: no `series` (there is no continuous index this hypothesis
+ * thresholds), and the trigger set is CME arrivals rather than something
+ * extracted from a series. Filtered to direct impacts by `isDirectImpact`
+ * (`packages/schema/src/solar-events.ts`) — the exact registered rule
+ * (HYPOTHESES.md H2b: "runs where `isEarthGB` and `isEarthMinorImpact` are
+ * both false") — before the request ever reaches the engine, so h2b.py
+ * receives arrival instants only, not raw glancing-blow flags to re-derive
+ * the same rule from a second time.
+ */
+function buildH2bRequest(db: DatabaseSync, nowUtc: string): unknown {
+  const catalog = queryAnalysisCatalog(db, {
+    minMagnitude: H2B_TARGET_MIN_MAGNITUDE,
+    startUtc: CATALOG_QUERY_START_UTC,
+    endUtc: nowUtc,
+  });
+  const arrivals = queryCmeArrivals(db, H2B_REQUESTED_START_UTC, nowUtc);
+  const directArrivalTimesMs = arrivals
+    .filter(isDirectImpact)
+    .map((arrival) => Date.parse(arrival.arrivalTimeUtc));
+
+  return {
+    contractVersion: CONTRACT_VERSION,
+    hypothesisId: 'H2b',
+    parameters: {
+      targetMinMagnitude: H2B_TARGET_MIN_MAGNITUDE,
+      spatialSplitDegrees: H2B_SPATIAL_SPLIT_DEGREES,
+      lagWindowsHours: H2B_LAG_WINDOWS_HOURS,
+      declustering: H2B_DECLUSTERING,
+      nullModel: H2B_NULL_MODEL,
+      tail: H2B_TAIL,
+      iterations: H2B_ITERATIONS,
+      seed: H2B_SEED,
+      q: H2B_Q,
+      requestedStartUtc: H2B_REQUESTED_START_UTC,
+      registeredMatrixTests: REGISTERED_MATRIX_TESTS,
+    },
+    catalog,
+    cmeArrivalTimesMs: directArrivalTimesMs,
+  };
+}
+
+const REQUEST_BUILDERS: Record<HypothesisId, (db: DatabaseSync, nowUtc: string) => unknown> = {
+  H4c: buildH4cRequest,
+  H3b: buildH3bRequest,
+  H2b: buildH2bRequest,
+};
+
+const SUPPORTED_HYPOTHESES: readonly HypothesisId[] = ['H4c', 'H3b', 'H2b'];
 
 export function registerAnalysisIpcHandlers(
   db: DatabaseSync,
@@ -385,7 +510,8 @@ export function registerAnalysisIpcHandlers(
       return { ok: false, reason, detail };
     }
 
-    const request = buildH4cRequest(db, now().toISOString());
+    const buildRequest = REQUEST_BUILDERS[hypothesisId as HypothesisId];
+    const request = buildRequest(db, now().toISOString());
     const result = await engine.postJson<AnalysisResult>('/v1/analysis/run', request);
     return result.ok ? { ok: true, result: result.json } : { ok: false, reason: result.reason, detail: result.detail };
   });

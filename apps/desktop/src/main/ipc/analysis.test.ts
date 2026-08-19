@@ -1,9 +1,9 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { openDatabase, insertEarthquakes } from '@terra-pulse/db';
+import { openDatabase, insertEarthquakes, insertCmeArrivals } from '@terra-pulse/db';
 import type { DatabaseSync } from 'node:sqlite';
 import { CONTRACT_VERSION } from '@terra-pulse/schema';
-import type { EarthquakeEvent } from '@terra-pulse/schema';
+import type { CmeArrival, EarthquakeEvent } from '@terra-pulse/schema';
 import { createEngineController, registerAnalysisIpcHandlers, resolvePythonInterpreter } from './analysis';
 
 const ipcHandle = vi.hoisted(() => vi.fn());
@@ -297,6 +297,96 @@ describe('registerAnalysisIpcHandlers', () => {
       q: 0.05,
     });
     expect(body.parameters['triggers']).toHaveLength(2);
+  });
+
+  it('analysis:run dispatches H3b to its own request builder, with H3b\'s own registered constants', async () => {
+    const db = makeDb();
+    const postJson = vi.fn().mockResolvedValue({
+      ok: true,
+      json: { hypothesisId: 'H3b', tests: [] },
+    });
+    const engine = {
+      status: () => ({ state: 'ready' as const, engineVersion: '0.1.0', contractVersion: 1, adopted: true }),
+      getJson: vi.fn(),
+      postJson,
+      dispose: vi.fn(),
+    };
+    registerAnalysisIpcHandlers(db, engine, () => new Date('2026-08-19T00:00:00.000Z'));
+
+    await handlerFor('analysis:run')(undefined, 'H3b');
+
+    expect(postJson).toHaveBeenCalledTimes(1);
+    const [path, body] = postJson.mock.calls[0] as [string, { parameters: Record<string, unknown> }];
+    expect(path).toBe('/v1/analysis/run');
+    expect(body.parameters).toMatchObject({
+      targetMinMagnitude: 5.0,
+      declustering: 'gardner-knopoff',
+      requestedStartUtc: '1995-01-01T00:00:00.000Z',
+    });
+    expect(body.parameters['triggers']).toHaveLength(1);
+    expect(body.parameters['lagWindowsHours']).toHaveLength(4);
+  });
+
+  it("analysis:run dispatches H2b to its own request builder, sending only direct-impact arrivals", async () => {
+    const db = makeDb();
+    const arrivals: CmeArrival[] = [
+      {
+        simulationId: 'direct-1',
+        arrivalTimeUtc: '2020-01-01T00:00:00.000Z',
+        predictedKp: 6,
+        glancingBlow: false,
+        minorImpact: false,
+        link: null,
+      },
+      {
+        simulationId: 'glancing-1',
+        arrivalTimeUtc: '2020-02-01T00:00:00.000Z',
+        predictedKp: 2,
+        glancingBlow: true,
+        minorImpact: false,
+        link: null,
+      },
+      {
+        simulationId: 'minor-1',
+        arrivalTimeUtc: '2020-03-01T00:00:00.000Z',
+        predictedKp: 1,
+        glancingBlow: false,
+        minorImpact: true,
+        link: null,
+      },
+    ];
+    insertCmeArrivals(db, arrivals);
+
+    const postJson = vi.fn().mockResolvedValue({
+      ok: true,
+      json: { hypothesisId: 'H2b', tests: [] },
+    });
+    const engine = {
+      status: () => ({ state: 'ready' as const, engineVersion: '0.1.0', contractVersion: 1, adopted: true }),
+      getJson: vi.fn(),
+      postJson,
+      dispose: vi.fn(),
+    };
+    registerAnalysisIpcHandlers(db, engine, () => new Date('2026-08-19T00:00:00.000Z'));
+
+    await handlerFor('analysis:run')(undefined, 'H2b');
+
+    expect(postJson).toHaveBeenCalledTimes(1);
+    const [path, body] = postJson.mock.calls[0] as [
+      string,
+      { parameters: Record<string, unknown>; cmeArrivalTimesMs: number[] },
+    ];
+    expect(path).toBe('/v1/analysis/run');
+    expect(body.parameters).toMatchObject({
+      targetMinMagnitude: 5.0,
+      spatialSplitDegrees: 90,
+      declustering: 'gardner-knopoff',
+      requestedStartUtc: '2014-01-01T00:00:00.000Z',
+    });
+    expect(body.parameters['lagWindowsHours']).toHaveLength(2);
+    // Only the direct impact survives — the glancing blow and minor impact
+    // are filtered out before the request ever reaches the engine.
+    expect(body.cmeArrivalTimesMs).toEqual([Date.parse('2020-01-01T00:00:00.000Z')]);
   });
 
   it('analysis:run refuses an unknown hypothesis id without touching the engine', async () => {

@@ -1,6 +1,6 @@
 # HYPOTHESES.md — Pre-Registration Log
 
-**Last updated:** 2026-08-18
+**Last updated:** 2026-08-19
 
 ---
 
@@ -185,9 +185,51 @@ matrix. H2 was never run.
 | **Spatial split** | Subsolar longitude at arrival ±90° vs. complement — **unchanged from H2** |
 | **Lag windows** | 0-24h, 24-48h from arrival (2 windows) |
 | **Test statistic** | Rate ratio between hemispheres, against permuted arrival times |
+| **Null model** | Arrival instants redrawn uniformly without replacement from all hours within the analysis span, keeping the same count as the real direct-impact trigger set. |
+| **Tail** | One-sided upper. |
+| **Target set** | Declustered M5.0+ global — inherited from H1b by direct reference in this hypothesis's own statement ("any H1b effect"), not independently registered. |
 | **Tests in family** | 2 (replacing H2's 2) |
 | **Mechanism plausibility** | Low |
 | **Result** | - |
+
+**Four more parameters, completed 2026-08-19 before the first run, for the
+same reason and by the same rule as H4c's and H3b's own completions:** the
+trigger set, spatial split, lag windows and time range were registered, but
+the null-draw scheme, the tail, and the target set's magnitude floor were
+left implied. H2b has never been run — status is still "Not yet run" — so
+this finishes the registration rather than amending a result.
+
+- **"Subsolar longitude ±90°" is a longitude band, not a 3D angular
+  distance from the subsolar point.** The classification compares only the
+  target event's longitude to the subsolar longitude at arrival — latitude
+  never enters it. This is the literal reading of "subsolar **longitude**",
+  it always splits the globe exactly in half regardless of season (a
+  longitude band spans a fixed 180° by construction, where a true angular
+  cap from the subsolar *point* would shrink and grow with solar
+  declination), and it matches how the day/night terminator is
+  conventionally approximated for exactly this kind of test.
+- **Null model, spelled out:** redraw N arrival instants (N = the real
+  direct-impact count) uniformly without replacement from every hour in the
+  analysis span, recompute the subsolar longitude and the near/far split for
+  each redrawn instant, and recompute the ratio. This is what "permuted
+  arrival times" means operationally — matching H2's own already-registered
+  wording ("against permuted arrival times") and the same uniform-redraw
+  scheme H4c and H3b use, extended to a discrete trigger set rather than a
+  thresholded continuous series (there is no threshold or gap-handling rule
+  here, so unlike H4c/H3b's eligible-hours pool, every hour in the span is
+  an equally valid hypothetical arrival instant).
+- **Tail: one-sided upper**, matching the statement's own direction
+  ("stronger... than"), consistent with H4c's and H3b's identical framing.
+- **No Poisson baseline.** Unlike H4c/H3b, this test has no baseline-rate
+  model at all — the null comes entirely from permuting arrival times, per
+  the registered test statistic. Nothing was dropped in completing this
+  entry; there was never one to specify.
+- **The target floor is M5.0+, inherited rather than restated.** H2b's
+  statement is conditioned on "any H1b effect", and H1b's own registration
+  specifies "Declustered M5.0+ global" as its target set. Recording the
+  inheritance explicitly here, rather than leaving a reader to infer it, is
+  what rule 2 ("all parameters explicit") asks for even when a parameter's
+  *source* is another entry.
 
 **Why arrivals come from the model runs at all.** The CME records carry no
 arrival estimate — measured, `/CMEAnalysis` returns no `enlilList` and no arrival
@@ -263,6 +305,9 @@ matrix. No result exists to hide: H3 was never run.
 | **Time range** | **1995-01-01 onward** |
 | **Gap handling** | An onset requires 6 consecutive hours *each carrying a measured speed*; an unmeasured hour breaks the run. Exposure counts only hours where a full 6-hour window was measured. |
 | **Lag windows** | 0–24h, 24–48h, 48–72h, 3–5d (4 windows) |
+| **Baseline window** | Poisson expectation estimated within a moving window of ±182.625 days (one year total) centred on each trigger, not pooled across the record. |
+| **Null model** | Trigger onsets redrawn uniformly without replacement from eligible hours (hours where a full 6-hour window could have started, per the gap-handling rule above) within the analysis span. |
+| **Tail** | One-sided upper. |
 | **Tests in family** | 4 (replacing H3's 4) |
 | **Mechanism plausibility** | Low |
 | **Result** | — |
@@ -270,6 +315,32 @@ matrix. No result exists to hide: H3 was never run.
 **Nothing here was chosen after seeing a result.** H3 was never run. Both changes
 were forced by measuring the ingested data, and both were settled before any test
 was written.
+
+**Three more parameters, completed 2026-08-19 before the first run, for the
+same reason and by the same rule as H4c's own completion the day before:**
+the trigger, the lag windows and the time range were registered, but the
+baseline window's width, the null-draw scheme and the tail were left implied,
+which rule 2 forbids. H3b has never been run — status is still "Not yet
+run" — so this finishes the registration rather than amending a result.
+
+- **Baseline window and null model are identical to H4c's**, and for the
+  identical reason: this app's own M5.0+ catalogue is not stationary
+  (+36% per five decades since 1970, see H1b above), so a pooled baseline
+  would manufacture a trend-driven ratio here exactly as it would there. A
+  moving ±182.625-day window and a uniform redraw from eligible hours are
+  the same registered mitigation, reused rather than reinvented — unlike
+  H4c's trigger *count*, which is a genuinely different quantity (a 500 km/s
+  wind-speed threshold, not a Kp/Dst index level), so this is one mitigation
+  applied twice, not one hypothesis's parameters leaking into another's.
+- **No separate "effective span" note is needed the way H4c required one.**
+  H3b's registered start, 1995-01-01, already sits inside the M5.0+
+  catalogue's own 1970-onward completeness window — the constraint that
+  forced H4c's registered 1963 down to an *effective* 1970 doesn't bind here,
+  because 1995 was already chosen for a stricter reason (measured six-hour
+  window intactness, see below) that happens to clear the earthquake-side
+  bound with room to spare.
+- **Tail.** One-sided upper — framed as "elevated" rate, matching H4c's
+  identical reasoning.
 
 **Why the source changed.** H3 named "SWPC solar wind speed (DSCOVR/ACE/IMAP)".
 SWPC serves only the last seven days, so the history has to come from NASA's

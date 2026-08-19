@@ -1,8 +1,9 @@
-"""H4c — global geomagnetic disturbance (GFZ Kp / OMNI2 Dst) vs. declustered
-global M5.0+ seismicity rate. Assembly only: every actual statistic lives in
-pipeline/*; this module wires them together for exactly the parameters
-HYPOTHESES.md registers for H4c (including the five completed 2026-08-18 —
-episode definition, baseline window, null model, tail, effective span).
+"""H3b — coronal hole high-speed streams (OMNI2 wind speed) vs. declustered
+global M5.0+ seismicity rate. Assembly only, mirroring h4c.py: every actual
+statistic lives in pipeline/*. Built second, deliberately, to prove the
+pipeline built for H4c generalizes rather than being H4c-specific — the only
+things that differ below are the trigger config, the lag windows, and the
+registered start year.
 """
 
 from __future__ import annotations
@@ -32,15 +33,16 @@ from terra_pulse_engine.pipeline.multiple_comparisons import benjamini_hochberg
 from terra_pulse_engine.pipeline.triggers import extract_threshold_episodes
 from terra_pulse_engine.version import ENGINE_VERSION
 
-# HYPOTHESES.md H4c, "Effective span" (completed 2026-08-18): the M5.0+
-# target catalogue is only global-complete from 1970-01-01, which is exactly
-# unix epoch 0 — the registered 1963 start reflects only when Kp and Dst both
-# exist, not when the target catalogue does.
-EFFECTIVE_START_MS = 0
+# HYPOTHESES.md H3b: "Time range: 1995-01-01 onward." Unlike H4c, this needs
+# no separate "effective span" — 1995 already sits inside the M5.0+
+# catalogue's own 1970-onward completeness window, so nothing here truncates
+# what was registered.
+EFFECTIVE_START_MS = int(datetime(1995, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
 
-# HYPOTHESES.md "Total Test Matrix": 19 unblocked registered tests
-# (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H4b 2 + H5 1); H6's 2 stay deferred to
-# Phase 5; H4b's 2 stay blocked — no magnetometer table exists yet.
+# Same registered matrix bookkeeping as h4c.py — see HYPOTHESES.md's Total
+# Test Matrix note. Duplicated rather than imported from h4c.py: the two
+# hypothesis modules are meant to stay independent, not share incidental
+# constants the way a display threshold must never share a registered one.
 DEFERRED_TESTS = 2
 BLOCKED_TESTS = 2
 
@@ -53,11 +55,11 @@ def _iso(ms: int) -> str:
 def _build_hourly_grid(
     time_ms: list[int], values: list[float | None], start_ms: int, end_ms: int
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Regularizes a (possibly gappy) input series onto a complete,
-    contiguous 1-hour grid over [start_ms, end_ms], NaN wherever the input
-    didn't supply an hour. pipeline.triggers requires this shape: a missing
-    row and an explicit null value must look identical to it, since both
-    mean "not measured".
+    """Identical to h4c.py's helper — see that module's docstring. Not
+    shared via import because each hypothesis module is meant to stand alone
+    (h4c.py's own docstring says pipeline/ is where sharing belongs, not
+    between hypothesis modules); this one function is short enough that
+    duplicating it costs less than coupling the two modules for it.
     """
     n_hours = max(int((end_ms - start_ms) // HOUR_MS) + 1, 0)
     grid_time = start_ms + np.arange(n_hours, dtype=np.int64) * HOUR_MS
@@ -74,7 +76,7 @@ def _build_hourly_grid(
     return grid_time, grid_values
 
 
-def run_h4c(request: LagWindowRunRequest) -> AnalysisResult:
+def run_h3b(request: LagWindowRunRequest) -> AnalysisResult:
     start_time = time.monotonic()
     params = request.parameters
 
@@ -83,12 +85,10 @@ def run_h4c(request: LagWindowRunRequest) -> AnalysisResult:
     catalog_lon = np.asarray(request.catalog.longitude, dtype=float)
     catalog_mag = np.asarray(request.catalog.magnitude, dtype=float)
 
-    # Decluster over everything sent (a late pre-1970 mainshock can still
-    # correctly claim early-1970 aftershocks), but only *report* and *use*
-    # the effective-span subset — the deep archive tier holds M7.5+ back to
-    # 1900, and letting a handful of those leak into the target set here
-    # would bias the baseline near the 1970 boundary with data from an era
-    # that wasn't observed at this floor at all. See EFFECTIVE_START_MS.
+    # Decluster over everything sent (gives a pre-1995 mainshock, if any is
+    # in range, the chance to correctly claim an early-1995 aftershock), then
+    # restrict the target set used for baseline/lag-window stats to the
+    # registered 1995 start — same reasoning as h4c.py's EFFECTIVE_START_MS.
     independent_mask = decluster_gardner_knopoff(catalog_time, catalog_lat, catalog_lon, catalog_mag)
     target_time_all = np.sort(catalog_time[independent_mask])
     target_time = target_time_all[target_time_all >= EFFECTIVE_START_MS]
@@ -98,25 +98,22 @@ def run_h4c(request: LagWindowRunRequest) -> AnalysisResult:
 
     series_time = list(request.series.time_ms)
     span_end_ms = series_time[-1] if series_time else EFFECTIVE_START_MS
-    grid_time, kp_grid = _build_hourly_grid(
-        series_time, request.series.kp, EFFECTIVE_START_MS, span_end_ms
-    )
-    _, dst_grid = _build_hourly_grid(
-        series_time, request.series.dst, EFFECTIVE_START_MS, span_end_ms
+    grid_time, wind_grid = _build_hourly_grid(
+        series_time, request.series.wind_speed, EFFECTIVE_START_MS, span_end_ms
     )
 
     half_width_days = params.baseline_window_days / 2.0
 
-    episodes_by_trigger = {}
-    for trigger_params in params.triggers:
-        series_values = kp_grid if trigger_params.series == "kp" else dst_grid
-        episodes_by_trigger[trigger_params.id] = extract_threshold_episodes(
+    episodes_by_trigger = {
+        trigger_params.id: extract_threshold_episodes(
             grid_time,
-            series_values,
+            wind_grid,
             threshold=trigger_params.threshold,
             comparison=trigger_params.comparison,
             min_consecutive_hours=trigger_params.min_consecutive_hours,
         )
+        for trigger_params in params.triggers
+    }
 
     raw_p_values: list[float] = []
     test_ids: list[tuple[str, str, tuple[float, float]]] = []
@@ -148,12 +145,6 @@ def run_h4c(request: LagWindowRunRequest) -> AnalysisResult:
             def statistic_fn(
                 drawn: np.ndarray, _lag_start: float = lag_start, _lag_end: float = lag_end
             ) -> np.ndarray:
-                # Not vectorized across the batch dimension — one draw at a
-                # time is simplest to verify correct, and measured cost at
-                # real data volumes (seconds per test) is well inside the
-                # single-POST budget this round chose over a progress/cancel
-                # API. Vectorizing this loop is the first place to look if a
-                # later hypothesis needs it faster.
                 results = np.empty(drawn.shape[0], dtype=float)
                 for row in range(drawn.shape[0]):
                     drawn_times = drawn[row]
@@ -184,7 +175,7 @@ def run_h4c(request: LagWindowRunRequest) -> AnalysisResult:
                 tail=params.tail,
             )
 
-            test_id = f"H4c/{trigger_params.id}/{lag_start:g}-{lag_end:g}h"
+            test_id = f"H3b/{trigger_params.id}/{lag_start:g}-{lag_end:g}h"
             raw_p_values.append(permutation.p_value)
             test_ids.append((test_id, trigger_params.id, (lag_start, lag_end)))
             test_payload[test_id] = {"observed": observed_stat, "permutation": permutation}
@@ -235,22 +226,17 @@ def run_h4c(request: LagWindowRunRequest) -> AnalysisResult:
         requested_start_utc=params.requested_start_utc,
         used_start_utc=_iso(EFFECTIVE_START_MS),
         used_end_utc=_iso(int(span_end_ms)),
-        truncation_reason=(
-            "the M5.0+ target catalogue is only global-complete from 1970-01-01; "
-            "the geomagnetic indices reach further back but were truncated to match"
-        ),
+        truncation_reason=None,
     )
 
     caveats = [
-        "Span truncated to the catalogue's 1970-01-01 completeness bound; the "
-        "registered 1963 start reflects only geomagnetic-index availability.",
+        "H3b systematically under-samples the strongest streams: missing wind-speed "
+        "data is concentrated on the largest storms (ACE's plasma instrument saturates "
+        "on solar energetic particles), not missing at random. A null result here is "
+        "biased toward the null, not a clean one.",
         "M5.0+ event counts rose approximately 36% from the 1970s to the 2010s; "
         f"the moving local baseline (±{half_width_days:.1f} days) is the "
         "registered mitigation, not a removal of that trend.",
-        "Kp>=6 and Dst<=-100 episodes overlap substantially in time, so the six "
-        "tests in this family are positively correlated rather than independent; "
-        "Benjamini-Hochberg remains valid under this, but the correlation is not "
-        "zero.",
     ]
 
     correction = CorrectionInfo(
@@ -281,7 +267,7 @@ def run_h4c(request: LagWindowRunRequest) -> AnalysisResult:
     return AnalysisResult(
         contract_version=request.contract_version,
         engine_version=ENGINE_VERSION,
-        hypothesis_id="H4c",
+        hypothesis_id="H3b",
         run_at_utc=_iso(int(time.time() * 1000)),
         duration_ms=duration_ms,
         seed=params.seed,
