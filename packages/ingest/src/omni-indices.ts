@@ -145,6 +145,8 @@ export function parseOmniHourly(text: string): SpaceWeatherSample[] {
       windSpeed,
       density,
       bzGsm,
+      // OMNI2's file predates GOES XRS entirely and carries no flux column.
+      xrayFlux: null,
     });
   }
 

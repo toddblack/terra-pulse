@@ -1,10 +1,20 @@
 import { useEffect, useRef } from 'react';
 import { useGlobeStore } from '../state/useGlobeStore';
 import { guideFor } from './layer-guides';
+import { trackGuideFor } from './track-guides';
 import styles from './LayerGuideModal.module.css';
 
 /**
- * The explanation for one layer, over the centre of the app.
+ * The explanation for one layer — or, since §5.5, one multi-track timeline
+ * row — over the centre of the app.
+ *
+ * Despite the name, this now serves two id namespaces: `guideFor` looks up
+ * the globe layer registry (`layer-guides.ts`), `trackGuideFor` looks up the
+ * timeline rows (`track-guides.ts`). They stay two separate files with two
+ * separate completeness checks — see `track-guides.ts`'s own doc for why —
+ * but the actual dialog, its keyboard/backdrop handling and its styling are
+ * identical for both, so this component (and `LayerGuideButton` below) is
+ * the one place that knows both exist.
  *
  * ## Why it must swallow pointer events
  *
@@ -44,7 +54,7 @@ export function LayerGuideModal() {
 
   if (openGuideLayerId === null) return null;
 
-  const guide = guideFor(openGuideLayerId);
+  const guide = guideFor(openGuideLayerId) ?? trackGuideFor(openGuideLayerId);
   if (!guide) return null;
 
   return (
@@ -104,14 +114,14 @@ export function LayerGuideModal() {
 }
 
 /**
- * The `?` that opens a guide.
+ * The `?` that opens a guide — for a registered layer or a track row alike.
  *
- * Rendered only when a guide exists, so an unexplained layer shows no affordance
- * rather than an affordance that opens nothing.
+ * Rendered only when a guide exists, so an unexplained layer or row shows no
+ * affordance rather than an affordance that opens nothing.
  */
 export function LayerGuideButton({ layerId }: { layerId: string }) {
   const openGuide = useGlobeStore((state) => state.openGuide);
-  if (!guideFor(layerId)) return null;
+  if (!guideFor(layerId) && !trackGuideFor(layerId)) return null;
 
   return (
     <button
@@ -122,7 +132,7 @@ export function LayerGuideButton({ layerId }: { layerId: string }) {
         event.stopPropagation();
         openGuide(layerId);
       }}
-      aria-label={`About this layer`}
+      aria-label="About this"
       title="What is this?"
     >
       ?

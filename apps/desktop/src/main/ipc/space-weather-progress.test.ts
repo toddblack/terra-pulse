@@ -25,6 +25,7 @@ const hour = (iso: string, dst: number | null): SpaceWeatherSample => ({
   windSpeed: 400,
   density: 5,
   bzGsm: 1,
+  xrayFlux: null,
 });
 
 vi.mock('@terra-pulse/ingest', () => ({
@@ -32,6 +33,8 @@ vi.mock('@terra-pulse/ingest', () => ({
   fetchGfzKpNowcast: vi.fn(async () => Promise.resolve([])),
   fetchLatestSolarWind: vi.fn(async () => Promise.resolve([])),
   fetchRecentSolarWind: vi.fn(async () => Promise.resolve([])),
+  fetchLatestGoesXray: vi.fn(async () => Promise.resolve([])),
+  fetchRecentGoesXray: vi.fn(async () => Promise.resolve([])),
   fetchOmniYear: vi.fn(async (year: number) =>
     Promise.resolve([hour(`${String(year)}-06-01T00:00:00.000Z`, -20)]),
   ),

@@ -184,6 +184,20 @@ export interface SpaceWeatherSample {
    * wants for §5.6 needs it.
    */
   bzGsm: number | null;
+  /**
+   * GOES X-ray flux in the 0.1-0.8 nm (1-8 Å) long channel, W/m², or null.
+   *
+   * The channel flare classification is defined on — each letter (A/B/C/M/X)
+   * is one decade of this exact quantity — so it is what NOAA's own charts
+   * and every space-weather source call "the" X-ray flux, not the shorter
+   * 0.05-0.4 nm channel GOES also publishes. See
+   * `packages/ingest/src/swpc-goes-xray.ts`.
+   *
+   * Live only: SWPC's JSON product covers the last few days, and there is no
+   * archive behind it yet — a real gap, not an oversight. See that module's
+   * doc for what a historical GOES XRS ingest would actually require.
+   */
+  xrayFlux: number | null;
 }
 
 /** Whether an hour qualifies as stormy by either index. */
@@ -239,6 +253,11 @@ export interface SpaceWeatherBucket {
    */
   kpHours: number;
   windSpeedHours: number;
+  /** Highest X-ray flux in the span, W/m². */
+  peakXrayFlux: number | null;
+  /** Median X-ray flux — see `lowerMedian`; never a mean, for the same reason as Kp and wind. */
+  typicalXrayFlux: number | null;
+  xrayFluxHours: number;
 }
 
 /**
@@ -268,6 +287,33 @@ export const WIND_SPEED_MAX = 1000;
  * free parameter gets chosen after the fact.
  */
 export const FAST_WIND_THRESHOLD = 500;
+
+/**
+ * X-ray flux domain, W/m² — plotted on a **log** scale, not fitted to each
+ * view, for the same reason `WIND_SPEED_MAX` is fixed: rescaling per window
+ * would renormalise the ramp on every scrub.
+ *
+ * Not measured against this app's own archive the way `WIND_SPEED_MAX` was —
+ * there is no historical GOES ingest yet to measure against (see
+ * `SpaceWeatherSample.xrayFlux`'s doc). The domain instead comes from NOAA's
+ * own published flare-classification scale, which is externally verified
+ * rather than a guess: A/B/C/M/X are exactly the decades from 1e-8 to 1e-4
+ * W/m², so `[1e-9, 1e-3]` covers "below A" through X10 — six orders of
+ * magnitude, clipping only the rare flares past X10 (the largest ever
+ * recorded, 2003's "X28", would still land at the very top rather than
+ * being clipped away entirely).
+ */
+export const XRAY_FLUX_MIN = 1e-9;
+export const XRAY_FLUX_MAX = 1e-3;
+
+/**
+ * M-class, W/m² — where a flare starts being the geoeffective kind DONKI's
+ * own layer already draws (`flareAtLeast(flare, 'M')`, H1b's registered
+ * trigger). Display emphasis only, the same relationship `KP_STORM_THRESHOLD`
+ * has to H4c's trigger — kept as its own constant so the two cannot drift
+ * apart silently if either is ever amended.
+ */
+export const XRAY_EMPHASIS_FLUX = 1e-5;
 
 /**
  * Reduces a series to at most `buckets` intervals for drawing.
@@ -310,8 +356,10 @@ export function downsampleSpaceWeather(
     let peakDst: number | null = null;
     let peakWindSpeed: number | null = null;
     let peakBzGsm: number | null = null;
+    let peakXrayFlux: number | null = null;
     const kpValues: number[] = [];
     const speedValues: number[] = [];
+    const fluxValues: number[] = [];
 
     for (let i = start; i < end; i += 1) {
       const sample = samples[i];
@@ -333,6 +381,10 @@ export function downsampleSpaceWeather(
       if (sample.bzGsm !== null && (peakBzGsm === null || sample.bzGsm < peakBzGsm)) {
         peakBzGsm = sample.bzGsm;
       }
+      if (sample.xrayFlux !== null) {
+        fluxValues.push(sample.xrayFlux);
+        if (peakXrayFlux === null || sample.xrayFlux > peakXrayFlux) peakXrayFlux = sample.xrayFlux;
+      }
     }
 
     out.push({
@@ -353,6 +405,13 @@ export function downsampleSpaceWeather(
       // Length of the value lists: every measured hour pushed exactly once.
       kpHours: kpValues.length,
       windSpeedHours: speedValues.length,
+      peakXrayFlux,
+      // Flux is a genuine linear quantity, so nothing forces a median here the
+      // way Kp's quasi-logarithmic scale does — but a mean would still flatten
+      // a bucket containing one sharp flare spike into background noise, the
+      // exact failure this file already rejected a mean for on Kp and speed.
+      typicalXrayFlux: lowerMedian(fluxValues),
+      xrayFluxHours: fluxValues.length,
     });
   }
 

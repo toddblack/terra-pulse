@@ -1,0 +1,42 @@
+.switch {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  padding: 0.2rem;
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 80%);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 30%);
+  /* Above the globe like every other panel, and above the layer panel too —
+     it must stay reachable regardless of what else is open. */
+  z-index: 10;
+}
+
+.switch button {
+  padding: 0.35rem 0.9rem;
+  border: none;
+  border-radius: 0.35rem;
+  background: none;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.inactive {
+  color: rgb(148 163 184);
+}
+
+.inactive:hover {
+  background-color: rgb(30 41 59 / 90%);
+  color: rgb(203 213 225);
+}
+
+/* Filled, not just a colour change — a mode is a bigger switch than a
+   disclosure toggle, so it gets more emphasis than the collapsible
+   sections' flat/outlined language. */
+.active {
+  background-color: rgb(56 189 248 / 90%);
+  color: rgb(15 23 42);
+}

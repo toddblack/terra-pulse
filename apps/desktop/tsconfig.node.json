@@ -10,6 +10,7 @@
     "src/preload/**/*",
     "electron.vite.config.ts",
     "vitest.config.ts",
-    "test-setup.ts"
+    "test-setup.ts",
+    "src/renderer/src/analyze/explore-purity.test.ts"
   ]
 }

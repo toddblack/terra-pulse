@@ -1629,6 +1629,150 @@ The fourth section is also where `SOURCES.md`'s attribution gets paid: a licence
 condition is not satisfied by a file in the repo that nobody reading a rendered
 map ever opens.
 
+## Phase 4 — Statistical Engine. Started.
+
+**Python statistical engine, round 1 — H4c shipped end-to-end.** `engine/`, a
+new Python 3.12 package outside the pnpm workspace (deliberately — `pnpm -r
+test` must not break for anyone without Python installed). FastAPI, numpy,
+scipy; no statsmodels (Benjamini-Hochberg is ~10 lines, hand-rolled and
+cross-checked against `scipy.stats.false_discovery_control` rather than
+adding a dependency for it). `engine/README.md` has the setup/run/test
+commands.
+
+**Dev-only this round, and that's a scope decision, not an oversight.**
+Electron main adopts an already-running engine on 127.0.0.1:8787 (the normal
+dev loop — run `pnpm engine:dev` in a second terminal) or spawns one itself;
+either way, failure is a typed status (`python-not-found`, `start-timeout`,
+`contract-mismatch`, `crashed`, ...) pushed to the renderer, never a crash —
+same posture as a missing DONKI key. A packaged build reports the engine
+`unavailable` and Analyze mode stays visible rather than hidden, because a
+hidden feature is a second code path nobody exercises. PyInstaller/bundling
+is still open (§10 of `PROJECT_PLAN.md`).
+
+**Why H4c first, not H5 (which has richer Explore-mode prior art) or H1b.**
+H4c (Kp/Dst geomagnetic disturbance) needs zero new ingest — Kp since 1932,
+Dst since 1963 are already in the database — and its
+threshold→episode→lag-window-ratio→Poisson→Monte Carlo shape is shared by
+H1b, H2b and H3b almost unchanged, so proving it once pays off for four of
+the five remaining hypotheses. H5 needs a magnitude-of-completeness map that
+doesn't exist yet and uses a structurally different KS-test shape; it's next,
+once that map is built. H1b needs a GOES 1996-2016 flare ingest this app
+doesn't have yet.
+
+**Gardner-Knopoff declustering is an independent Python port, not a call into
+the TS code — and the two are verified to agree, not just assumed to.**
+`engine/terra_pulse_engine/pipeline/decluster.py` ports the exact formulas
+from `packages/schema/src/aftershocks.ts`, including the M6.5 seam's
+deliberate non-monotonicity (see that file's own note — don't "fix" it in
+either language independently). Pinned against GK's published Table 1 in
+both languages, and against a shared real-data fixture
+(`engine/tests/fixtures/gk_parity.json`, 1,461 real M5.0+ events from
+2011-01-01 to 2011-06-01, including the Tohoku M9.1 sequence) asserted by a
+test in each language. They agree exactly: 609 of 1,461 survive as
+independent, same ids, both implementations.
+
+**The moving-window Poisson baseline exists because a pooled one would
+manufacture a correlation, and this is executable, not just argued.**
+`pipeline/baseline.py`'s `local_rate_per_hour` estimates the background rate
+within a window (±half the registered baseline width) centred on each
+trigger rather than pooling across the whole record — H1b's own registered
+mitigation for the catalogue's ~36%-per-five-decades secular drift at M5.0+,
+which H4c's completed registration (below) adopts for the same reason.
+`test_baseline.py` plants a synthetic secular trend and shows a pooled
+estimate is biased at both edges while the moving-window one isn't — the
+test *is* the argument for why M5.0+ is defensible here.
+
+**H4c's registration had four implied parameters, and they were completed in
+`HYPOTHESES.md` before any code ran, not decided in code.** The original
+2026-08-14 entry specified the trigger (Kp≥6 or Dst≤−100), the lag windows
+and the 1963 time range, but left the episode definition, the baseline
+window width, the null-resampling scheme and the tail implied — which rule 2
+forbids. Completed in place (not as a new H4d entry) on 2026-08-18, because
+H4c had never been run: rule 3's "amendments are new entries" exists to stop
+edits *after* a result is known, and there was no result here to protect.
+Also completed there: an "Effective span" field, because the registered 1963
+start reflects only when Kp/Dst exist, not when the M5.0+ target catalogue
+does — that's 1970, the same boundary the earthquake archive's own Tier 1
+uses, for the same reason (pre-1970 records are the pre-WWSSN-network era).
+The engine truncates to 1970 and reports the truncation explicitly rather
+than absorbing it silently.
+
+**The M5.0-vs-M5.5 tension this file itself raised is real, and the
+resolution is: honor the registration.** Elsewhere in this file, the
+caching-strategy notes say "Analysis must use M5.5+, not M4.5+" and name
+H1–H5 as "the single largest threat" — but `HYPOTHESES.md` registers H1b
+through H5 at M5.0+, and H1b's own entry shows this was a considered
+tradeoff (a local baseline fixes the secular-drift problem without needing
+to throw away 3.7× the target events). Per the user's explicit decision this
+round: `HYPOTHESES.md` is the pre-registration of record, so M5.0+ stands
+for these hypotheses. `ARCHIVE_ANALYSIS_MIN_MAGNITUDE = 5.5` is untouched —
+it governs Explore's own rate claims, a separate thing, and this doesn't
+change that.
+
+**Analyze mode is the app's first non-Explore surface, and non-negotiable #1
+gets defence in depth, not one guard.** `useAppModeStore` (`'explore' |
+'analyze'`, not persisted — a fresh launch always opens in Explore).
+`App.tsx` mounts `ExploreShell` or `AnalyzeShell`, never both — genuinely
+unmounted, not hidden, so nothing Explore-side is running while Analyze is
+active. Four independent layers keep a p-value from ever reaching Explore:
+the `renderer/src/analyze/**` directory boundary; `useAnalysisStore.ts` being
+the *only* place an `AnalysisResult` is held; an ESLint `no-restricted-imports`
+rule scoped to `panels/`, `layers/`, `globe/`, `state/` forbidding imports
+from `analyze/` or the analysis types from `@terra-pulse/schema` (verified to
+actually fire on a deliberate test violation, not just written and trusted);
+and `analyze/explore-purity.test.ts`, which scans Explore source for a
+p-value identifier or a rendered p-value literal like `p = 0.03`.
+
+**That last scan went through one real revision, worth remembering.** The
+first draft also matched bare "correlation" and "significan(t/ce)" as
+substrings, and immediately found two permanent false positives in real
+code: `event.significance` is USGS's own field name (nothing to do with
+statistics), and `AntipodalSection.tsx`'s own doc comment *quotes* `"p =
+0.03"` while explaining why Explore doesn't print one. Both are legitimate
+Explore-mode prose. The scan now matches only `pValue`/`pAdjusted`
+identifiers and a numeric p-value literal pattern, with comments stripped
+before matching — precise signals instead of words that this codebase's own
+documented design-rationale style will always contain somewhere.
+
+**Cesium stays mounted across the mode switch.** Nothing is destroyed
+switching to Analyze (non-negotiable #5 untouched) — remounting the viewer
+would re-run every layer's mount/unmount path for zero benefit.
+
+**End-to-end verified against the real dev database, not just synthetic
+fixtures.** 92,106 raw M5.0+ events (effective span), 48,371 declustered,
+496,423 space-weather hours since 1970. Trigger counts — 1,149 Kp≥6
+episodes, 511 Dst≤−100 episodes — match an independent SQL/JS recomputation
+exactly. The result is a clean null (ratios 0.975–1.014, nothing rejected at
+q=0.05 even before FDR), which is the expected outcome given H4c's own
+registered "low" mechanism plausibility — null results are results
+(`HYPOTHESES.md` rule 5), and this one is reported with the same weight a
+rejection would get.
+
+**Measured cost: ~30 seconds per run, not the "seconds" this round's plan
+estimated.** Declustering the 92k-row catalogue is fast (well under a
+second, vectorised via `np.searchsorted` plus windowed haversine); the cost
+is `hypotheses/h4c.py`'s permutation loop, which draws one redrawn trigger
+set per iteration in a plain Python `for` loop rather than a fully
+batch-vectorised call. Comfortably inside the single-POST design's 120s IPC
+timeout, so this round's "no progress/cancel UI" call still holds — but it's
+the first place to optimise if a future hypothesis's data volume pushes it
+further. Noted in `engine/README.md`, not fixed this round.
+
+**FDR reports two adjusted values per test, because the registered matrix
+isn't complete.** `pipeline/multiple_comparisons.py`'s `benjamini_hochberg`
+takes a `family_size` separate from the number of p-values actually
+supplied: this round reports BH within the 6 tests run *and* BH against the
+19-test unblocked registered matrix (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H4b 2 +
+H5 1 — H6's 2 stay deferred to Phase 5, H4b's 2 stay blocked, no
+magnetometer table exists), and the 19-test figure is always the
+conservative one the UI leads on. `correction.partialMatrix` and a
+plain-English note travel with every result rather than letting a UI
+convention carry that caveat alone.
+
+**Next:** H1b, H2b or H3b (same pipeline shape, minor parameter changes —
+proving that reuse was the point of choosing H4c first), or the
+magnitude-of-completeness map H5 needs.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

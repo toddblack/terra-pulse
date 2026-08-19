@@ -47,3 +47,5 @@ export {
   donkiChunkSummary,
 } from './solar-events-queries';
 export type { DonkiSource } from './solar-events-queries';
+export { queryAnalysisCatalog } from './analysis-queries';
+export type { AnalysisCatalog } from './analysis-queries';

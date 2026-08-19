@@ -1,0 +1,205 @@
+/* Centred, scrollable panel — the results table and caveats can run long,
+   and there is no scrubber or side chrome to share space with in this mode. */
+.panel {
+  position: absolute;
+  top: 4.5rem;
+  bottom: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(52rem, calc(100vw - 4rem));
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 92%);
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 30%);
+  color: rgb(203 213 225);
+  font-size: 0.8125rem;
+}
+
+.header {
+  margin-bottom: 1rem;
+}
+
+.title {
+  margin: 0 0 0.35rem;
+  color: rgb(226 232 240);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.statement {
+  margin: 0 0 0.35rem;
+  color: rgb(203 213 225);
+  line-height: 1.4;
+}
+
+.meta {
+  margin: 0;
+  color: rgb(148 163 184);
+  font-size: 0.75rem;
+}
+
+.engineNotice {
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.375rem;
+  background-color: rgb(30 41 59 / 60%);
+}
+
+.engineNotice p {
+  margin: 0 0 0.35rem;
+}
+
+.engineNotice p:last-child {
+  margin-bottom: 0;
+}
+
+.engineDetail {
+  color: rgb(248 113 113 / 90%);
+  font-family: ui-monospace, monospace;
+  font-size: 0.75rem;
+}
+
+.engineHint {
+  color: rgb(148 163 184);
+  font-size: 0.75rem;
+}
+
+.engineHint code {
+  color: rgb(203 213 225);
+}
+
+.runButton {
+  padding: 0.45rem 1rem;
+  border: none;
+  border-radius: 0.375rem;
+  background-color: rgb(56 189 248 / 90%);
+  color: rgb(15 23 42);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.runButton:disabled {
+  background-color: rgb(71 85 105);
+  color: rgb(148 163 184);
+  cursor: default;
+}
+
+.error {
+  margin-top: 0.75rem;
+  color: rgb(248 113 113 / 90%);
+}
+
+.sectionHeading {
+  margin: 1.25rem 0 0.5rem;
+  color: rgb(148 163 184);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Two columns of label/value pairs — the registered parameters this
+   hypothesis actually ran with, made visible rather than merely true in
+   code the reader can't see. */
+.paramList {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+}
+
+.paramList dt {
+  color: rgb(148 163 184);
+}
+
+.paramList dd {
+  margin: 0;
+  color: rgb(226 232 240);
+  font-variant-numeric: tabular-nums;
+}
+
+.truncationNote {
+  color: rgb(148 163 184);
+  font-style: italic;
+}
+
+.catalogLine {
+  margin: 1rem 0 0;
+  color: rgb(203 213 225);
+  font-variant-numeric: tabular-nums;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.testTable {
+  width: 100%;
+  margin-top: 0.5rem;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.testTable th {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid rgb(255 255 255 / 14%);
+  color: rgb(148 163 184);
+  text-align: left;
+  font-weight: 500;
+}
+
+.testTable td {
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid rgb(255 255 255 / 6%);
+}
+
+.testTable tbody tr {
+  cursor: pointer;
+}
+
+.testTable tbody tr:hover {
+  background-color: rgb(30 41 59 / 60%);
+}
+
+/* Neutral emphasis, matching the collapsible-section language elsewhere in
+   this app — a selection means "you're looking at this one", not a verdict,
+   so it gets no hue of its own. */
+.selectedRow {
+  background-color: rgb(51 65 85 / 70%);
+}
+
+.histogram {
+  width: 100%;
+  max-width: 20rem;
+  height: auto;
+}
+
+.histogramBar {
+  fill: rgb(56 189 248 / 70%);
+}
+
+.histogramGuide {
+  stroke: rgb(226 232 240 / 90%);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 2;
+}
+
+.denominator {
+  margin-top: 1.25rem;
+  padding: 0.6rem 0.75rem;
+  border-left: 2px solid rgb(148 163 184 / 50%);
+  color: rgb(203 213 225);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.caveats {
+  margin: 0.75rem 0 0;
+  padding-left: 1.1rem;
+  color: rgb(148 163 184);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}

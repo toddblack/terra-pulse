@@ -85,16 +85,21 @@ terra-pulse/
 │   │   └── faults.ts             # Static GeoJSON loaders
 │   └── db/                       # SQLite access layer, migrations
 │
-├── engine/                       # Python analysis service
-│   ├── api/                      # FastAPI endpoints
-│   ├── decluster/                # Gardner-Knopoff, ETAS
-│   ├── tests/                    # Statistical methods
-│   │   ├── lagged_correlation.py
-│   │   ├── monte_carlo.py
-│   │   ├── poisson_baseline.py
-│   │   └── multiple_comparisons.py
-│   ├── ephemeris/                # Skyfield wrapper, tidal stress
-│   └── native/                   # (v2) C++/Rust Monte Carlo kernel
+├── engine/                       # Python analysis service — shipped, round 1 (H4c)
+│   ├── terra_pulse_engine/
+│   │   ├── api/                  # FastAPI endpoints, contracts, error envelope
+│   │   ├── pipeline/             # Statistical methods — decluster, triggers,
+│   │   │                         #   baseline, lag_windows, monte_carlo,
+│   │   │                         #   multiple_comparisons. Hypothesis-agnostic.
+│   │   └── hypotheses/           # One module per hypothesis (h4c.py so far),
+│   │                             #   assembling pipeline/ pieces — no statistics
+│   │                             #   defined here.
+│   └── tests/                    # pytest — corrected from an earlier sketch
+│                                 #   that put the statistical methods under
+│                                 #   engine/tests/, which collided head-on
+│                                 #   with pytest's own conventional directory.
+│   # ephemeris/ (Skyfield, tidal stress) and native/ (v2 C++/Rust Monte Carlo
+│   # kernel) remain unbuilt — not needed until H6 (Phase 5) and Phase 6.
 │
 └── docs/
     ├── PROJECT_PLAN.md           # This file
@@ -953,21 +958,30 @@ server-side proxying of all third-party API calls.
 - **Milestone:** full visual exploration tool. **Reached.**
 
 ### Phase 3 — Solar & Geomagnetic Data
-- NOAA SWPC and NASA DONKI adapters — *SWPC OVATION done; DONKI not started*
+- ~~NOAA SWPC and NASA DONKI adapters~~ — **shipped, both.** DONKI backfill/poll
+  for solar flares and CME arrivals, gated behind a required personal API key
+  (NASA's shared `DEMO_KEY` turned out unreliable enough in real use — see
+  `packages/ingest/src/nasa-donki.ts` — that the app no longer depends on it at
+  all rather than trying to paper over it).
 - ~~Auroral ovals~~ — **shipped.** OVATION Prime, polled every 5 min in main,
   drawn as a transparent raster. Not persisted: it is a forecast of a transient.
 - **Geomagnetic main field (IGRF-14)** — **shipped**, not originally in this
   phase's list. Offline, 1900–2030, follows the playhead. Note that it *cannot*
   show solar storms: they perturb the external field by <1% of the main field.
-- ~~Solar wind speed + IMF Bz ingest~~ — **shipped.** Free from the OMNI2 files
-  the Dst backfill already downloads; SWPC's *propagated* product for the live
-  tail, so both halves are referenced to the bow shock nose. Stored, no UI yet.
-  Coverage is **not monotonic** — 92% in 1980, 32-42% across 1985-94, 98-100%
-  from 1995 — and missing hours cluster on the biggest storms, because ACE's
-  plasma instrument saturates. Registered as H3b (1995 onward, OMNI-sourced);
-  H3 was withdrawn unrun.
-- Solar emission + arrival layers (§5.6) — magnetopause standoff (Shue et al.
-  1998) is now unblocked: it needs exactly speed, density and Bz.
+- ~~Solar wind speed + IMF Bz ingest~~ — **shipped, UI included.** Free from the
+  OMNI2 files the Dst backfill already downloads; SWPC's *propagated* product
+  for the live tail, so both halves are referenced to the bow shock nose. Now
+  its own row in the multi-track timeline alongside Kp/Dst. Coverage is **not
+  monotonic** — 92% in 1980, 32-42% across 1985-94, 98-100% from 1995 — and
+  missing hours cluster on the biggest storms, because ACE's plasma instrument
+  saturates. Registered as H3b (1995 onward, OMNI-sourced); H3 was withdrawn
+  unrun.
+- Solar emission + arrival layers (§5.6) — **partially shipped.** The
+  magnetopause standoff (Shue et al. 1998) is drawn as an off-by-default
+  wireframe, driven by the solar wind ingest above. Flares and CME arrivals are
+  drawn too, but as simple subsolar-point markers rather than §5.6's fuller
+  "dayside compression + auroral oval intensity" rendering — that richer form
+  is still open; a marker is what made arrivals visible on the timeline at all.
 - ~~Magnetometer station layer with disturbance amplitude~~ — **shipped** as the
   live USGS network (31 stations, public domain). **SuperMAG rejected**: its rules
   forbid redistribution and it needs a per-user account. INTERMAGNET (CC BY-NC,
@@ -975,8 +989,14 @@ server-side proxying of all third-party API calls.
   built. See `SOURCES.md`.
 - ~~Ionospheric TEC~~ — **shipped.** SWPC GloTEC raster, total and anomaly views,
   fetched on demand because a map is 2.4 MB.
-- Multi-track timeline panel — **Explore mode** (§5.5)
-- Click-a-quake → center timeline on it
+- Multi-track timeline panel — **Explore mode** (§5.5) — **partially shipped.**
+  Two of the six listed tracks (Kp/Dst, solar wind speed/Bz) are built and share
+  one time axis with the scrubber, downsampled with both a median bar and a peak
+  cap per bucket. GOES X-ray flux, magnetometer traces, tidal stress (Phase 5)
+  and an earthquake-marker row are not built.
+- Click-a-quake → center timeline on it — **not built.** Selecting an event
+  moves the camera (`focusRequest`) but not `playheadMs`; the multi-track panel
+  does not yet highlight a window around a selected event.
 - ~~Large-event alerts (§5.8)~~ — **shipped early.** Needed no new data source,
   only the existing USGS poll, so it did not have to wait for the rest of this
   phase. One active alert, click-to-fly, OS notification when unfocused.
@@ -984,22 +1004,67 @@ server-side proxying of all third-party API calls.
   Phase 4 never ships.
 
 ### Phase 4 — Statistical Engine
-- Python service scaffold + FastAPI
-- Gardner-Knopoff declustering
-- Magnitude-of-completeness map (required for H5)
-- Poisson baseline model
-- Lagged cross-correlation
-- Monte Carlo permutation testing
-- FDR correction
-- Results panel with null distribution plots, clearly separated from Explore
+- ~~Python service scaffold + FastAPI~~ — **shipped, round 1.** `engine/`,
+  dev-only (a local Python 3.12 install, not bundled — see §10). Adopt-or-spawn
+  lifecycle from Electron main (`apps/desktop/src/main/ipc/analysis.ts`):
+  adopts an already-running engine (the normal dev loop) or spawns one, and
+  degrades to a quiet, typed status rather than crashing when Python isn't
+  available — same posture as a missing DONKI key.
+- ~~Gardner-Knopoff declustering~~ — **shipped**, as an independent Python port
+  of `packages/schema/src/aftershocks.ts`'s formulas, pinned against the same
+  published Table 1 values *and* against a real-data cross-language parity
+  fixture (`engine/tests/fixtures/gk_parity.json`, 1,461 real 2011 events
+  including the Tohoku sequence) shared with a new TS test in
+  `recurrence.test.ts` — the two independent implementations agree exactly.
+- Magnitude-of-completeness map (required for H5) — **not built.** H5 remains
+  the next hypothesis after this round for exactly this reason.
+- ~~Poisson baseline model~~ — **shipped**, as a moving local window (±half the
+  registered baseline width) rather than a record-pooled rate, per H1b's and
+  H4c's registered mitigation for the catalogue's ~36%-per-five-decades
+  secular drift at M5.0+.
+- ~~Lagged cross-correlation~~ — **shipped**, as observed/expected ratio per
+  lag window, summed with multiplicity across triggers.
+- ~~Monte Carlo permutation testing~~ — **shipped**, chunked (never
+  materialises the full iterations × triggers matrix, per §7.5), seeded and
+  deterministic, p-value bounded below by `1/(iterations+1)` so it can never
+  print as exactly zero.
+- ~~FDR correction~~ — **shipped**, hand-rolled Benjamini-Hochberg (not a
+  `statsmodels` dependency), cross-checked against
+  `scipy.stats.false_discovery_control`. Reports **two** adjusted values per
+  test — within the tests actually run, and against the full 19-test
+  registered matrix — because this round runs only H4c's 6; see
+  `HYPOTHESES.md`'s Total Test Matrix note on why 19, not 21.
+- Results panel with null distribution plots, clearly separated from
+  Explore — **shipped.** Analyze mode is the app's first non-Explore surface
+  (`ModeSwitch`, `renderer/src/analyze/**`). Non-negotiable #1 is enforced in
+  four layers, not one convention: the directory boundary, `useAnalysisStore`
+  being the *only* place an `AnalysisResult` is held, an ESLint
+  `no-restricted-imports` rule scoped to the Explore directories, and
+  `explore-purity.test.ts` scanning Explore source for a p-value identifier or
+  a rendered p-value literal (verified to actually fire on a deliberate
+  violation, not just written and trusted).
+- **H4c run end-to-end against the real dev database** (92,106 raw M5.0+
+  events, 48,371 declustered, 496,423 space-weather hours since 1970): trigger
+  counts (1,149 Kp≥6 episodes, 511 Dst≤−100 episodes) match an independent
+  SQL/JS recomputation exactly; result is a clean null (ratios 0.975–1.014,
+  nothing rejected at q=0.05) — expected, given H4c's own registered "low"
+  mechanism plausibility. Real run cost ~30s, not the "seconds" this round's
+  plan estimated — noted in `engine/README.md` as the first place to
+  optimise (vectorising the permutation loop) if a future hypothesis needs it
+  faster; it's comfortably inside the single-POST design's 120s timeout.
 - Aftershock *forecasting* (§5.9) — Reasenberg-Jones, generic parameters first,
   fitted per-sequence after. Shares the declustering and Gutenberg-Richter
   machinery built for the hypothesis tests, which is why it belongs here rather
   than in Phase 3. ~~The *observed* sequence panel for archive events needs none
   of that and can land earlier.~~ — **shipped**, see §5.9. It also delivered the
   Gardner-Knopoff windows this phase's declustering needs, already checked
-  against the published table.
-- **Milestone:** H1–H5 tested and honestly reported.
+  against the published table. Forecasting itself is not yet built.
+- **Next:** H1b, H2b, H3b, H5 (needs the completeness map above), H4b (blocked
+  — no magnetometer table exists). H1b/H2b/H3b share H4c's
+  threshold→episode→lag-window→Poisson→Monte Carlo shape almost unchanged;
+  proving that shape once, in round 1, was the point of choosing H4c first.
+- **Milestone:** H1–H5 tested and honestly reported. Not yet reached — one of
+  six families run.
 
 ### Phase 5 — Astronomical Extension
 - Skyfield + DE440 integration
@@ -1022,6 +1087,13 @@ server-side proxying of all third-party API calls.
 
 - [ ] Bundle Python with the app, or require a local install? (PyInstaller vs.
       documented prerequisite — affects distribution complexity significantly)
+      **Deferred, dev-only for this round.** `engine/` round 1 (H4c) requires a
+      local Python 3.12 install and documents it in `engine/README.md`;
+      Electron main adopts an already-running engine or spawns one, and a
+      packaged build simply reports the engine `unavailable` — Analyze mode
+      stays visible rather than hidden, so a missing prerequisite is a status
+      message, not a silently absent feature. This question is still open for
+      the round that actually ships a packaged build.
 - [ ] Global fault coverage — is GEM's dataset complete enough, or do regional
       sources need stitching?
 - [ ] Offline mode — how much data to pre-bundle for first run?

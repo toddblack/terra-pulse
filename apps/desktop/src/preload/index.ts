@@ -6,12 +6,16 @@ import type {
   AuroraGrid,
   SpaceWeatherSample,
   AntipodalWindow,
+  AnalysisRunOutcome,
   ArchiveProgress,
   CmeArrival,
   DonkiProgress,
   EarthquakeEvent,
   EarthquakeQuery,
   EarthquakeSyncResult,
+  EngineStatus,
+  HypothesisId,
+  HypothesisSummary,
   MissedEvents,
   RegionalRecurrence,
   SolarFlare,
@@ -251,5 +255,29 @@ contextBridge.exposeInMainWorld('terraPulse', {
     // (ipc/external-links.ts) — the renderer can ask, but doesn't decide.
     openExternal: (url: string): Promise<boolean> =>
       ipcRenderer.invoke('shell:open-external', url),
+  },
+  analysis: {
+    status: (): Promise<EngineStatus> => ipcRenderer.invoke('analysis:status'),
+    hypotheses: (): Promise<HypothesisSummary[]> => ipcRenderer.invoke('analysis:hypotheses'),
+    /**
+     * Sends only a hypothesis id — every parameter is assembled in main from
+     * `@terra-pulse/schema`'s registered constants (non-negotiable #3: no
+     * free parameters chosen after seeing results, enforced structurally by
+     * there being no channel through which the UI could supply one).
+     */
+    run: (hypothesisId: HypothesisId): Promise<AnalysisRunOutcome> =>
+      ipcRenderer.invoke('analysis:run', hypothesisId),
+
+    /** Subscribes to the engine process's own status changes (starting /
+     * ready / unavailable). Returns an unsubscribe function. */
+    onEngineStatus: (callback: (status: EngineStatus) => void): (() => void) => {
+      const listener = (_event: unknown, status: EngineStatus) => {
+        callback(status);
+      };
+      ipcRenderer.on('analysis:engine-status', listener);
+      return () => {
+        ipcRenderer.removeListener('analysis:engine-status', listener);
+      };
+    },
   },
 });

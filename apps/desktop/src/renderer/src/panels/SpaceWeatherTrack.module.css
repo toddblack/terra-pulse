@@ -27,6 +27,15 @@
   gap: 0.5rem;
 }
 
+/* Groups the title with its `?` guide button so `.header`'s space-between
+   treats them as one item — without this the button would land somewhere
+   in the middle of the header instead of hugging the title. */
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .title {
   color: rgb(148 163 184);
   font-size: 0.6875rem;
@@ -98,6 +107,18 @@
   background-color: rgb(226 232 240 / 32%);
 }
 
+/* §5.5's "click a quake, the timeline centers on it" — a persistent marker
+   at the selected event's own position, in every row. Dashed rather than
+   solid so it stays legible from `.guide` (hover, solid) when a reader is
+   pointing at one moment while a different one stays selected. */
+.selectionGuide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1.5px dashed rgb(226 232 240 / 60%);
+}
+
 .bar {
   position: absolute;
   bottom: 0;
@@ -155,6 +176,43 @@
 
 .capStormy {
   background-color: rgb(248 113 113);
+}
+
+/* The earthquake row's plot — about half `.plot`'s height. A marker carries
+   magnitude through its own size, not through how far up the row it sits, so
+   it never needed the full amplitude a Kp/wind bar does. Kept short on
+   purpose: the panel is centred, so every rem this row costs is paid twice
+   over in the inspector's clearance — see EarthquakeInspector.module.css. */
+.markerPlot {
+  position: relative;
+  height: 0.75rem;
+  border-bottom: 1px solid rgb(255 255 255 / 12%);
+}
+
+.markerPlot:focus-visible {
+  outline: 1px solid rgb(148 163 184 / 60%);
+  outline-offset: 1px;
+}
+
+/* One bucket's largest event. Same blue as the other rows' bars — it is the
+   same "this is the series" language — sized by magnitude via inline width
+   and height rather than by CSS, since the scale is continuous. */
+.dot {
+  position: absolute;
+  top: 50%;
+  border-radius: 50%;
+  background-color: rgb(56 189 248 / 80%);
+  transform: translateY(-50%);
+}
+
+/* M5.5+ — the same threshold the globe's own emphasis ring uses. */
+.dotEmphasized {
+  background-color: rgb(248 113 113 / 90%);
+}
+
+.dotHovered {
+  outline: 1px solid rgb(226 232 240 / 85%);
+  outline-offset: 1px;
 }
 
 .axis {

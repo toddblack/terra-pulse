@@ -15,6 +15,7 @@ const hour = (
   windSpeed: number | null = null,
   bzGsm: number | null = null,
   density: number | null = null,
+  xrayFlux: number | null = null,
 ): SpaceWeatherSample => ({
   timeUtc: iso,
   kp,
@@ -22,6 +23,7 @@ const hour = (
   windSpeed,
   density,
   bzGsm,
+  xrayFlux,
 });
 
 const fresh = () => openDatabase(':memory:');
@@ -74,6 +76,21 @@ describe('insertSpaceWeather', () => {
   it('does nothing for an empty batch', () => {
     const db = fresh();
     expect(insertSpaceWeather(db, [])).toBe(0);
+  });
+
+  it('stores and reads back X-ray flux independently of the other indices', () => {
+    const db = fresh();
+    insertSpaceWeather(db, [hour('2024-05-10T00:00:00.000Z', 3, -20, null, null, null, 5e-5)]);
+    const [row] = querySpaceWeather(db, '2024-05-10T00:00:00.000Z', '2024-05-11T00:00:00.000Z');
+    expect(row?.xrayFlux).toBe(5e-5);
+  });
+
+  it('does not let a null erase a stored flux value either', () => {
+    const db = fresh();
+    insertSpaceWeather(db, [hour('2024-05-10T00:00:00.000Z', null, null, null, null, null, 1e-6)]);
+    insertSpaceWeather(db, [hour('2024-05-10T00:00:00.000Z', null, null, null, null, null, null)]);
+    const [row] = querySpaceWeather(db, '2024-05-10T00:00:00.000Z', '2024-05-11T00:00:00.000Z');
+    expect(row?.xrayFlux).toBe(1e-6);
   });
 });
 

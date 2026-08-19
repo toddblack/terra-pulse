@@ -51,6 +51,7 @@ import {
   startDonkiPolling,
 } from './ipc/nasa-donki';
 import { registerExternalLinkIpcHandlers } from './ipc/external-links';
+import { createEngineController, registerAnalysisIpcHandlers } from './ipc/analysis';
 import { applyTileIdentity } from './tile-identity';
 
 // dotenv.config() with no options resolves relative to process.cwd(), but
@@ -407,6 +408,26 @@ app
     // database that's about to close.
     app.on('will-quit', () => {
       archive.cancel();
+    });
+
+    // The Phase 4 statistical engine — dev-only this round (PROJECT_PLAN
+    // §10 defers PyInstaller/bundling to a later round). Adopts an
+    // already-running engine if it finds one healthy on 127.0.0.1:8787 (the
+    // normal dev loop — `pnpm engine:dev` in a second terminal), otherwise
+    // spawns one. `engineDir` climbs from the compiled main bundle's own
+    // location the same four levels `.env`'s path does above, since both
+    // need to reach the repo root regardless of what launched this process.
+    const engine = createEngineController({
+      engineDir: join(__dirname, '../../../../engine'),
+      onStatusChange: (status) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('analysis:engine-status', status);
+        }
+      },
+    });
+    registerAnalysisIpcHandlers(db, engine);
+    app.on('will-quit', () => {
+      engine.dispose();
     });
 
     app.on('activate', () => {

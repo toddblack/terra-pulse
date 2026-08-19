@@ -13,11 +13,12 @@ const at = (hour: number, kp: number | null, dst: number | null): SpaceWeatherSa
   timeUtc: new Date(Date.UTC(2000, 0, 1, hour)).toISOString(),
   kp,
   dst,
-  // The track draws Kp and Dst; the wind fields ride the same rows but are not
-  // part of what these tests exercise.
+  // The track draws Kp and Dst; the wind and flux fields ride the same rows
+  // but are not part of what these tests exercise.
   windSpeed: null,
   density: null,
   bzGsm: null,
+  xrayFlux: null,
 });
 
 describe('storm thresholds', () => {
@@ -147,6 +148,7 @@ describe('downsampleSpaceWeather', () => {
       windSpeed: 420,
       density: 5,
       bzGsm: -2,
+      xrayFlux: null,
     };
     const kpOnly: SpaceWeatherSample = { ...withWind, timeUtc: new Date(Date.UTC(2000, 0, 1, 1)).toISOString(), windSpeed: null };
 
@@ -167,5 +169,33 @@ describe('downsampleSpaceWeather', () => {
   it('handles the empty and degenerate cases', () => {
     expect(downsampleSpaceWeather([], 10)).toEqual([]);
     expect(downsampleSpaceWeather([at(0, 1, -1)], 0)).toEqual([]);
+  });
+
+  describe('X-ray flux', () => {
+    const atFlux = (hour: number, xrayFlux: number | null): SpaceWeatherSample => ({
+      ...at(hour, null, null),
+      xrayFlux,
+    });
+
+    it('keeps the peak flux, not a mean that would flatten a flare spike', () => {
+      const quiet = Array.from({ length: 20 }, (_, i) => atFlux(i, 1e-7));
+      const withFlare = [...quiet];
+      withFlare[7] = atFlux(7, 5e-5); // M5.0
+      const [bucket] = downsampleSpaceWeather(withFlare, 1);
+      expect(bucket?.peakXrayFlux).toBe(5e-5);
+    });
+
+    it('takes an observed median, never a mean, for the same reason as Kp and speed', () => {
+      const samples = [atFlux(0, 1e-7), atFlux(1, 1e-5)];
+      // The mean, 5.05e-6, was never observed. The lower median is 1e-7.
+      expect(downsampleSpaceWeather(samples, 1)[0]?.typicalXrayFlux).toBe(1e-7);
+    });
+
+    it('counts measured hours for flux independently of Kp/Dst/wind', () => {
+      const samples = [atFlux(0, 1e-7), at(1, 3, -10)];
+      const [bucket] = downsampleSpaceWeather(samples, 1);
+      expect(bucket?.xrayFluxHours).toBe(1);
+      expect(bucket?.kpHours).toBe(1);
+    });
   });
 });
