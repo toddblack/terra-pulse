@@ -56,18 +56,40 @@ def _validate_lat_lon(latitude: list[float], longitude: list[float]) -> None:
 
 class TriggerParameters(ApiModel):
     id: str
-    series: Literal["kp", "dst"]
+    series: Literal["kp", "dst", "wind_speed"]
     comparison: Literal[">=", "<="]
     threshold: float
     min_consecutive_hours: int
 
 
-class AnalysisParameters(ApiModel):
+class LagWindowParameters(ApiModel):
+    """H4c/H3b's shape: a threshold trigger on a continuous series, tested
+    against a moving-window Poisson baseline over fixed lag windows."""
+
     target_min_magnitude: float
     triggers: list[TriggerParameters]
     lag_windows_hours: list[tuple[float, float]]
     declustering: Literal["gardner-knopoff"]
     baseline_window_days: float
+    null_model: Literal["uniform-redraw"]
+    tail: Literal["upper", "lower"]
+    iterations: int
+    seed: int
+    q: float
+    requested_start_utc: str
+    registered_matrix_tests: int
+
+
+class HemisphereParameters(ApiModel):
+    """H2b's shape: a discrete trigger (CME arrivals) tested by hemispheric
+    rate ratio, not against a Poisson baseline — there is no
+    `baselineWindowDays` here, deliberately, since this test shape has no
+    baseline-rate component at all."""
+
+    target_min_magnitude: float
+    spatial_split_degrees: float
+    lag_windows_hours: list[tuple[float, float]]
+    declustering: Literal["gardner-knopoff"]
     null_model: Literal["uniform-redraw"]
     tail: Literal["upper", "lower"]
     iterations: int
@@ -99,26 +121,53 @@ class SeriesPayload(ApiModel):
     time_ms: list[int]
     kp: list[float | None]
     dst: list[float | None]
+    wind_speed: list[float | None]
 
     @model_validator(mode="after")
     def _check(self) -> "SeriesPayload":
         n = len(self.time_ms)
-        if len(self.kp) != n or len(self.dst) != n:
+        if len(self.kp) != n or len(self.dst) != n or len(self.wind_speed) != n:
             raise ValueError("series arrays must all be the same length")
         _validate_epoch_ms(self.time_ms, field="series.timeMs")
         if any(v is not None and not math.isfinite(v) for v in self.kp):
             raise ValueError("series.kp must be finite where present")
         if any(v is not None and not math.isfinite(v) for v in self.dst):
             raise ValueError("series.dst must be finite where present")
+        if any(v is not None and not math.isfinite(v) for v in self.wind_speed):
+            raise ValueError("series.windSpeed must be finite where present")
         return self
 
 
-class AnalysisRunRequest(ApiModel):
+class LagWindowRunRequest(ApiModel):
     contract_version: int
-    hypothesis_id: Literal["H4c"]
-    parameters: AnalysisParameters
+    hypothesis_id: Literal["H4c", "H3b"]
+    parameters: LagWindowParameters
     catalog: CatalogPayload
     series: SeriesPayload
+
+
+class HemisphereRunRequest(ApiModel):
+    contract_version: int
+    hypothesis_id: Literal["H2b"]
+    parameters: HemisphereParameters
+    catalog: CatalogPayload
+    cme_arrival_times_ms: list[int]
+
+    @model_validator(mode="after")
+    def _check(self) -> "HemisphereRunRequest":
+        _validate_epoch_ms(self.cme_arrival_times_ms, field="cmeArrivalTimesMs")
+        return self
+
+
+# The manual per-hypothesis dispatch in api/main.py picks the right member of
+# this union by `hypothesisId` before validating — see that module's own
+# note on why this isn't a single shared request model or a Pydantic
+# discriminated union: each hypothesis family's parameters genuinely differ
+# (H2b has no baseline window at all), and forcing them into one model would
+# mean marking fields optional across families, which is exactly the kind of
+# "field present but silently unused" shape non-negotiable #3 exists to rule
+# out.
+AnalysisRunRequest = LagWindowRunRequest | HemisphereRunRequest
 
 
 # ---- Response ----
@@ -184,8 +233,14 @@ class CorrectionInfo(ApiModel):
 class MethodInfo(ApiModel):
     null_model: str
     tail: str
-    baseline_window_days: float
     iterations: int
+    # Exactly one of these two is populated, matching which parameter shape
+    # the hypothesis actually registers — see LagWindowParameters vs
+    # HemisphereParameters. Both stay in one response shape (rather than a
+    # second discriminated union on the way out) because the UI already
+    # renders one generic results panel for every hypothesis.
+    baseline_window_days: float | None = None
+    spatial_split_degrees: float | None = None
 
 
 class AnalysisResult(ApiModel):

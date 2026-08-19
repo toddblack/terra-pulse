@@ -1,6 +1,6 @@
 import numpy as np
 
-from terra_pulse_engine.api.contracts import AnalysisRunRequest
+from terra_pulse_engine.api.contracts import LagWindowRunRequest
 from terra_pulse_engine.hypotheses.h4c import EFFECTIVE_START_MS, run_h4c
 
 HOUR_MS = 60 * 60 * 1000
@@ -8,7 +8,7 @@ DAY_MS = 24 * HOUR_MS
 YEAR_MS = 365 * DAY_MS
 
 
-def _synthetic_request(*, iterations: int = 50) -> AnalysisRunRequest:
+def _synthetic_request(*, iterations: int = 50) -> LagWindowRunRequest:
     """A small, fast, fully synthetic dataset: 5 years of hourly Kp/Dst with
     a handful of planted storms, and a target catalogue with more events
     shortly after each storm than the quiet background rate would predict —
@@ -22,6 +22,10 @@ def _synthetic_request(*, iterations: int = 50) -> AnalysisRunRequest:
 
     kp = rng.uniform(0, 3, size=n_hours)
     dst = rng.uniform(-30, 10, size=n_hours)
+    # H4c doesn't use wind speed, but the request contract always carries it
+    # (querySpaceWeather returns all three series together) — a plausible
+    # quiet-to-moderate series is enough here.
+    wind_speed = rng.uniform(300, 450, size=n_hours)
 
     storm_hours = [10_000, 20_000, 30_000, 40_000]
     for h in storm_hours:
@@ -87,9 +91,10 @@ def _synthetic_request(*, iterations: int = 50) -> AnalysisRunRequest:
             "timeMs": time_ms,
             "kp": kp.tolist(),
             "dst": dst.tolist(),
+            "windSpeed": wind_speed.tolist(),
         },
     }
-    return AnalysisRunRequest.model_validate(payload)
+    return LagWindowRunRequest.model_validate(payload)
 
 
 def test_run_h4c_produces_six_tests() -> None:

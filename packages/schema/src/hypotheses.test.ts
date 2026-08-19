@@ -1,5 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import {
+  H2B_DECLUSTERING,
+  H2B_ITERATIONS,
+  H2B_LAG_WINDOWS_HOURS,
+  H2B_NULL_MODEL,
+  H2B_Q,
+  H2B_REQUESTED_START_UTC,
+  H2B_SEED,
+  H2B_SPATIAL_SPLIT_DEGREES,
+  H2B_TAIL,
+  H2B_TARGET_MIN_MAGNITUDE,
+  H3B_BASELINE_WINDOW_DAYS,
+  H3B_DECLUSTERING,
+  H3B_ITERATIONS,
+  H3B_LAG_WINDOWS_HOURS,
+  H3B_NULL_MODEL,
+  H3B_Q,
+  H3B_REQUESTED_START_UTC,
+  H3B_SEED,
+  H3B_TAIL,
+  H3B_TARGET_MIN_MAGNITUDE,
+  H3B_TRIGGERS,
   H4C_BASELINE_WINDOW_DAYS,
   H4C_DECLUSTERING,
   H4C_EFFECTIVE_START_YEAR,
@@ -14,7 +35,7 @@ import {
   H4C_TRIGGERS,
   REGISTERED_MATRIX_TESTS,
 } from './hypotheses';
-import { KP_STORM_THRESHOLD, DST_STORM_THRESHOLD } from './space-weather';
+import { KP_STORM_THRESHOLD, DST_STORM_THRESHOLD, FAST_WIND_THRESHOLD } from './space-weather';
 import { ARCHIVE_START_YEAR } from './archive';
 
 describe('H4c registered constants (HYPOTHESES.md)', () => {
@@ -111,5 +132,125 @@ describe('registered constants stay independent of display thresholds', () => {
     // it has no import from space-weather.ts.
     const dstTrigger = H4C_TRIGGERS.find((t) => t.series === 'dst');
     expect(dstTrigger?.threshold).toBe(DST_STORM_THRESHOLD);
+  });
+});
+
+describe('H3b registered constants (HYPOTHESES.md)', () => {
+  it('"Coronal hole high-speed stream arrivals are followed by an elevated global M5.0+ rate"', () => {
+    expect(H3B_TARGET_MIN_MAGNITUDE).toBe(5.0);
+  });
+
+  it('"Trigger definition: Stream onset = sustained speed > 500 km/s for >= 6h"', () => {
+    expect(H3B_TRIGGERS).toHaveLength(1);
+    expect(H3B_TRIGGERS[0]).toMatchObject({
+      series: 'wind_speed',
+      comparison: '>=',
+      threshold: 500,
+      minConsecutiveHours: 6,
+    });
+  });
+
+  it('"Lag windows: 0-24h, 24-48h, 48-72h, 3-5d (4 windows)"', () => {
+    expect(H3B_LAG_WINDOWS_HOURS).toEqual([
+      [0, 24],
+      [24, 48],
+      [48, 72],
+      [72, 120],
+    ]);
+  });
+
+  it('produces 4 tests (1 trigger x 4 lags), matching "Tests in family: 4"', () => {
+    expect(H3B_TRIGGERS.length * H3B_LAG_WINDOWS_HOURS.length).toBe(4);
+  });
+
+  it('declustering is Gardner-Knopoff, per the shared parameters table', () => {
+    expect(H3B_DECLUSTERING).toBe('gardner-knopoff');
+  });
+
+  it('"Baseline window" (completed 2026-08-19): the same registered mitigation as H4c\'s', () => {
+    expect(H3B_BASELINE_WINDOW_DAYS).toBe(H4C_BASELINE_WINDOW_DAYS);
+  });
+
+  it('"Null model" (completed 2026-08-19): uniform-redraw', () => {
+    expect(H3B_NULL_MODEL).toBe('uniform-redraw');
+  });
+
+  it('"Tail" (completed 2026-08-19): one-sided upper', () => {
+    expect(H3B_TAIL).toBe('upper');
+  });
+
+  it('Monte Carlo iterations and q match the shared parameters table', () => {
+    expect(H3B_ITERATIONS).toBe(10_000);
+    expect(H3B_Q).toBe(0.05);
+  });
+
+  it('"Time range: 1995-01-01 onward"', () => {
+    expect(H3B_REQUESTED_START_UTC).toBe('1995-01-01T00:00:00.000Z');
+  });
+
+  it('1995 already clears the archive completeness boundary, unlike H4c\'s 1963', () => {
+    expect(new Date(H3B_REQUESTED_START_UTC).getUTCFullYear()).toBeGreaterThan(ARCHIVE_START_YEAR);
+  });
+
+  it('is seeded for reproducibility, and not the same seed as H4c', () => {
+    expect(Number.isInteger(H3B_SEED)).toBe(true);
+    expect(H3B_SEED).not.toBe(H4C_SEED);
+  });
+});
+
+describe('H3b registered trigger stays independent of the display threshold', () => {
+  it('the registered wind-speed trigger (500) numerically coincides with FAST_WIND_THRESHOLD, which is exactly why it must be declared independently', () => {
+    // Same situation as H4c's Dst trigger vs DST_STORM_THRESHOLD: a numeric
+    // match can't prove independence, so hypotheses.ts declares its own
+    // literal here rather than importing FAST_WIND_THRESHOLD.
+    expect(H3B_TRIGGERS[0]?.threshold).toBe(FAST_WIND_THRESHOLD);
+  });
+});
+
+describe('H2b registered constants (HYPOTHESES.md)', () => {
+  it('"Any H1b effect is stronger on the hemisphere facing the Sun at CME arrival time than on the far hemisphere"', () => {
+    expect(H2B_TARGET_MIN_MAGNITUDE).toBe(5.0);
+  });
+
+  it('"Spatial split: Subsolar longitude at arrival +/-90 vs. complement"', () => {
+    expect(H2B_SPATIAL_SPLIT_DEGREES).toBe(90);
+  });
+
+  it('"Lag windows: 0-24h, 24-48h from arrival (2 windows)"', () => {
+    expect(H2B_LAG_WINDOWS_HOURS).toEqual([
+      [0, 24],
+      [24, 48],
+    ]);
+  });
+
+  it('produces 2 tests (1 trigger definition x 2 lags), matching "Tests in family: 2"', () => {
+    expect(H2B_LAG_WINDOWS_HOURS.length).toBe(2);
+  });
+
+  it('declustering is Gardner-Knopoff, per the shared parameters table', () => {
+    expect(H2B_DECLUSTERING).toBe('gardner-knopoff');
+  });
+
+  it('"Null model" (completed 2026-08-19): uniform-redraw', () => {
+    expect(H2B_NULL_MODEL).toBe('uniform-redraw');
+  });
+
+  it('"Tail" (completed 2026-08-19): one-sided upper', () => {
+    expect(H2B_TAIL).toBe('upper');
+  });
+
+  it('Monte Carlo iterations and q match the shared parameters table', () => {
+    expect(H2B_ITERATIONS).toBe(10_000);
+    expect(H2B_Q).toBe(0.05);
+  });
+
+  it('"Time range: 2014-01-01 onward"', () => {
+    expect(H2B_REQUESTED_START_UTC).toBe('2014-01-01T00:00:00.000Z');
+  });
+
+  it('is seeded for reproducibility, and not the same seed as H4c or H3b', () => {
+    expect(Number.isInteger(H2B_SEED)).toBe(true);
+    expect(H2B_SEED).not.toBe(H4C_SEED);
+    expect(H2B_SEED).not.toBe(H3B_SEED);
   });
 });

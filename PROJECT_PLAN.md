@@ -1059,12 +1059,42 @@ server-side proxying of all third-party API calls.
   of that and can land earlier.~~ — **shipped**, see §5.9. It also delivered the
   Gardner-Knopoff windows this phase's declustering needs, already checked
   against the published table. Forecasting itself is not yet built.
-- **Next:** H1b, H2b, H3b, H5 (needs the completeness map above), H4b (blocked
-  — no magnetometer table exists). H1b/H2b/H3b share H4c's
-  threshold→episode→lag-window→Poisson→Monte Carlo shape almost unchanged;
-  proving that shape once, in round 1, was the point of choosing H4c first.
-- **Milestone:** H1–H5 tested and honestly reported. Not yet reached — one of
-  six families run.
+- **H3b (coronal hole high-speed streams) shipped the same day** — proof the
+  pipeline built for H4c actually generalizes: `pipeline/` needed zero
+  changes, only a new `hypotheses/h3b.py` (one trigger, four lag windows,
+  1995 registered start) and widening the request contract's `series` union
+  to include `wind_speed`. Run end-to-end against the real dev database
+  (54,219 raw M5.0+ events since 1995, 27,315 declustered): 1,357 wind-stream
+  onsets (≥500 km/s for ≥6 measured hours) match an independent SQL/JS
+  recomputation exactly; another clean null (ratios 0.985–1.021), consistent
+  with H3b's own "low" mechanism plausibility. The UI generalized alongside
+  it — `AnalyzeShell` now lists whatever the engine's `/v1/hypotheses`
+  reports and lets the reader pick, rather than being hardcoded to one.
+- **H2b (CME hemispheric asymmetry) shipped the same day** — a genuinely
+  different test shape from H4c/H3b, not just new parameters: a hemispheric
+  rate ratio with no Poisson baseline at all, tested against a null built
+  by permuting CME arrival instants rather than thresholding a continuous
+  series. Needed a new `pipeline/subsolar.py` (ported from the magnetopause
+  layer's `subsolarPoint`, pinned against the same reference values) and
+  `pipeline/hemisphere.py`, plus splitting the request contract into
+  `LagWindowRunRequest` and `HemisphereRunRequest` — H2b's parameters have
+  no baseline window to make optional on a shared shape. **Caught and fixed
+  a real performance bug via this round's own end-to-end verification**: an
+  unvectorized per-trigger loop inside the Monte Carlo permutation loop took
+  over 5 minutes at the real 580-trigger count (well past the app's 120s
+  IPC budget); fully vectorizing the window search and hemisphere
+  classification brought it to 17.4 seconds with identical results. Verified
+  against the real dev database (22,201 raw M5.0+ events since 2014, 11,321
+  declustered, 580 direct-impact arrivals matching an independent
+  recomputation exactly) — another clean null. The Analyze-mode hypothesis
+  switch built for H3b needed no changes to support this third, structurally
+  different hypothesis.
+- **Next:** H1b (needs a new GOES XRS 1996-2016 flare ingest — the one
+  hypothesis of the four originally considered that still does), or H5 once
+  the magnitude-of-completeness map above exists. H4b stays blocked — no
+  magnetometer table exists.
+- **Milestone:** H1–H5 tested and honestly reported. Not yet reached — three
+  of six families run.
 
 ### Phase 5 — Astronomical Extension
 - Skyfield + DE440 integration

@@ -18,7 +18,7 @@
  */
 export const CONTRACT_VERSION = 1;
 
-export type HypothesisId = 'H4c';
+export type HypothesisId = 'H4c' | 'H3b' | 'H2b';
 
 export interface HypothesisSummary {
   id: HypothesisId;
@@ -113,8 +113,13 @@ export interface CorrectionInfo {
 export interface MethodInfo {
   nullModel: string;
   tail: string;
-  baselineWindowDays: number;
   iterations: number;
+  /** Exactly one of these two is populated, matching which parameter shape
+   * the hypothesis registers — H4c/H3b's moving Poisson baseline, or H2b's
+   * spatial split. Both stay on one response shape because the UI renders
+   * one generic results panel for every hypothesis. */
+  baselineWindowDays: number | null;
+  spatialSplitDegrees: number | null;
 }
 
 /**

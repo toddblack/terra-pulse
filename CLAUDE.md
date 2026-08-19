@@ -1773,6 +1773,162 @@ convention carry that caveat alone.
 proving that reuse was the point of choosing H4c first), or the
 magnitude-of-completeness map H5 needs.
 
+**H3b shipped the same morning — and the reuse bet paid off exactly as
+argued above.** Coronal hole high-speed streams (OMNI2 wind speed) vs.
+declustered global M5.0+ rate. `hypotheses/h3b.py` is ~90% the same shape as
+`h4c.py` — one trigger instead of two, four lag windows instead of three, a
+1995 registered start instead of 1963 — and needed **zero** changes to
+`pipeline/`. Chosen over H1b (needs a GOES 1996-2016 flare ingest this app
+doesn't have) and H2b (a structurally different hemispheric-split test, not
+a lag-window one) specifically because it was the cleanest test of whether
+round 1's pipeline actually generalized.
+
+- **Registration gap, same category as H4c's.** H3b's trigger definition and
+  gap-handling rule were already fully registered (2026-08-15); what was
+  missing was the baseline window, null model and tail — completed
+  2026-08-19, and **identical to H4c's** (±182.625 days, uniform-redraw,
+  one-sided upper) for the identical reason (the same M5.0+ secular-drift
+  problem), not copied out of laziness. Unlike H4c, no separate "effective
+  span" note was needed: 1995 already sits inside the catalogue's own
+  1970-onward completeness window, so nothing truncates what was registered.
+- **`pipeline/triggers.py`'s `extract_threshold_episodes` needed no changes
+  at all** — `min_consecutive_hours=6` was the exact second use case it was
+  built for on day one. The only genuinely new code is `hypotheses/h3b.py`
+  itself (assembly, ~250 lines, closely mirroring `h4c.py`) plus widening
+  the request contract (`series` literal gains `wind_speed`, `SeriesPayload`
+  gains `windSpeed`) and the registry (one new entry).
+- **Catalogue queries now reach back to `ARCHIVE_START_YEAR` (1970)
+  regardless of hypothesis**, not each hypothesis's own registered start —
+  `apps/desktop/src/main/ipc/analysis.ts`'s `CATALOG_QUERY_START_UTC`.
+  Declustering benefits from full context (a pre-1995 mainshock can still
+  correctly claim a post-1995 aftershock); each hypothesis module filters
+  its own *target* set to its own registered start afterward. Costs H4c
+  nothing (it already filtered to 1970), and gives H3b real declustering
+  context across its own 1994/1995 boundary it wouldn't otherwise have had.
+- **The UI generalized to a hypothesis switch, not two hardcoded panels.**
+  `AnalyzeShell` now fetches the engine's own `/v1/hypotheses` list
+  (`useEngineHypotheses`) and renders a small selector when more than one is
+  implemented; the header, statement and "N tests in this family" line are
+  all derived from whichever is selected, via a `HYPOTHESIS_COPY` lookup
+  that is presentation only (never crosses into the engine request). A
+  first attempt defaulted the selection inside a `useEffect` calling
+  `setState` — React's own lint rule caught it (`set-state-in-effect`): there
+  was nothing to *subscribe* to, so it was a plain derived value
+  (`explicitSelection ?? implementedHypotheses[0]?.id`) computed in the
+  render body, not a sync.
+- **End-to-end verified the same way H4c was**, against the same real dev
+  database: 54,219 raw M5.0+ events (1995+), 27,315 declustered, 1,357 wind
+  stream onsets (≥500 km/s for ≥6 measured hours) — matching an independent
+  SQL/JS recomputation of the same gap-handling rule exactly. Expected daily
+  rate (~2.357/day) matches the catalogue's own global declustered rate
+  (~2.368/day) to within 0.5%. Clean null again (ratios 0.985–1.021),
+  consistent with H3b's own registered "low" mechanism plausibility. Cost:
+  ~37s, same order as H4c's ~30s — the permutation loop, not declustering,
+  is still the bottleneck, and it's the same one both hypotheses share.
+- **Next:** H1b or H2b are what's left of the four originally considered;
+  H5 still needs the completeness map.
+
+**H2b shipped the same day, and it is the one that actually tests whether
+this design generalizes.** H4c and H3b are both "threshold on a series →
+episode → lag-window ratio → moving Poisson baseline → Monte Carlo" — H2b
+is a hemispheric rate ratio with **no baseline at all**, its trigger set is
+discrete CME arrivals rather than anything thresholded, and its null comes
+purely from permuting arrival instants. Chosen over H1b specifically because
+it needed zero new ingest (arrival time, glancing-blow and minor-impact
+flags are already stored) while still exercising a structurally different
+part of the pipeline — H1b would only have proven more parameter reuse on
+the same shape H3b already proved.
+
+- **The request contract had to split, not grow more optional fields.**
+  H2b's parameters genuinely have no `baselineWindowDays` — there is no
+  baseline in this test at all — so widening the existing
+  `AnalysisParameters` model with nullable fields would have reopened
+  exactly the "field present but silently unused" gap non-negotiable #3
+  exists to close. `contracts.py` now has `LagWindowRunRequest` (H4c/H3b)
+  and `HemisphereRunRequest` (H2b) as genuinely separate, fully-required
+  models; `api/main.py` reads `hypothesisId` from the raw body first, then
+  validates the rest against that hypothesis's own model, rather than
+  FastAPI validating one shared shape automatically. Same single
+  `/v1/analysis/run` URL and same typed-422 behaviour either way — the
+  dispatch moved, not the contract surface a caller sees.
+- **`pipeline/subsolar.py` is a straight port of the magnetopause layer's
+  `subsolarPoint`** (`apps/desktop/src/renderer/src/layers/magnetopause.ts`),
+  not a re-derivation — same reasoning as porting Gardner-Knopoff rather
+  than re-implementing it from the paper. Pinned against the exact same
+  reference instants that TS function's own test suite uses (solstice/
+  equinox declination, the ~15°/hour westward drift, legal-longitude
+  bounds) rather than a fresh tolerance, so a divergence between the two
+  independent implementations would fail a test on whichever side drifted.
+- **"Subsolar longitude ±90°" is a longitude band, not a 3D angular
+  distance from the subsolar point** — completed into H2b's registration
+  alongside the other implied parameters (null model, tail, the inherited
+  M5.0+ floor). Latitude never enters the classification. This is the
+  literal reading of "subsolar **longitude**", it splits the globe exactly
+  in half by construction regardless of season (a true angular cap from the
+  subsolar *point* would shrink and grow with solar declination), and it's
+  the conventional approximation for a day/night terminator test.
+- **A real performance bug, caught by this round's own end-to-end
+  verification against the real database, not by a user report.** The
+  first working version of `pipeline/hemisphere.py` called
+  `subsolar_longitude_deg` and `np.searchsorted` once *per trigger* inside
+  a Python loop, and that function runs once per Monte Carlo permutation —
+  10,000 times per lag window. At the real direct-impact trigger count
+  (580, measured against the dev database) that is **>11 million
+  individual numpy calls per lag window**. Measured: it exceeded 5 minutes
+  and tripped the verification client's own HTTP timeout before finishing
+  — nowhere near the app's 120s IPC budget. Vectorizing the subsolar call
+  alone (one call for all 580 triggers instead of 580 calls) wasn't
+  enough; the fix had to also vectorize the window search
+  (`np.searchsorted` accepts a vector of query points and returns a vector
+  of results in one call) and the near/far classification, flattening
+  every trigger's matched window into one `(target_index, trigger_index)`
+  pair array via `np.repeat` rather than looping. Same "hoist the per-row
+  work" lesson the IGRF field grid's `sampleFieldGrid` already
+  demonstrates, applied here to a different kind of per-row cost (search +
+  classification, not trigonometry) and a much larger multiplier (permutation
+  count × trigger count, not grid cells). **Result: >5 minutes (timed out)
+  → 17.4 seconds** on the real 92k-row catalogue and 580 real triggers,
+  correctness unchanged (every existing pytest, including the planted-excess
+  and determinism tests, passed before and after with identical values).
+  **Any future hypothesis whose `statistic_fn` loops over triggers inside
+  the Monte Carlo loop needs this same check before it's called done** —
+  the pattern is invisible on the small synthetic test fixtures (tens of
+  triggers) and only shows up at real data volume.
+- **End-to-end verified against the real dev database**: 22,201 raw M5.0+
+  events since 2014, 11,321 declustered, 580 direct-impact CME arrivals
+  (matching an independent SQL/JS recomputation of the same
+  `isDirectImpact` filter exactly). Another clean null (ratios 0.925–1.063,
+  nothing rejected), consistent with H2b's own registered "low" mechanism
+  plausibility. The near+far totals per window are close to what the
+  catalogue's own declustered rate predicts by back-of-envelope (~1,427
+  expected vs. 1,345 observed for the 24h window), which is the same kind
+  of sanity check H4c's and H3b's verifications used.
+- **The Analyze-mode hypothesis switch built for H3b needed zero changes**
+  to support a third, structurally different hypothesis — `AnalyzeShell`
+  already sourced its hypothesis list from the engine's own
+  `/v1/hypotheses` and rendered whichever was selected generically. The one
+  UI change was making `MethodInfo.baselineWindowDays` nullable (H2b has
+  none) and rendering `spatialSplitDegrees` alongside it when present —
+  the registered-parameters block already only shows fields that exist.
+- **Next:** H1b remains the one hypothesis needing new ingest (GOES XRS
+  1996-2016 flares); H5 needs the completeness map.
+
+**Requested, not yet built: tabbed Analyze results.** Right now
+`AnalyzeShell` holds exactly one `AnalysisResult` (`useAnalysisStore`), so
+running a second hypothesis replaces whatever the first one showed —
+switching the hypothesis selector away and back loses the result rather than
+restoring it. The user asked (2026-08-19) whether the top hypothesis switch
+should behave like real tabs instead: each hypothesis keeps its own
+last-run result live underneath it, so switching between H4c/H3b/H2b (and
+later H1b/H5) shows whichever result that tab last produced rather than an
+empty "not run yet" state. Not designed in detail yet — likely shape is
+`useAnalysisStore` keyed by hypothesis id (`Record<HypothesisId,
+AnalysisResult | null>` plus a per-hypothesis `running`/`error`) rather than
+a single slot, with the tab strip's existing `implementedHypotheses.map`
+loop staying mostly as-is. Confirm the exact interaction (does switching
+tabs cancel an in-flight run on the tab being left, or let it finish in the
+background and land whenever it resolves?) before implementing.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

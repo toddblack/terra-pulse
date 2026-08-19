@@ -10,14 +10,11 @@ from __future__ import annotations
 
 import platform
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 
-from terra_pulse_engine.api.contracts import (
-    AnalysisResult,
-    AnalysisRunRequest,
-    HealthResponse,
-    HypothesisSummary,
-)
+from terra_pulse_engine.api.contracts import AnalysisResult, HealthResponse, HypothesisSummary
 from terra_pulse_engine.api.errors import unhandled_exception_handler
 from terra_pulse_engine.hypotheses import REGISTRY
 from terra_pulse_engine.version import CONTRACT_VERSION, ENGINE_VERSION
@@ -49,6 +46,39 @@ def hypotheses() -> list[HypothesisSummary]:
 
 
 @app.post("/v1/analysis/run", response_model=AnalysisResult)
-def run_analysis(request: AnalysisRunRequest) -> AnalysisResult:
-    entry = REGISTRY[request.hypothesis_id]
+async def run_analysis(raw_request: Request) -> AnalysisResult:
+    """One URL for every hypothesis, still — but each hypothesis family has
+    its own request model (`LagWindowRunRequest`, `HemisphereRunRequest`,
+    ...; see contracts.py), because they genuinely carry different
+    parameters: H2b has no baseline window, H4c/H3b have no spatial split.
+    Cramming both into one model would mean marking fields optional across
+    families, which reopens exactly the "field present but silently unused"
+    gap non-negotiable #3 exists to close.
+
+    So this reads the hypothesis id first, then validates the *rest* of the
+    body against that hypothesis's own model — the same 422-on-anything-else
+    behaviour a single typed parameter would have given FastAPI automatically,
+    reproduced by hand for the one field (`hypothesisId`) that has to be read
+    before the rest of the body means anything.
+    """
+    body = await raw_request.json()
+    hypothesis_id = body.get("hypothesisId") if isinstance(body, dict) else None
+    entry = REGISTRY.get(hypothesis_id) if isinstance(hypothesis_id, str) else None
+    if entry is None:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "value_error",
+                    "loc": ("body", "hypothesisId"),
+                    "msg": f"unknown or unimplemented hypothesisId: {hypothesis_id!r}",
+                    "input": hypothesis_id,
+                }
+            ]
+        )
+
+    try:
+        request = entry["request_model"].model_validate(body)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+
     return entry["run"](request)

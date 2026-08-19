@@ -1,6 +1,6 @@
 /**
- * H4c's registered parameters, as typed constants — the structural half of
- * non-negotiable #3 ("no free parameters chosen after seeing results").
+ * Registered hypothesis parameters, as typed constants — the structural half
+ * of non-negotiable #3 ("no free parameters chosen after seeing results").
  *
  * Main assembles the analysis engine's request from **only** these values
  * (`apps/desktop/src/main/ipc/analysis.ts`); the renderer sends nothing but a
@@ -8,26 +8,26 @@
  * UI can alter a threshold, a lag window, or the magnitude floor — that is
  * what makes "no free parameters" true of the code, not just of intent.
  *
- * Every value here is transcribed from `HYPOTHESES.md`'s H4c entry, including
- * the five fields completed 2026-08-18 (episode definition, baseline window,
- * null model, tail, effective span) before the first run. If that entry ever
- * changes, it must change as a new registered entry (rule 3) — H4c becomes
- * H4d — and this file follows, it does not lead.
+ * Every value here is transcribed from `HYPOTHESES.md`. If a registered entry
+ * ever changes, it must change as a new registered entry (rule 3) — this file
+ * follows the document, it does not lead.
  */
 
 import { ARCHIVE_START_YEAR } from './archive';
 
-/** HYPOTHESES.md H4c: "Elevated planetary geomagnetic activity is followed
- * by an elevated global M5.0+ rate." */
-export const H4C_TARGET_MIN_MAGNITUDE = 5.0;
-
-export interface H4cTriggerDefinition {
+/** Shared shape for a threshold trigger, across every hypothesis that
+ * registers one this way (H4c, H3b so far). */
+export interface TriggerDefinition {
   id: string;
-  series: 'kp' | 'dst';
+  series: 'kp' | 'dst' | 'wind_speed';
   comparison: '>=' | '<=';
   threshold: number;
   minConsecutiveHours: number;
 }
+
+/** HYPOTHESES.md H4c: "Elevated planetary geomagnetic activity is followed
+ * by an elevated global M5.0+ rate." */
+export const H4C_TARGET_MIN_MAGNITUDE = 5.0;
 
 /**
  * HYPOTHESES.md H4c: "Trigger threshold: Kp >= 6 or Dst <= -100 nT
@@ -35,7 +35,7 @@ export interface H4cTriggerDefinition {
  * per the completed "Episode definition" field — H4c registers no minimum
  * duration, unlike H3b's six-hour requirement.
  */
-export const H4C_TRIGGERS: readonly H4cTriggerDefinition[] = [
+export const H4C_TRIGGERS: readonly TriggerDefinition[] = [
   { id: 'kp>=6', series: 'kp', comparison: '>=', threshold: 6, minConsecutiveHours: 1 },
   { id: 'dst<=-100', series: 'dst', comparison: '<=', threshold: -100, minConsecutiveHours: 1 },
 ];
@@ -98,3 +98,118 @@ export const H4C_SEED = 20260818;
 /** Confirms the engine's target floor matches where the app's own archive
  * becomes globally complete, rather than a value chosen independently of it. */
 export const H4C_EFFECTIVE_START_YEAR = ARCHIVE_START_YEAR;
+
+// ---------------------------------------------------------------------------
+// H3b — coronal hole high-speed streams (HYPOTHESES.md, registered 2026-08-15,
+// completed 2026-08-19). Built second, deliberately, to prove the pipeline
+// built for H4c generalizes: only the trigger, lag windows and start year
+// differ below — everything else (declustering, iterations, q,
+// registered-matrix size) is the same registered choice reused, not
+// reinvented, because it's the identical mitigation for the identical
+// secular-drift problem.
+// ---------------------------------------------------------------------------
+
+/** HYPOTHESES.md H3b: "Coronal hole high-speed stream arrivals are followed
+ * by an elevated global M5.0+ rate." */
+export const H3B_TARGET_MIN_MAGNITUDE = 5.0;
+
+/**
+ * HYPOTHESES.md H3b: "Trigger definition: Stream onset = sustained speed >
+ * 500 km/s for >= 6h." `minConsecutiveHours: 6` is the registered gap-handling
+ * rule itself, not display emphasis — unlike `FAST_WIND_THRESHOLD` in
+ * `space-weather.ts`, which numerically coincides at 500 but is declared
+ * independently for exactly the reason `hypotheses.test.ts` pins.
+ */
+export const H3B_TRIGGERS: readonly TriggerDefinition[] = [
+  { id: 'wind>500', series: 'wind_speed', comparison: '>=', threshold: 500, minConsecutiveHours: 6 },
+];
+
+/** HYPOTHESES.md H3b: "Lag windows: 0-24h, 24-48h, 48-72h, 3-5d (4 windows)." */
+export const H3B_LAG_WINDOWS_HOURS: readonly (readonly [number, number])[] = [
+  [0, 24],
+  [24, 48],
+  [48, 72],
+  [72, 120],
+];
+
+export const H3B_DECLUSTERING = 'gardner-knopoff' as const;
+
+/** HYPOTHESES.md H3b, "Baseline window" (completed 2026-08-19) — the same
+ * registered mitigation as H4c's, reused for the identical secular-drift
+ * reason, not shared code (the two hypothesis modules stay independent). */
+export const H3B_BASELINE_WINDOW_DAYS = 365.25;
+
+export const H3B_NULL_MODEL = 'uniform-redraw' as const;
+
+export const H3B_TAIL = 'upper' as const;
+
+export const H3B_ITERATIONS = 10_000;
+
+export const H3B_Q = 0.05;
+
+/**
+ * HYPOTHESES.md H3b: "Time range: 1995-01-01 onward." Unlike H4c, this needs
+ * no separate effective-span note — 1995 already sits inside the M5.0+
+ * catalogue's own 1970-onward completeness window (see the "Effective span"
+ * entry completed for H3b alongside H4c's).
+ */
+export const H3B_REQUESTED_START_UTC = '1995-01-01T00:00:00.000Z';
+
+export const H3B_SEED = 20260819;
+
+// ---------------------------------------------------------------------------
+// H2b — hemispheric asymmetry at CME arrival (HYPOTHESES.md, registered
+// 2026-08-17, completed 2026-08-19). A genuinely different test shape from
+// H4c/H3b — no Poisson baseline, a hemispheric rate ratio instead of a
+// lag-window one — which is exactly why it was chosen as the second
+// hypothesis after H3b: it exercises a different part of the pipeline
+// design, not just new parameters on the same shape.
+// ---------------------------------------------------------------------------
+
+/**
+ * HYPOTHESES.md H2b: "Target set: Declustered M5.0+ global — inherited from
+ * H1b by direct reference in this hypothesis's own statement." Same value as
+ * every other hypothesis so far, declared independently per HYPOTHESES.md's
+ * own note on why an inherited parameter still needs stating explicitly.
+ */
+export const H2B_TARGET_MIN_MAGNITUDE = 5.0;
+
+/**
+ * HYPOTHESES.md H2b, "Spatial split" (completed 2026-08-19): a longitude
+ * band, not a 3D angular distance from the subsolar point — see that
+ * entry's own note on why latitude never enters the classification.
+ */
+export const H2B_SPATIAL_SPLIT_DEGREES = 90;
+
+/** HYPOTHESES.md H2b: "Lag windows: 0-24h, 24-48h from arrival (2 windows)." */
+export const H2B_LAG_WINDOWS_HOURS: readonly (readonly [number, number])[] = [
+  [0, 24],
+  [24, 48],
+];
+
+export const H2B_DECLUSTERING = 'gardner-knopoff' as const;
+
+/** HYPOTHESES.md H2b, "Null model" (completed 2026-08-19): arrival instants
+ * redrawn uniformly without replacement from every hour in the analysis
+ * span — there is no threshold/gap-handling rule here the way H4c/H3b have,
+ * so (unlike theirs) every hour is an equally valid draw. */
+export const H2B_NULL_MODEL = 'uniform-redraw' as const;
+
+/** HYPOTHESES.md H2b, "Tail" (completed 2026-08-19): one-sided upper. */
+export const H2B_TAIL = 'upper' as const;
+
+export const H2B_ITERATIONS = 10_000;
+
+export const H2B_Q = 0.05;
+
+/**
+ * HYPOTHESES.md H2b: "Time range: 2014-01-01 onward." The entry's own text
+ * flags this as "the weakest claim here" — inherited by analogy from the
+ * flare record's verified 2014 completeness, not independently checked for
+ * WSA-ENLIL coverage.
+ */
+export const H2B_REQUESTED_START_UTC = '2014-01-01T00:00:00.000Z';
+
+/** H3b was also completed 2026-08-19 — the trailing `01` keeps the two seeds
+ * distinct rather than colliding on the same date. */
+export const H2B_SEED = 2026081901;

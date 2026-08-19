@@ -20,6 +20,78 @@
   margin-bottom: 1rem;
 }
 
+/* Which hypothesis is selected — same visual language as the top-level
+   Explore/Analyze ModeSwitch (filled = active, flat = not), scaled down
+   since this lives inside a panel rather than floating over the globe. */
+.hypothesisSwitch {
+  display: inline-flex;
+  padding: 0.15rem;
+  margin-bottom: 0.6rem;
+  border-radius: 0.375rem;
+  background-color: rgb(30 41 59 / 60%);
+}
+
+.hypothesisSwitch button {
+  padding: 0.25rem 0.65rem;
+  border: none;
+  border-radius: 0.3rem;
+  background: none;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.hypothesisInactive {
+  color: rgb(148 163 184);
+}
+
+.hypothesisInactive:hover {
+  color: rgb(203 213 225);
+}
+
+.hypothesisActive {
+  background-color: rgb(56 189 248 / 90%);
+  color: rgb(15 23 42);
+}
+
+/* Background-run status, not a verdict, so unlike the histogram/table these
+   get their own hue — the same reasoning that already colours .error and
+   .engineDetail red. A dot rather than text because it sits inside a tab
+   already carrying a 4-character id. */
+.tabRunning,
+.tabError {
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  margin-left: 0.35rem;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.tabRunning {
+  background-color: rgb(56 189 248 / 90%);
+  animation: tab-running-pulse 1.2s ease-in-out infinite;
+}
+
+.hypothesisActive .tabRunning {
+  background-color: rgb(15 23 42);
+}
+
+.tabError {
+  background-color: rgb(248 113 113 / 90%);
+}
+
+@keyframes tab-running-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 .title {
   margin: 0 0 0.35rem;
   color: rgb(226 232 240);

@@ -1,10 +1,38 @@
 import { useState } from 'react';
-import type { AnalysisTestResult } from '@terra-pulse/schema';
+import type { AnalysisTestResult, HypothesisId } from '@terra-pulse/schema';
 import { useAnalysisStore } from './useAnalysisStore';
 import { useEngineStatus } from './useEngineStatus';
+import { useEngineHypotheses } from './useEngineHypotheses';
 import { layoutNullHistogram, observedFraction } from './null-histogram';
 import { formatCount, formatPValue, formatRatio } from './result-format';
 import styles from './AnalyzeShell.module.css';
+
+/**
+ * UI-only copy — the human-readable statement and registration date, not a
+ * registered *parameter*. Nothing here reaches the engine; it exists purely
+ * to label whichever hypothesis is selected, the same way `layer-guides.ts`
+ * carries explanatory prose that has no bearing on what a layer actually
+ * draws. Sourced from `HYPOTHESES.md` verbatim.
+ */
+const HYPOTHESIS_COPY: Record<HypothesisId, { title: string; statement: string; registeredDate: string }> = {
+  H4c: {
+    title: 'H4c — Global geomagnetic disturbance',
+    statement:
+      'Elevated planetary geomagnetic activity is followed by an elevated global M5.0+ earthquake rate.',
+    registeredDate: '2026-08-14',
+  },
+  H3b: {
+    title: 'H3b — Coronal hole high-speed streams',
+    statement: 'Coronal hole high-speed stream arrivals are followed by an elevated global M5.0+ rate.',
+    registeredDate: '2026-08-15',
+  },
+  H2b: {
+    title: 'H2b — CME hemispheric asymmetry',
+    statement:
+      'Any H1b effect is stronger on the hemisphere facing the Sun at CME arrival time than on the far hemisphere.',
+    registeredDate: '2026-08-17',
+  },
+};
 
 /**
  * The app's first non-Explore surface (§Phase 4). `App.tsx` mounts this only
@@ -17,27 +45,82 @@ import styles from './AnalyzeShell.module.css';
  * `HYPOTHESES.md` rule 5 — so there is deliberately no green/red pass-fail
  * colouring anywhere below: a row that clears q=0.05 looks like data, not
  * like a win.
+ *
+ * **Generic across hypotheses, not H4c-specific**, since H3b landed
+ * alongside it: the selector below reflects whatever the engine actually
+ * implements (`useEngineHypotheses`), not a hardcoded list, and the header
+ * describes whichever one is currently selected — proof the "the pipeline
+ * generalizes" bet paid off on the UI side too, not just the engine's.
  */
 export function AnalyzeShell() {
   const engineStatus = useEngineStatus();
-  const result = useAnalysisStore((state) => state.result);
-  const running = useAnalysisStore((state) => state.running);
-  const error = useAnalysisStore((state) => state.error);
+  const implementedHypotheses = useEngineHypotheses();
+  const byHypothesis = useAnalysisStore((state) => state.byHypothesis);
   const run = useAnalysisStore((state) => state.run);
   const [selectedTestId, setSelectedTestId] = useState<string | null>(null);
+  // `null` means "nothing explicitly picked yet" — the *effective* selection
+  // below then falls back to whichever the engine lists first, computed
+  // during render rather than synced via an effect (there's nothing to
+  // subscribe to here; this is a plain derived value).
+  const [explicitHypothesisId, setExplicitHypothesisId] = useState<HypothesisId | null>(null);
+  const selectedHypothesisId = explicitHypothesisId ?? implementedHypotheses[0]?.id ?? null;
+
+  // Each tab keeps its own last result live underneath it (`useAnalysisStore`
+  // is keyed by hypothesis) — switching tabs never clears a result and never
+  // touches a run still in flight on another tab.
+  const selectedRun = selectedHypothesisId ? byHypothesis[selectedHypothesisId] : null;
+  const result = selectedRun?.result ?? null;
+  const running = selectedRun?.running ?? false;
+  const error = selectedRun?.error ?? null;
 
   const selectedTest =
     result?.tests.find((test) => test.id === selectedTestId) ?? result?.tests[0] ?? null;
+  const selectedSummary = implementedHypotheses.find((h) => h.id === selectedHypothesisId) ?? null;
+  const selectedCopy = selectedHypothesisId ? HYPOTHESIS_COPY[selectedHypothesisId] : null;
 
   return (
     <div className={styles.panel}>
       <header className={styles.header}>
-        <h2 className={styles.title}>H4c — Global geomagnetic disturbance</h2>
-        <p className={styles.statement}>
-          Elevated planetary geomagnetic activity is followed by an elevated global M5.0+
-          earthquake rate.
-        </p>
-        <p className={styles.meta}>Registered 2026-08-14 · 6 tests in this family</p>
+        {implementedHypotheses.length > 1 && (
+          <div className={styles.hypothesisSwitch} role="tablist" aria-label="Hypothesis">
+            {implementedHypotheses.map((h) => {
+              const tabRun = byHypothesis[h.id];
+              return (
+                <button
+                  key={h.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={h.id === selectedHypothesisId}
+                  className={h.id === selectedHypothesisId ? styles.hypothesisActive : styles.hypothesisInactive}
+                  onClick={() => {
+                    setExplicitHypothesisId(h.id);
+                    setSelectedTestId(null);
+                  }}
+                >
+                  {h.id}
+                  {/* A run left going in the background has no other visible
+                      trace once you've switched away from its tab — this is
+                      what tells you it's still working, or that it failed
+                      while you were looking elsewhere. */}
+                  {tabRun.running && (
+                    <span className={styles.tabRunning} aria-label="running" title="Running…" />
+                  )}
+                  {!tabRun.running && tabRun.error && (
+                    <span className={styles.tabError} aria-label="error" title={tabRun.error} />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <h2 className={styles.title}>{selectedCopy?.title ?? 'Loading hypotheses…'}</h2>
+        {selectedCopy && <p className={styles.statement}>{selectedCopy.statement}</p>}
+        {selectedCopy && (
+          <p className={styles.meta}>
+            Registered {selectedCopy.registeredDate}
+            {selectedSummary && ` · ${String(selectedSummary.testsInFamily)} tests in this family`}
+          </p>
+        )}
       </header>
 
       {engineStatus.state !== 'ready' && (
@@ -59,12 +142,12 @@ export function AnalyzeShell() {
       <button
         type="button"
         className={styles.runButton}
-        disabled={engineStatus.state !== 'ready' || running}
+        disabled={engineStatus.state !== 'ready' || running || selectedHypothesisId === null}
         onClick={() => {
-          void run('H4c');
+          if (selectedHypothesisId) void run(selectedHypothesisId);
         }}
       >
-        {running ? 'Running…' : 'Run H4c'}
+        {running ? 'Running…' : selectedHypothesisId ? `Run ${selectedHypothesisId}` : 'Run'}
       </button>
 
       {error && <p className={styles.error}>{error}</p>}
@@ -72,14 +155,29 @@ export function AnalyzeShell() {
       {result && (
         <>
           <section>
-            <h3 className={styles.sectionHeading}>Registered parameters</h3>
+            <h3 className={styles.sectionHeading}>
+              Registered parameters — {result.hypothesisId}
+            </h3>
             <dl className={styles.paramList}>
               <dt>Target floor</dt>
               <dd>M{result.catalog.minMagnitude.toFixed(1)}+</dd>
               <dt>Declustering</dt>
               <dd>{result.catalog.declustering}</dd>
-              <dt>Baseline window</dt>
-              <dd>±{(result.method.baselineWindowDays / 2).toFixed(1)} days</dd>
+              {/* Exactly one of these two is populated, matching which
+                  parameter shape the hypothesis registers — see
+                  MethodInfo's own doc in packages/schema/src/analysis.ts. */}
+              {result.method.baselineWindowDays !== null && (
+                <>
+                  <dt>Baseline window</dt>
+                  <dd>±{(result.method.baselineWindowDays / 2).toFixed(1)} days</dd>
+                </>
+              )}
+              {result.method.spatialSplitDegrees !== null && (
+                <>
+                  <dt>Spatial split</dt>
+                  <dd>±{result.method.spatialSplitDegrees}° longitude</dd>
+                </>
+              )}
               <dt>Null model</dt>
               <dd>{result.method.nullModel}</dd>
               <dt>Tail</dt>

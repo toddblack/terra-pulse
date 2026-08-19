@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from terra_pulse_engine.api.contracts import AnalysisResult, AnalysisRunRequest
+from terra_pulse_engine.api.contracts import AnalysisResult, HemisphereRunRequest, LagWindowRunRequest
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -48,12 +48,13 @@ def _valid_request_dict() -> dict:
             "timeMs": [0, 3_600_000],
             "kp": [3.0, None],
             "dst": [None, -20.0],
+            "windSpeed": [400.0, None],
         },
     }
 
 
 def test_valid_request_parses() -> None:
-    request = AnalysisRunRequest.model_validate(_valid_request_dict())
+    request = LagWindowRunRequest.model_validate(_valid_request_dict())
     assert request.hypothesis_id == "H4c"
     assert request.parameters.baseline_window_days == 365.25
 
@@ -62,7 +63,7 @@ def test_missing_baseline_window_days_is_rejected() -> None:
     payload = _valid_request_dict()
     del payload["parameters"]["baselineWindowDays"]
     with pytest.raises(ValidationError):
-        AnalysisRunRequest.model_validate(payload)
+        LagWindowRunRequest.model_validate(payload)
 
 
 def test_unknown_field_is_rejected() -> None:
@@ -71,7 +72,7 @@ def test_unknown_field_is_rejected() -> None:
     payload = _valid_request_dict()
     payload["parameters"]["extraField"] = 123
     with pytest.raises(ValidationError):
-        AnalysisRunRequest.model_validate(payload)
+        LagWindowRunRequest.model_validate(payload)
 
 
 def test_implausible_epoch_is_rejected() -> None:
@@ -81,35 +82,102 @@ def test_implausible_epoch_is_rejected() -> None:
     year_2914_ms = 29_798_000_000_000  # well past MAX_PLAUSIBLE_EPOCH_MS
     payload["catalog"]["timeMs"] = [0, year_2914_ms]
     with pytest.raises(ValidationError):
-        AnalysisRunRequest.model_validate(payload)
+        LagWindowRunRequest.model_validate(payload)
 
 
 def test_non_monotonic_catalog_times_are_rejected() -> None:
     payload = _valid_request_dict()
     payload["catalog"]["timeMs"] = [1000, 0]
     with pytest.raises(ValidationError):
-        AnalysisRunRequest.model_validate(payload)
+        LagWindowRunRequest.model_validate(payload)
 
 
 def test_out_of_range_latitude_is_rejected() -> None:
     payload = _valid_request_dict()
     payload["catalog"]["latitude"] = [100.0, 20.0]
     with pytest.raises(ValidationError):
-        AnalysisRunRequest.model_validate(payload)
+        LagWindowRunRequest.model_validate(payload)
 
 
 def test_mismatched_array_lengths_are_rejected() -> None:
     payload = _valid_request_dict()
     payload["catalog"]["latitude"] = [10.0]  # now length 1, others length 2
     with pytest.raises(ValidationError):
-        AnalysisRunRequest.model_validate(payload)
+        LagWindowRunRequest.model_validate(payload)
 
 
 def test_null_series_values_are_accepted() -> None:
     payload = _valid_request_dict()
-    request = AnalysisRunRequest.model_validate(payload)
+    request = LagWindowRunRequest.model_validate(payload)
     assert request.series.kp[1] is None
     assert request.series.dst[0] is None
+
+
+H2B_VALID_PARAMETERS = {
+    "targetMinMagnitude": 5.0,
+    "spatialSplitDegrees": 90,
+    "lagWindowsHours": [[0, 24], [24, 48]],
+    "declustering": "gardner-knopoff",
+    "nullModel": "uniform-redraw",
+    "tail": "upper",
+    "iterations": 100,
+    "seed": 1,
+    "q": 0.05,
+    "requestedStartUtc": "2014-01-01T00:00:00.000Z",
+    "registeredMatrixTests": 19,
+}
+
+
+def _valid_h2b_request_dict() -> dict:
+    return {
+        "contractVersion": 1,
+        "hypothesisId": "H2b",
+        "parameters": copy.deepcopy(H2B_VALID_PARAMETERS),
+        "catalog": {
+            "timeMs": [0, 1000],
+            "latitude": [10.0, 20.0],
+            "longitude": [30.0, 40.0],
+            "magnitude": [5.0, 6.0],
+        },
+        "cmeArrivalTimesMs": [0, 3_600_000],
+    }
+
+
+def test_valid_h2b_request_parses() -> None:
+    request = HemisphereRunRequest.model_validate(_valid_h2b_request_dict())
+    assert request.hypothesis_id == "H2b"
+    assert request.parameters.spatial_split_degrees == 90
+
+
+def test_h2b_has_no_baseline_window_field_at_all() -> None:
+    # Unlike H4c/H3b, this hypothesis genuinely has no Poisson baseline —
+    # the field must not silently exist as an ignored extra either, since
+    # extra="forbid" would catch it if someone tried to sneak one in.
+    payload = _valid_h2b_request_dict()
+    payload["parameters"]["baselineWindowDays"] = 365.25
+    with pytest.raises(ValidationError):
+        HemisphereRunRequest.model_validate(payload)
+
+
+def test_h2b_missing_spatial_split_degrees_is_rejected() -> None:
+    payload = _valid_h2b_request_dict()
+    del payload["parameters"]["spatialSplitDegrees"]
+    with pytest.raises(ValidationError):
+        HemisphereRunRequest.model_validate(payload)
+
+
+def test_h2b_implausible_arrival_epoch_is_rejected() -> None:
+    payload = _valid_h2b_request_dict()
+    payload["cmeArrivalTimesMs"] = [0, 29_798_000_000_000]  # the real 2914 case
+    with pytest.raises(ValidationError):
+        HemisphereRunRequest.model_validate(payload)
+
+
+def test_h2b_non_monotonic_arrival_times_are_rejected() -> None:
+    payload = _valid_h2b_request_dict()
+    payload["cmeArrivalTimesMs"] = [1000, 0]
+    with pytest.raises(ValidationError):
+        HemisphereRunRequest.model_validate(payload)
 
 
 def test_response_fixture_round_trips() -> None:
