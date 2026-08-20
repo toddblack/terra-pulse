@@ -65,6 +65,20 @@ contextBridge.exposeInMainWorld('terraPulse', {
     },
 
     /**
+     * The alert already announced but not yet dismissed, or null.
+     *
+     * The companion to `onLargeEvent`, and the reason both exist: the launch
+     * poll fires before the subscription above is registered, so the first
+     * alert of a session is pushed to nobody. Asked for on mount, exactly like
+     * `missed()` below.
+     */
+    currentAlert: (): Promise<EarthquakeEvent | null> =>
+      ipcRenderer.invoke('earthquakes:current-alert'),
+
+    /** Tells main the alert was dismissed, so `currentAlert` stops offering it. */
+    dismissAlert: (): Promise<void> => ipcRenderer.invoke('earthquakes:dismiss-alert'),
+
+    /**
      * What arrived while the app was shut, or null if nothing did.
      *
      * Pulled rather than pushed: main captures this once at startup and the

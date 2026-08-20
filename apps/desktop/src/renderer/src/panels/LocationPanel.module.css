@@ -1,13 +1,10 @@
-/* Top-centre, below the transient banner zone.
-   `LargeEventBanner` sits at top: 1rem and `MissedEventsPanel` at 4.25rem, both
-   centred. 7.5rem clears them, so a large event arriving while this is open
-   stacks above it rather than landing on top of it. */
+/* Placed by `.topCentreColumn` in `App.module.css`, which is what actually
+   makes "a large event arriving while this is open stacks above it" true. It
+   used to be a 7.5rem offset picked to clear a banner at 1rem and a digest at
+   4.25rem — three coupled constants, and the arithmetic broke as soon as one
+   of them moved. */
 
 .panel {
-  position: absolute;
-  top: 7.5rem;
-  left: 50%;
-  z-index: 10;
   display: flex;
   flex-direction: column;
   width: 20rem;
@@ -20,7 +17,6 @@
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 45%);
   color: rgb(226 232 240);
   font-size: 0.8125rem;
-  transform: translateX(-50%);
 }
 
 .header {

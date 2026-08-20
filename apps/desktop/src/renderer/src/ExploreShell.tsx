@@ -75,6 +75,32 @@ export function ExploreShell() {
     });
   }, [announceLargeEvent]);
 
+  // The other half of `onLargeEvent` above, and not redundant with it.
+  //
+  // Main's first poll fires immediately at launch, while the subscription
+  // above is registered in an effect that runs after the renderer bundle and
+  // Cesium have loaded — so main wins that race and the launch alert is
+  // pushed to nobody. Found by hitting it: the OS notification appeared and
+  // the in-app banner did not.
+  //
+  // That is the alert least worth losing. `ALERT_MAX_AGE_MS` is four hours
+  // precisely so that opening the app shortly after a large event still
+  // announces it, and opening the app *is* the launch poll.
+  //
+  // Asking after subscribing means an alert arriving between the two is
+  // announced twice — both times with the same event, so `announceLargeEvent`
+  // is idempotent and nothing flickers.
+  useEffect(() => {
+    window.terraPulse.earthquakes
+      .currentAlert()
+      .then((event) => {
+        if (event) announceLargeEvent(event);
+      })
+      .catch((error: unknown) => {
+        console.error('Could not read the current alert', error);
+      });
+  }, [announceLargeEvent]);
+
   // Asked for once on mount. Main fixed this value at startup, before the
   // first poll moved the seen-through watermark, so it is safe to request
   // whenever the renderer happens to be ready.
@@ -96,8 +122,14 @@ export function ExploreShell() {
         <HistoricalDataPanel />
         <FaultProbeToggle />
       </div>
-      <LargeEventBanner />
-      <MissedEventsPanel />
+      {/* Order in the column is reading order, top to bottom: what just
+          happened, what you missed, then whatever you clicked. */}
+      <div className={styles.topCentreColumn}>
+        <LargeEventBanner />
+        <MissedEventsPanel />
+        <LocationPanel />
+        <SolarEventPanel />
+      </div>
       <LayerPanel />
       <TimeScrubber />
       <div className={styles.rightColumn}>
@@ -105,8 +137,6 @@ export function ExploreShell() {
         <DepthLegend />
       </div>
       <EarthquakeInspector />
-      <LocationPanel />
-      <SolarEventPanel />
       {/* Last, so it draws above every panel — it tracks the pointer and
           must never be occluded by the chrome it passes over. */}
       <HoverTooltip />

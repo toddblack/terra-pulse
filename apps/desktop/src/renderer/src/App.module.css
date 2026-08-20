@@ -62,3 +62,54 @@
 .rightColumn > * {
   pointer-events: auto;
 }
+
+/*
+ * The top-centre stack: the alert banner, the launch digest, and whichever
+ * click-for-info panel is open.
+ *
+ * Four panels used to place themselves here with four hand-picked offsets —
+ * 1rem, 4.25rem, 7.5rem, 7.5rem — and every one of them was a guess about how
+ * tall its neighbours would be. They were wrong in three separate ways at
+ * once: the banner overlapped the mode switch; the banner and the digest
+ * (which only appears after a long absence) landed on each other; and
+ * `LocationPanel` and `SolarEventPanel` shared a single offset, which
+ * SolarEventPanel's own comment conceded would overlap whenever both were
+ * open. Same reasoning as the two columns above — these heights are all
+ * decided at runtime, so a fixed `top` on any of them is a guess.
+ *
+ * The one offset left is this column's own, and it clears `ModeSwitch`, which
+ * keeps placing itself. That is deliberate rather than an omission: the switch
+ * lives in `App.tsx` because it shows in Analyze too, where none of these
+ * panels exist — and unlike them its height is fixed by construction, two
+ * buttons that never change, so an offset below it is arithmetic rather than a
+ * guess.
+ */
+.topCentreColumn {
+  position: absolute;
+  top: 4rem;
+  left: 50%;
+  /* Matches what LocationPanel and SolarEventPanel already carried. The banner
+     and the digest had no z-index at all, so anything at 10 painted over them
+     regardless of DOM order — which is how the alert could be hidden by a
+     panel rendered after it. */
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  /* Each panel keeps its own width and centres, rather than all four
+     stretching to the widest — they range from 18rem to 22rem. */
+  align-items: center;
+  gap: 0.5rem;
+  /* Bounded so a full stack shrinks instead of running past the time
+     scrubber. Children opt into shrinking below; each already scrolls
+     internally. */
+  max-height: calc(100vh - 11rem);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.topCentreColumn > * {
+  pointer-events: auto;
+  /* Without this a flex child cannot shrink below its content height, so the
+     column's max-height would be ignored and the stack would overflow. */
+  min-height: 0;
+}

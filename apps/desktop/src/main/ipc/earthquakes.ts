@@ -345,6 +345,23 @@ export function registerEarthquakeIpcHandlers(
   });
 
   /**
+   * The alert the renderer may have missed, asked for once it is ready.
+   *
+   * The push on `earthquakes:large-event` cannot cover the launch poll: it
+   * fires immediately, before the renderer has subscribed in a React effect,
+   * so the first alert of a session is sent to nobody. See
+   * `LargeEventAlerter.current` for why that is the *worst* one to lose.
+   */
+  ipcMain.handle('earthquakes:current-alert', (): EarthquakeEvent | null => {
+    return alerter?.current() ?? null;
+  });
+
+  /** Dismissing has to reach main, or the pull above would resurrect it. */
+  ipcMain.handle('earthquakes:dismiss-alert', (): void => {
+    alerter?.dismiss();
+  });
+
+  /**
    * The observed aftershock sequence for one event (PROJECT_PLAN §5.9).
    *
    * Takes an **id**, not an event. The renderer has the object already, but a
