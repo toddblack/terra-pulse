@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { ipcMain } from 'electron';
 import type { DatabaseSync } from 'node:sqlite';
 import {
@@ -134,6 +134,74 @@ export function resolvePythonInterpreter(
   return platform === 'win32' ? 'python' : 'python3';
 }
 
+/** What to spawn, and from where. */
+export interface EngineCommand {
+  command: string;
+  args: string[];
+  /**
+   * Always a directory that exists.
+   *
+   * This is not incidental: `child_process.spawn` with a `cwd` that does not
+   * exist fails on Windows, and in a packaged build `engineDir` points into a
+   * source tree that was never shipped. Defaulting it there would make every
+   * packaged spawn fail with an ENOENT that reads as "Python is missing".
+   */
+  cwd: string;
+  /** Which of the two shapes was chosen — reported, so the UI can say. */
+  kind: 'bundled' | 'interpreter';
+}
+
+/** The PyInstaller executable's name inside its one-folder bundle. */
+function bundledExecutable(platform: NodeJS.Platform): string {
+  return platform === 'win32' ? 'terra-pulse-engine.exe' : 'terra-pulse-engine';
+}
+
+/**
+ * Bundled binary, or a Python interpreter running the source.
+ *
+ * A packaged build ships a PyInstaller one-folder bundle as an
+ * electron-builder `extraResource` and has no source tree or venv to fall back
+ * on; a dev checkout has the source and usually no bundle. So this is less a
+ * preference than a description of which of the two actually exists.
+ *
+ * The order matters in exactly one case — a dev machine that has built a
+ * bundle *and* has a venv — and there the **venv wins**, because a stale
+ * binary silently shadowing the source you are editing is a genuinely nasty
+ * hour to debug. `bundledEngineDir` is therefore only passed when the app is
+ * packaged (see `index.ts`), and `TERRA_PULSE_ENGINE_BIN` is the way to point
+ * a dev build at a bundle deliberately.
+ */
+export function resolveEngineCommand(
+  engineDir: string,
+  bundledEngineDir: string | undefined,
+  platform: NodeJS.Platform,
+  env: NodeJS.ProcessEnv,
+  exists: (path: string) => boolean = existsSync,
+): EngineCommand {
+  const binOverride = env['TERRA_PULSE_ENGINE_BIN']?.trim();
+  if (binOverride) {
+    return { command: binOverride, args: [], cwd: dirname(binOverride), kind: 'bundled' };
+  }
+
+  // An explicit interpreter override still beats a shipped bundle: it is the
+  // documented escape hatch for running modified engine source against an
+  // installed build.
+  const pythonOverride = env['TERRA_PULSE_PYTHON']?.trim();
+  if (!pythonOverride && bundledEngineDir) {
+    const executable = join(bundledEngineDir, bundledExecutable(platform));
+    if (exists(executable)) {
+      return { command: executable, args: [], cwd: bundledEngineDir, kind: 'bundled' };
+    }
+  }
+
+  return {
+    command: resolvePythonInterpreter(engineDir, platform, env),
+    args: ['-m', 'terra_pulse_engine'],
+    cwd: engineDir,
+    kind: 'interpreter',
+  };
+}
+
 async function probeHealth(
   baseUrl: string,
   fetchImpl: typeof fetch,
@@ -173,6 +241,13 @@ export interface EngineController {
 export interface EngineControllerOptions {
   /** Absolute path to the `engine/` package — used only to locate its venv. */
   engineDir: string;
+  /**
+   * Absolute path to a shipped PyInstaller one-folder bundle, when one was
+   * shipped. Passed only by a packaged build; leaving it undefined in dev is
+   * what keeps a stale bundle from shadowing the source (see
+   * `resolveEngineCommand`).
+   */
+  bundledEngineDir?: string;
   host?: string;
   port?: number;
   platform?: NodeJS.Platform;
@@ -256,11 +331,16 @@ export function createEngineController(options: EngineControllerOptions): Engine
   }
 
   function spawnEngine(): void {
-    const pythonPath = resolvePythonInterpreter(options.engineDir, platform, env);
+    const engineCommand = resolveEngineCommand(
+      options.engineDir,
+      options.bundledEngineDir,
+      platform,
+      env,
+    );
     const proc = spawnImpl(
-      pythonPath,
-      ['-m', 'terra_pulse_engine', '--host', host, '--port', String(port)],
-      { cwd: options.engineDir, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+      engineCommand.command,
+      [...engineCommand.args, '--host', host, '--port', String(port)],
+      { cwd: engineCommand.cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
     );
     child = proc;
 
@@ -270,8 +350,19 @@ export function createEngineController(options: EngineControllerOptions): Engine
     });
 
     proc.once('error', (error: Error) => {
-      // ENOENT: the interpreter itself couldn't be found/launched.
-      setStatus({ state: 'unavailable', reason: 'python-not-found', detail: trimmedDetail(error) });
+      // ENOENT: whatever we tried to launch couldn't be found or started.
+      // The `python-not-found` reason is kept for both shapes rather than
+      // widened — it is a contract value the renderer already maps to copy —
+      // but a bundled build must not tell the reader to install Python when
+      // Python is not what is missing, so the detail names the executable.
+      setStatus({
+        state: 'unavailable',
+        reason: 'python-not-found',
+        detail:
+          engineCommand.kind === 'bundled'
+            ? `bundled engine failed to start (${engineCommand.command}): ${trimmedDetail(error)}`
+            : trimmedDetail(error),
+      });
     });
 
     proc.once('exit', (code, signal) => {

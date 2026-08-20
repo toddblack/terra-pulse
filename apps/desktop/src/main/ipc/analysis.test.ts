@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   openDatabase,
@@ -11,7 +12,12 @@ import { goesFlareYears } from '@terra-pulse/ingest';
 import type { DatabaseSync } from 'node:sqlite';
 import { CONTRACT_VERSION } from '@terra-pulse/schema';
 import type { CmeArrival, EarthquakeEvent, FlareClass, SolarFlare } from '@terra-pulse/schema';
-import { createEngineController, registerAnalysisIpcHandlers, resolvePythonInterpreter } from './analysis';
+import {
+  createEngineController,
+  registerAnalysisIpcHandlers,
+  resolveEngineCommand,
+  resolvePythonInterpreter,
+} from './analysis';
 
 const ipcHandle = vi.hoisted(() => vi.fn());
 vi.mock('electron', () => ({ ipcMain: { handle: ipcHandle } }));
@@ -90,6 +96,89 @@ describe('resolvePythonInterpreter', () => {
   it('falls back to a bare command name when no venv and no override exist', () => {
     const result = resolvePythonInterpreter('/does/not/exist', 'linux', {});
     expect(result).toBe('python3');
+  });
+});
+
+describe('resolveEngineCommand', () => {
+  /** Nothing on disk unless a case says so. */
+  const nothingExists = () => false;
+
+  it('runs a shipped bundle directly, with no interpreter involved', () => {
+    // The whole point of freezing: a packaged build has no Python to find.
+    const command = resolveEngineCommand('/engine', '/resources/engine', 'win32', {}, () => true);
+
+    expect(command.kind).toBe('bundled');
+    expect(command.command).toBe(join('/resources/engine', 'terra-pulse-engine.exe'));
+    expect(command.args).toEqual([]);
+  });
+
+  it('names the platform executable without an extension off Windows', () => {
+    const command = resolveEngineCommand('/engine', '/resources/engine', 'darwin', {}, () => true);
+
+    expect(command.command).toBe(join('/resources/engine', 'terra-pulse-engine'));
+  });
+
+  it('spawns from the bundle directory, never from a source tree that was not shipped', () => {
+    // `spawn` with a non-existent cwd fails on Windows, and a packaged build's
+    // `engineDir` points into a repo that is not there. Getting this wrong
+    // surfaces as an ENOENT that reads as "Python is missing".
+    const command = resolveEngineCommand(
+      '/never/shipped/engine',
+      '/resources/engine',
+      'win32',
+      {},
+      () => true,
+    );
+
+    expect(command.cwd).toBe('/resources/engine');
+  });
+
+  it('falls back to an interpreter when no bundle was shipped', () => {
+    const command = resolveEngineCommand('/engine', undefined, 'linux', {}, nothingExists);
+
+    expect(command.kind).toBe('interpreter');
+    expect(command.command).toBe('python3');
+    expect(command.args).toEqual(['-m', 'terra_pulse_engine']);
+    expect(command.cwd).toBe('/engine');
+  });
+
+  it('falls back to an interpreter when a bundle was expected but is missing', () => {
+    // Packaging without running `pnpm engine:bundle` first. Better to try a
+    // local Python and report honestly than to spawn a path that isn't there.
+    const command = resolveEngineCommand('/engine', '/resources/engine', 'linux', {}, nothingExists);
+
+    expect(command.kind).toBe('interpreter');
+  });
+
+  it('lets an explicit interpreter override beat a shipped bundle', () => {
+    // The documented escape hatch for running modified engine source against
+    // an installed build.
+    const command = resolveEngineCommand(
+      '/engine',
+      '/resources/engine',
+      'win32',
+      { TERRA_PULSE_PYTHON: 'C:/custom/python.exe' },
+      () => true,
+    );
+
+    expect(command.kind).toBe('interpreter');
+    expect(command.command).toBe('C:/custom/python.exe');
+  });
+
+  it('lets TERRA_PULSE_ENGINE_BIN point a dev run at a bundle', () => {
+    // In dev `bundledEngineDir` is deliberately undefined so the venv wins;
+    // this is the way to aim at a bundle on purpose.
+    const command = resolveEngineCommand(
+      '/engine',
+      undefined,
+      'win32',
+      { TERRA_PULSE_ENGINE_BIN: '/built/terra-pulse-engine.exe' },
+      nothingExists,
+    );
+
+    expect(command.kind).toBe('bundled');
+    expect(command.command).toBe('/built/terra-pulse-engine.exe');
+    expect(command.cwd).toBe(dirname('/built/terra-pulse-engine.exe'));
   });
 });
 

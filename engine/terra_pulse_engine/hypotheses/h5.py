@@ -71,7 +71,11 @@ HOUR_MS = 60 * 60 * 1000
 EFFECTIVE_START_MS = 0
 
 DEFERRED_TESTS = 2
-BLOCKED_TESTS = 2
+# Zero since 2026-08-20, when H4b was withdrawn unrun. It was 2 while H4b sat
+# blocked on a magnetometer archive that was never built; a withdrawn-unrun
+# family is not "blocked", it is gone, and its tests left the denominator with
+# it (see HYPOTHESES.md H4b and REGISTERED_MATRIX_TESTS in packages/schema).
+BLOCKED_TESTS = 0
 
 TRIGGER_ID = "M6.0+ mainshock"
 
@@ -328,8 +332,8 @@ def run_h5(request: AntipodalRunRequest) -> AnalysisResult:
         partial_matrix=1 < params.registered_matrix_tests,
         note=(
             f"1 of {params.registered_matrix_tests} registered, unblocked tests "
-            f"was run in this session ({DEFERRED_TESTS} more deferred to Phase 5, "
-            f"{BLOCKED_TESTS} blocked on missing magnetometer data). Adjusted "
+            f"was run in this session ({DEFERRED_TESTS} more are deferred to "
+            "Phase 5). Adjusted "
             "p-values are provisional until the full matrix is complete."
         ),
     )

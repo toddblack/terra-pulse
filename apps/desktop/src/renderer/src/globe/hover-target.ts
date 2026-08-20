@@ -103,9 +103,10 @@ export function describeBoundary(pair: string, boundaryClass: string): HoverTarg
  *
  * Leads with the station name rather than the code — the code ("BRW") means
  * nothing on its own, the name ("Barrow") does. `STATION_DISTURBED_NT` is
- * display emphasis only, same caveat as everywhere else it's used: it isn't
- * H4b's registered per-station trigger, just what makes a reading worth
- * calling out in a tooltip.
+ * display emphasis only — just what makes a reading worth calling out in a
+ * tooltip. It never was a registered trigger, and since H4b's withdrawal on
+ * 2026-08-20 there is no registered per-station trigger for it to be mistaken
+ * for.
  */
 export function describeMagnetometer(reading: MagnetometerReading): HoverTarget {
   const { station, disturbance } = reading;

@@ -9,7 +9,8 @@
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
     "engine:dev": "engine/.venv/Scripts/python -m terra_pulse_engine --port 8787",
-    "engine:test": "engine/.venv/Scripts/python -m pytest engine/tests"
+    "engine:test": "engine/.venv/Scripts/python -m pytest engine/tests",
+    "engine:bundle": "node scripts/bundle-engine.mjs"
   },
   "devDependencies": {
     "eslint": "^10.8.0",

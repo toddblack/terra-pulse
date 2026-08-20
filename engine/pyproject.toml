@@ -16,6 +16,12 @@ dev = [
   "httpx>=0.27",
   "ruff>=0.7",
 ]
+# Kept out of `dev` on purpose: PyInstaller is only needed to cut a release
+# bundle, and nothing in the test suite touches it. Anyone who just wants to run
+# the engine or its tests should not pay for it.
+bundle = [
+  "pyinstaller>=6.11",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

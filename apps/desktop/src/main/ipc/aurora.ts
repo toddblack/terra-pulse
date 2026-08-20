@@ -68,8 +68,3 @@ export function startAuroraPolling(
     clearInterval(timer);
   };
 }
-
-/** Test seam: drops the cached grid between cases. */
-export function resetAuroraCache(): void {
-  latest = null;
-}

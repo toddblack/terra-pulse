@@ -19,9 +19,10 @@ import type { MagnetometerReading } from '@terra-pulse/schema';
  * view is real but thin, and heavily northern — 10 of 31 stations sit below 45
  * degrees latitude.
  *
- * INTERMAGNET remains the right source for the *past*, where its definitive
- * data and 138 stations are exactly what H4b wants. That is a separate ingest
- * with a persistence decision attached; this one holds nothing on disk.
+ * INTERMAGNET would have been the right source for the *past*, where its
+ * definitive data and 138 stations are what a per-station analysis wants. That
+ * analysis was **H4b, withdrawn unrun on 2026-08-20**, so the archive was never
+ * built and this layer is deliberately all there is. It holds nothing on disk.
  *
  * ## Why it is cached in memory, like the aurora
  *
@@ -107,9 +108,4 @@ export function startMagnetometerPolling(
     stopped = true;
     clearInterval(timer);
   };
-}
-
-/** Test seam: drops the cached readings between cases. */
-export function resetMagnetometerCache(): void {
-  latest = [];
 }

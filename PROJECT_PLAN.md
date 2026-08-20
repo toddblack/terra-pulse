@@ -865,7 +865,7 @@ Initial set:
 | H2 | Effect is stronger on the hemisphere facing the CME at **arrival** time | subsolar longitude at arrival ±90° | Low |
 | ~~H3~~ → **H3b** | Coronal hole high-speed streams elevate M5+ rate | onset >500 km/s for 6h; **1995 onward**; lags 0–24h/24–48h/48–72h/3–5d | Low |
 | ~~H4~~ → **H4c** | Kp/Dst geomagnetic disturbance correlates with M5+ rate | Kp≥6 or Dst≤−100nT; **GFZ Kp**; 1963 onward; lags 0–72h | Low |
-| H4b | **Local** magnetometer disturbance correlates with **nearby** M5+ rate | station radius 500km, lags 0–72h | Low, but spatially specific — a stronger test than H4 |
+| ~~H4b~~ | **Local** magnetometer disturbance correlates with **nearby** M5+ rate | station radius 500km, lags 0–72h | **Withdrawn unrun 2026-08-20** — trigger set ρ=0.74 with Kp and half-shared with H4c's nulls; ~1 GB per install |
 | H5 | M6+ quakes are followed by an excess of M5+ at short antipodal distance | distance-distribution test, 0–72h, completeness-corrected | Moderate — antipodal focusing is a real wave phenomenon |
 | H6 | Peak lunisolar tidal stress correlates with M5+ rate | resolved onto fault geometry; Phase 5 | **Highest** — established mechanism, existing literature |
 
@@ -1000,9 +1000,11 @@ server-side proxying of all third-party API calls.
   is still open; a marker is what made arrivals visible on the timeline at all.
 - ~~Magnetometer station layer with disturbance amplitude~~ — **shipped** as the
   live USGS network (31 stations, public domain). **SuperMAG rejected**: its rules
-  forbid redistribution and it needs a per-user account. INTERMAGNET (CC BY-NC,
-  138 stations, definitive through 2024) is the archive source for H4b — not yet
-  built. See `SOURCES.md`.
+  forbid redistribution and it needs a per-user account. INTERMAGNET was to be
+  the archive source for H4b; **H4b was withdrawn unrun on 2026-08-20, so no
+  magnetometer archive is planned** and the live layer is the whole of this
+  item. See `SOURCES.md` for the measured service shape, kept in case it is ever
+  wanted again.
 - ~~Ionospheric TEC~~ — **shipped.** SWPC GloTEC raster, total and anomaly views,
   fetched on demand because a map is 2.4 MB.
 - Multi-track timeline panel — **Explore mode** (§5.5) — **partially shipped.**
@@ -1050,9 +1052,12 @@ server-side proxying of all third-party API calls.
 - ~~FDR correction~~ — **shipped**, hand-rolled Benjamini-Hochberg (not a
   `statsmodels` dependency), cross-checked against
   `scipy.stats.false_discovery_control`. Reports **two** adjusted values per
-  test — within the tests actually run, and against the full 19-test
-  registered matrix — because this round runs only H4c's 6; see
-  `HYPOTHESES.md`'s Total Test Matrix note on why 19, not 21.
+  test — within the tests actually run, and against the full unblocked
+  registered matrix — because any one round runs only its own family's tests.
+  That denominator is **17** since H4b's withdrawal on 2026-08-20 and was 19
+  before it, which is why the recorded results still name 19; see
+  `HYPOTHESES.md`'s Total Test Matrix note for why neither figure changes any
+  recorded value.
 - Results panel with null distribution plots, clearly separated from
   Explore — **shipped.** Analyze mode is the app's first non-Explore surface
   (`ModeSwitch`, `renderer/src/analyze/**`). Non-negotiable #1 is enforced in
@@ -1109,28 +1114,35 @@ server-side proxying of all third-party API calls.
   switch built for H3b needed no changes to support this third, structurally
   different hypothesis.
 - **H5 shipped 2026-08-20** — the fifth hypothesis and the last unblocked one.
-  Clean null (KS D⁺ 0.0016, p = 0.62). **17 of 19 unblocked tests are now run
-  and none was rejected**; only H4b's 2 remain, blocked on magnetometer data.
-  Its most useful output was a finding about the registered method rather than
-  about the Earth — see §5.3's note and HYPOTHESES.md H5.
+  Clean null (KS D⁺ 0.0016, p = 0.62). Its most useful output was a finding
+  about the registered method rather than about the Earth — see §5.3's note and
+  HYPOTHESES.md H5.
+- **H4b withdrawn unrun 2026-08-20, and not replaced.** With that, **all 17
+  unblocked tests are run and none was rejected.** It is the first entry here
+  withdrawn on measurement rather than superseded by a corrected one, and the
+  three reasons are in HYPOTHESES.md: its local dB/dt trigger is **ρ = 0.736**
+  with planetary Kp and **52.7% of its trigger hours are H4c trigger hours**
+  (H4c being six clean nulls already); power goes as √n so the full 138-station
+  version buys ~9.4% minimum detectable effect against ~12% for a 5-station one,
+  for 27× the download; and INTERMAGNET is CC BY-NC with bulk redistribution
+  needing written permission, so **every install** would pay a ~1 GB fetch for a
+  hypothesis whose own registered mechanism plausibility is "low". The
+  reconnaissance is kept in `SOURCES.md`.
 - **H1b shipped 2026-08-19**, both halves: the GOES XRS 1996-2016 ingest (the
   one new source any of the four originally-considered hypotheses still needed)
   and the engine module. Clean null, 12.0 s, 4,598 triggers. All four of H4c,
   H3b, H2b and H1b are now implemented and run.
-- **Next — Phase 4 has no unblocked hypothesis left.** All five that could be
-  run have been (H4c, H3b, H2b, H1b, H5); 17 of 19 registered unblocked tests
-  are done and **none was rejected**. What remains:
-  - **H4b (2 tests) — blocked on ingest**, not on analysis. It needs a
-    magnetometer table that does not exist. `SOURCES.md` already records the
-    decision: INTERMAGNET (CC BY-NC 4.0, no credential, 138 stations,
-    definitive through 2024), *not* SuperMAG, which was rejected on the
-    no-mandatory-account rule. Building that ingest is the one thing standing
-    between here and a complete matrix.
+- **Next — Phase 4's science is done.** Every registered test that can be run
+  has been: H4c, H3b, H2b, H1b and H5, **17 of 17 unblocked, none rejected**.
+  H4b, the one that was blocked, was withdrawn rather than built. What remains
+  is not analysis:
   - **H6 (2 tests) — deferred to Phase 5** by registration, needs the Skyfield
-    / JPL DE440 ephemeris work.
-  - Otherwise Phase 4's remaining scope is engineering rather than science:
-    PyInstaller bundling so a packaged build needs no system Python (§10), and
-    Analyze-mode polish.
+    / JPL DE440 ephemeris work. This is the only registered test left anywhere.
+  - ~~PyInstaller bundling~~ — **shipped 2026-08-20** (§10). Analyze mode is no
+    longer dev-only: a packaged build carries its own frozen engine, verified
+    byte-identical to the source build. Remaining: macOS/Linux bundles, which
+    need those platforms to build on.
+  - Analyze-mode polish.
 - **The cost prediction was right and the obvious fix was not enough.** H1b's
   trigger set is 4x H4c's largest, and the per-row `statistic_fn` loop landed at
   102 s against the 120 s IPC timeout even after batch vectorisation. What
@@ -1163,15 +1175,35 @@ server-side proxying of all third-party API calls.
 
 ## 10. Open Questions
 
-- [ ] Bundle Python with the app, or require a local install? (PyInstaller vs.
-      documented prerequisite — affects distribution complexity significantly)
-      **Deferred, dev-only for this round.** `engine/` round 1 (H4c) requires a
-      local Python 3.12 install and documents it in `engine/README.md`;
-      Electron main adopts an already-running engine or spawns one, and a
-      packaged build simply reports the engine `unavailable` — Analyze mode
-      stays visible rather than hidden, so a missing prerequisite is a status
-      message, not a silently absent feature. This question is still open for
-      the round that actually ships a packaged build.
+- [x] Bundle Python with the app, or require a local install? **Resolved
+      2026-08-20: bundled, with PyInstaller.** A packaged Terra Pulse needs no
+      system Python at all. `pnpm engine:bundle` freezes `engine/` into a
+      one-folder bundle that `electron-builder.yml` ships as an
+      `extraResource`; `resolveEngineCommand` runs the bundled executable when
+      packaged and a local interpreter in dev.
+
+      **It cost less than the deferral assumed.** The bundle is 57 MB on disk
+      but adds only **14.5 MB to the installer** (105 → 119.5 MB), because NSIS
+      compresses it well. Verified end to end: the packaged app spawns
+      `resources/engine/terra-pulse-engine.exe`, and that frozen binary returns
+      **byte-identical** results to the source build on a full H4c run — the
+      check that matters, since numpy/scipy freeze into something that works
+      while computing subtly different numbers if it goes wrong.
+
+      Three decisions worth not relitigating, each documented at its site:
+      **one-folder over one-file** (one-file re-extracts numpy and scipy to temp
+      on every launch, and looks like malware to antivirus);
+      **`extraResources` over `files`** (you cannot exec out of an asar);
+      and **the dev source always beats a local bundle**, so a stale binary
+      can't shadow the code you are editing.
+
+      The adopt-or-spawn behaviour and the typed `unavailable` status are both
+      unchanged — a bundle that fails to start is still a status message, not a
+      crash.
+
+      **Still open: macOS and Linux.** PyInstaller does not cross-compile, so
+      each platform's bundle must be built on that platform — the same
+      constraint that already blocks `.dmg` builds here.
 - [ ] Global fault coverage — is GEM's dataset complete enough, or do regional
       sources need stitching?
 - [ ] Offline mode — how much data to pre-bundle for first run?

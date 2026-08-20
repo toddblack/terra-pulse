@@ -38,7 +38,11 @@ from terra_pulse_engine.version import ENGINE_VERSION
 EFFECTIVE_START_MS = int(datetime(2014, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
 
 DEFERRED_TESTS = 2
-BLOCKED_TESTS = 2
+# Zero since 2026-08-20, when H4b was withdrawn unrun. It was 2 while H4b sat
+# blocked on a magnetometer archive that was never built; a withdrawn-unrun
+# family is not "blocked", it is gone, and its tests left the denominator with
+# it (see HYPOTHESES.md H4b and REGISTERED_MATRIX_TESTS in packages/schema).
+BLOCKED_TESTS = 0
 
 # A single fixed trigger id — H2b has exactly one trigger *definition*
 # ("direct CME impact"), not several the way H4c has two indices. Kept as a
@@ -211,8 +215,8 @@ def run_h2b(request: HemisphereRunRequest) -> AnalysisResult:
         partial_matrix=len(raw_p_values) < params.registered_matrix_tests,
         note=(
             f"{len(raw_p_values)} of {params.registered_matrix_tests} registered, "
-            f"unblocked tests have been run so far ({DEFERRED_TESTS} more deferred "
-            f"to Phase 5, {BLOCKED_TESTS} blocked on missing magnetometer data). "
+            f"unblocked tests have been run so far ({DEFERRED_TESTS} more are "
+            "deferred to Phase 5). "
             "Adjusted p-values are provisional until the full matrix is complete."
         ),
     )

@@ -2,8 +2,10 @@
 
 The Phase 4 Python service: pre-registered hypothesis testing per
 `HYPOTHESES.md`, run locally, spoken to over HTTP by Electron main
-(`apps/desktop/src/main/ipc/analysis.ts`). Dev-only this round — see
-`PROJECT_PLAN.md` §10 for the deferred PyInstaller/bundling decision.
+(`apps/desktop/src/main/ipc/analysis.ts`).
+
+**A packaged build ships this frozen and needs no system Python** — see
+[Bundling](#bundling). Python 3.12 is a prerequisite for *development* only.
 
 This package lives outside the pnpm workspace on purpose
 (`pnpm-workspace.yaml` only globs `apps/*` and `packages/*`), so `pnpm -r
@@ -76,10 +78,57 @@ that signal, not a false alarm to silence on this side alone.
   did**, and `pipeline/ks.py` is what that looks like: a supremum-of-CDF-
   difference is not a rate ratio by any amount of parameter reuse.
 
+## Bundling
+
+```
+pnpm engine:bundle                              # -> engine/dist/terra-pulse-engine/
+pnpm --filter @terra-pulse/desktop package      # picks it up automatically
+```
+
+`scripts/bundle-engine.mjs` freezes this package with PyInstaller into a
+**one-folder** bundle (~57 MB), which `electron-builder.yml` ships as an
+`extraResource` to `resources/engine/`. Measured: it adds **14.5 MB** to the
+installer (105 → 119.5 MB), because NSIS compresses it well.
+
+PyInstaller lives in the `bundle` extra rather than `dev`, so install it only
+when you need to cut a release:
+
+```
+.venv\Scripts\python.exe -m pip install -e ".[bundle]"
+```
+
+Three things are worth knowing before changing any of this:
+
+- **The build config is `terra-pulse-engine.spec`, not command-line flags**, and
+  it documents why each choice is what it is — one-folder over one-file, the
+  uvicorn hidden imports, the exclusions.
+- **`extraResources`, not `files`.** You cannot exec a binary out of an asar
+  archive, and `asar: true` is on.
+- **Packaging does not build the bundle for you.** electron-builder skips a
+  missing `from:` path without failing, so packaging without running
+  `pnpm engine:bundle` first produces an installer that quietly contains no
+  engine. Verify `release/win-unpacked/resources/engine/` exists.
+
+Which of the two shapes gets spawned is decided by `resolveEngineCommand` in
+`apps/desktop/src/main/ipc/analysis.ts`: a packaged build runs the bundled
+executable, a dev checkout runs `python -m terra_pulse_engine` against the
+source. In dev the source **always** wins — `bundledEngineDir` is only passed
+when `app.isPackaged` — because a stale bundle silently shadowing the code you
+are editing is a bad hour. `TERRA_PULSE_ENGINE_BIN` points a dev run at a
+bundle deliberately.
+
 ## Known follow-ups (not this round)
 
-- PyInstaller/bundling, so a packaged Terra Pulse build doesn't need a
-  system Python at all.
+- ~~PyInstaller/bundling, so a packaged Terra Pulse build doesn't need a
+  system Python at all.~~ **Shipped 2026-08-20** — see [Bundling](#bundling).
+  Verified end to end: the packaged app spawns
+  `resources/engine/terra-pulse-engine.exe` and that frozen binary returns
+  **byte-identical** results to the source build on a full H4c run.
+- **macOS and Linux bundles are unbuilt.** PyInstaller does not cross-compile,
+  so each platform's bundle must be built on that platform — the same
+  constraint that already stops `.dmg` builds here (`PROJECT_PLAN.md` §10). The
+  spec file itself is platform-neutral and `resolveEngineCommand` already
+  handles the extension-less executable name.
 - ~~The magnitude-of-completeness map H5 needs.~~ **Not needed.** H5 shipped
   2026-08-20 on a null that conditions on the detected catalogue instead of
   weighting by an estimated Mc — see `hypotheses/h5.py`'s module docstring and

@@ -121,9 +121,14 @@ def test_correction_reports_the_partial_matrix_honestly() -> None:
     result = run_h4c(request)
 
     assert result.correction.tests_run == 6
+    # An arbitrary request value, echoed back — the registered denominator lives
+    # in packages/schema's REGISTERED_MATRIX_TESTS and is sent by main, never
+    # hard-coded here. It is 17 in the app since H4b's withdrawal.
     assert result.correction.registered_matrix_tests == 19
     assert result.correction.deferred_tests == 2
-    assert result.correction.blocked_tests == 2
+    # Zero since 2026-08-20: H4b was withdrawn unrun rather than left blocked on
+    # a magnetometer archive, so nothing is waiting on data any more.
+    assert result.correction.blocked_tests == 0
     assert result.correction.partial_matrix is True
     # The full-matrix adjustment must never be more significant than the
     # within-run one.

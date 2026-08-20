@@ -117,8 +117,33 @@ describe('H4c registered constants (HYPOTHESES.md)', () => {
     expect(H4C_EFFECTIVE_START_YEAR).toBe(1970);
   });
 
-  it('registered matrix size is 19 unblocked tests (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H4b 2 + H5 1)', () => {
-    expect(REGISTERED_MATRIX_TESTS).toBe(19);
+  it('registered matrix size is 17 unblocked tests (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H5 1)', () => {
+    expect(REGISTERED_MATRIX_TESTS).toBe(17);
+  });
+
+  // H4b was withdrawn unrun on 2026-08-20, taking its 2 tests out of the
+  // denominator — the same accounting H1, H2, H3 and H4 already got, and
+  // legitimate for the same reason: no p-value was ever computed under it, so
+  // nothing is being dropped from the correction. Rule 5's "a run family keeps
+  // its tests forever" does not apply to a family that never ran.
+  //
+  // Pinned as an explicit exclusion rather than left implicit in the total,
+  // because the failure mode is silent: a later hypothesis added without
+  // adjusting this constant would be corrected against a denominator that
+  // still counts a withdrawn family, and nothing would fail.
+  it('excludes withdrawn-unrun families, and counts only what can still be run', () => {
+    const unblocked = { h1b: 4, h2b: 2, h3b: 4, h4c: 6, h5: 1 };
+    const deferredToPhase5 = { h6: 2 };
+    const withdrawnUnrun = { h1: 0, h2: 0, h3: 0, h4: 0, h4b: 0 };
+
+    const sum = (o: Record<string, number>): number =>
+      Object.values(o).reduce((a, b) => a + b, 0);
+
+    expect(sum(unblocked)).toBe(REGISTERED_MATRIX_TESTS);
+    expect(sum(withdrawnUnrun)).toBe(0);
+    // The document's own "Total" counts H6; the FDR denominator does not,
+    // because those two cannot be run until Phase 5.
+    expect(sum(unblocked) + sum(deferredToPhase5)).toBe(19);
   });
 
   it('is seeded for reproducibility', () => {

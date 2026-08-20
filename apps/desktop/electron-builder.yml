@@ -39,6 +39,22 @@ files:
 # apply.
 asar: true
 
+# The Python statistical engine, frozen by PyInstaller so a packaged build needs
+# no system Python (PROJECT_PLAN §10).
+#
+# `extraResources`, not `files`, and that is required rather than stylistic: an
+# `asar: true` build packs `files` into an archive, and you cannot exec a binary
+# out of an asar. extraResources lands it in `resources/engine/` on disk, which
+# is exactly where `index.ts` points `bundledEngineDir`.
+#
+# Build it first — `pnpm engine:bundle` — or this silently ships nothing and the
+# installed app reports the engine unavailable. `from` is relative to this file;
+# electron-builder skips a missing `from` without failing the build, so the
+# packaging script checks for it explicitly rather than trusting the copy.
+extraResources:
+  - from: ../../engine/dist/terra-pulse-engine
+    to: engine
+
 win:
   target:
     - target: nsis
