@@ -2164,6 +2164,22 @@ magnetometer data.
   contribute one artefact to the far tail. The null needs no equivalent and must
   not have one — its drawn instants are not real events.
 
+**Next — there is no unblocked hypothesis left to run.** All five that could be
+are done. What remains, in the order it makes sense to take it:
+
+1. **H4b's ingest (2 tests), the only thing blocking a complete matrix.** It
+   needs a magnetometer table that does not exist. `SOURCES.md` already settles
+   the source: **INTERMAGNET** — CC BY-NC 4.0, no credential, 138 stations,
+   definitive through 2024 — and records why SuperMAG was rejected despite being
+   technically better (mandatory account, and redistribution forbidden outright,
+   so no sample database could ever ship). This is an ingest round shaped like
+   the GOES one, not an analysis round.
+2. **H6 (2 tests)** is deferred to Phase 5 by its own registration and needs the
+   Skyfield / JPL DE440 ephemeris work.
+3. **Engineering, not science:** PyInstaller bundling so a packaged build needs
+   no system Python (`PROJECT_PLAN.md` §10), which is the last thing keeping
+   Analyze mode dev-only.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

@@ -1117,10 +1117,20 @@ server-side proxying of all third-party API calls.
   one new source any of the four originally-considered hypotheses still needed)
   and the engine module. Clean null, 12.0 s, 4,598 triggers. All four of H4c,
   H3b, H2b and H1b are now implemented and run.
-- **Next:** H5, once the magnitude-of-completeness map above exists — it is the
-  only remaining hypothesis with a structurally different test shape (a KS test
-  against a null, not a lag-window or hemispheric ratio). H4b stays blocked: no
-  magnetometer table exists.
+- **Next — Phase 4 has no unblocked hypothesis left.** All five that could be
+  run have been (H4c, H3b, H2b, H1b, H5); 17 of 19 registered unblocked tests
+  are done and **none was rejected**. What remains:
+  - **H4b (2 tests) — blocked on ingest**, not on analysis. It needs a
+    magnetometer table that does not exist. `SOURCES.md` already records the
+    decision: INTERMAGNET (CC BY-NC 4.0, no credential, 138 stations,
+    definitive through 2024), *not* SuperMAG, which was rejected on the
+    no-mandatory-account rule. Building that ingest is the one thing standing
+    between here and a complete matrix.
+  - **H6 (2 tests) — deferred to Phase 5** by registration, needs the Skyfield
+    / JPL DE440 ephemeris work.
+  - Otherwise Phase 4's remaining scope is engineering rather than science:
+    PyInstaller bundling so a packaged build needs no system Python (§10), and
+    Analyze-mode polish.
 - **The cost prediction was right and the obvious fix was not enough.** H1b's
   trigger set is 4x H4c's largest, and the per-row `statistic_fn` loop landed at
   102 s against the 120 s IPC timeout even after batch vectorisation. What
@@ -1128,9 +1138,9 @@ server-side proxying of all third-party API calls.
   domain and reading them by index — 102 s → 12.2 s with bit-identical results.
   **Any future hypothesis whose Monte Carlo recomputes a pure function of the
   trigger instant should do the same before it is called done.**
-- **`HYPOTHESES.md` needs reconciling:** H4c, H3b and H2b have all been run and
-  returned clean nulls, but their `Status` fields still say "Not yet run". Only
-  H1b's result is recorded there so far.
+- ~~`HYPOTHESES.md` needs reconciling~~ — **done 2026-08-20.** All five run
+  families now carry their `Status` and `Result`, each reproduced against the
+  live database with its own registered seed before being written down.
 - **Milestone:** H1–H5 tested and honestly reported. Not yet reached — three
   of six families run.
 
