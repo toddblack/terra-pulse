@@ -129,6 +129,35 @@ class DiscreteLagWindowParameters(ApiModel):
     registered_matrix_tests: int
 
 
+class AntipodalParameters(ApiModel):
+    """H5's shape: no lag *windows* (one registered 0-72h window), no Poisson
+    baseline, no spatial split, no continuous series, and no trigger list — the
+    trigger set is derived from the same catalogue as the targets, because one
+    Gardner-Knopoff pass has to produce both or they disagree about which
+    events are independent.
+
+    Its own model rather than optional fields on an existing one, by the same
+    argument as `DiscreteLagWindowParameters`: the parameters genuinely differ,
+    and nullable fields across families are the "present but silently unused"
+    shape non-negotiable #3 rules out.
+    """
+
+    target_min_magnitude: float
+    trigger_min_magnitude: float
+    window_hours: tuple[float, float]
+    declustering: Literal["gardner-knopoff"]
+    null_model: Literal["uniform-redraw"]
+    tail: Literal["upper", "lower"]
+    # The reference CDF's bin width. Registered rather than tuned — see the
+    # note in pipeline/ks.py on why 100 km is far finer than the data resolves.
+    distance_bin_km: float
+    iterations: int
+    seed: int
+    q: float
+    requested_start_utc: str
+    registered_matrix_tests: int
+
+
 class CatalogPayload(ApiModel):
     time_ms: list[int]
     latitude: list[float]
@@ -222,7 +251,26 @@ class DiscreteTriggerRunRequest(ApiModel):
 # mean marking fields optional across families, which is exactly the kind of
 # "field present but silently unused" shape non-negotiable #3 exists to rule
 # out.
-AnalysisRunRequest = LagWindowRunRequest | HemisphereRunRequest | DiscreteTriggerRunRequest
+class AntipodalRunRequest(ApiModel):
+    """H5. Carries only parameters and one catalogue.
+
+    No separate trigger payload, unlike H2b's arrival instants and H1b's flare
+    peaks: H5's triggers are themselves earthquakes drawn from the same M5.0+
+    catalogue as its targets, and declustering must see all of them in one pass
+    — a Gardner-Knopoff sweep over an M6.0+-only subset marks a different set of
+    events independent. So the engine derives both sets from one mask rather
+    than main sending two lists that could disagree.
+    """
+
+    contract_version: int
+    hypothesis_id: Literal["H5"]
+    parameters: AntipodalParameters
+    catalog: CatalogPayload
+
+
+AnalysisRunRequest = (
+    LagWindowRunRequest | HemisphereRunRequest | DiscreteTriggerRunRequest | AntipodalRunRequest
+)
 
 
 # ---- Response ----
@@ -272,6 +320,28 @@ class TestResult(ApiModel):
     p_adjusted_full_matrix: float
     rejected_at_q: bool
     null: NullInfo
+    # What `observed`, `expected` and `ratio` actually are, when they are not
+    # an observed count, a Poisson expectation and their ratio.
+    #
+    # All three fields are required and every hypothesis has to put *something*
+    # in them, so a hypothesis with a different statistic repurposes them —
+    # H2b's are near/far hemisphere counts, H5's are a sample size and a
+    # two-sided D. Without labels the table renders those under headers reading
+    # "Observed" and "Expected", which is not a rendering nit: it states
+    # something false about what the number is. Null means the default reading
+    # holds.
+    observed_label: str | None = None
+    expected_label: str | None = None
+    # What `ratio` actually is, when it is not a ratio.
+    #
+    # `ratio` has to hold whatever statistic the null histogram was built from,
+    # because the UI draws its observed-value guide line from this field — so a
+    # hypothesis whose statistic is not a ratio cannot park it elsewhere. H5's
+    # is a KS D-plus; H2b's is a near/far count ratio that the table
+    # nonetheless labels "Observed"/"Expected". Absent (the H4c/H3b/H1b case)
+    # means it really is an observed/expected ratio and renders with the
+    # existing 'x' suffix.
+    statistic_label: str | None = None
 
 
 class CorrectionInfo(ApiModel):
@@ -296,6 +366,11 @@ class MethodInfo(ApiModel):
     # renders one generic results panel for every hypothesis.
     baseline_window_days: float | None = None
     spatial_split_degrees: float | None = None
+    # How a hypothesis meets a registered completeness requirement, when it has
+    # one. H5's is the only one so far, and it is the parameter the whole test
+    # turns on — without this field the results panel would show every
+    # registered parameter *except* the one a reader most needs to check.
+    completeness_model: str | None = None
 
 
 class AnalysisResult(ApiModel):

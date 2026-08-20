@@ -36,6 +36,21 @@ import {
   REGISTERED_MATRIX_TESTS,
 } from './hypotheses';
 import { KP_STORM_THRESHOLD, DST_STORM_THRESHOLD, FAST_WIND_THRESHOLD } from './space-weather';
+import {
+  H5_DISTANCE_BIN_KM,
+  H5_ITERATIONS,
+  H5_NULL_MODEL,
+  H5_SEED,
+  H5_TAIL,
+  H5_TARGET_MIN_MAGNITUDE,
+  H5_TRIGGER_MIN_MAGNITUDE,
+  H5_WINDOW_HOURS,
+} from './hypotheses';
+import {
+  ANTIPODAL_TARGET_MIN_MAGNITUDE,
+  ANTIPODAL_TRIGGER_MIN_MAGNITUDE,
+  ANTIPODAL_WINDOW_HOURS,
+} from './antipodal';
 import { ARCHIVE_START_YEAR } from './archive';
 
 describe('H4c registered constants (HYPOTHESES.md)', () => {
@@ -252,5 +267,36 @@ describe('H2b registered constants (HYPOTHESES.md)', () => {
     expect(Number.isInteger(H2B_SEED)).toBe(true);
     expect(H2B_SEED).not.toBe(H4C_SEED);
     expect(H2B_SEED).not.toBe(H3B_SEED);
+  });
+});
+
+describe('H5 registered constants (HYPOTHESES.md)', () => {
+  it('"M6.0+ earthquakes are followed by an excess of M5.0+ events at short distances from the antipode"', () => {
+    expect(H5_TRIGGER_MIN_MAGNITUDE).toBe(6.0);
+    expect(H5_TARGET_MIN_MAGNITUDE).toBe(5.0);
+    expect(H5_WINDOW_HOURS).toEqual([0, 72]);
+  });
+
+  it('completes the null model and tail that the original entry left implied', () => {
+    expect(H5_NULL_MODEL).toBe('uniform-redraw');
+    expect(H5_TAIL).toBe('upper');
+    expect(H5_ITERATIONS).toBe(10_000);
+    expect(typeof H5_SEED).toBe('number');
+  });
+
+  it('agrees with the Explore-mode antipodal constants without importing them', () => {
+    // Declared independently on purpose, the same way KP_STORM_THRESHOLD is
+    // kept apart from H4c's registered trigger: if the Explore display values
+    // are ever retuned, the registered parameters must not silently follow.
+    // This test is the thing that notices when they diverge.
+    expect(H5_TRIGGER_MIN_MAGNITUDE).toBe(ANTIPODAL_TRIGGER_MIN_MAGNITUDE);
+    expect(H5_TARGET_MIN_MAGNITUDE).toBe(ANTIPODAL_TARGET_MIN_MAGNITUDE);
+    expect(H5_WINDOW_HOURS[1]).toBe(ANTIPODAL_WINDOW_HOURS);
+  });
+
+  it('bins the reference CDF far finer than the data resolves', () => {
+    // 100 km against epicentre location errors of order 10 km and an
+    // antipodal focus a few degrees across. Registered, not tuned.
+    expect(H5_DISTANCE_BIN_KM).toBe(100);
   });
 });

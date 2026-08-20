@@ -180,7 +180,10 @@
             1
           ]
         }
-      }
+      },
+      "statisticLabel": null,
+      "observedLabel": null,
+      "expectedLabel": null
     },
     {
       "id": "H4c/kp>=6/24-48h",
@@ -332,7 +335,10 @@
             1
           ]
         }
-      }
+      },
+      "statisticLabel": null,
+      "observedLabel": null,
+      "expectedLabel": null
     },
     {
       "id": "H4c/kp>=6/48-72h",
@@ -484,7 +490,10 @@
             1
           ]
         }
-      }
+      },
+      "statisticLabel": null,
+      "observedLabel": null,
+      "expectedLabel": null
     },
     {
       "id": "H4c/dst<=-100/0-24h",
@@ -636,7 +645,10 @@
             1
           ]
         }
-      }
+      },
+      "statisticLabel": null,
+      "observedLabel": null,
+      "expectedLabel": null
     },
     {
       "id": "H4c/dst<=-100/24-48h",
@@ -788,7 +800,10 @@
             1
           ]
         }
-      }
+      },
+      "statisticLabel": null,
+      "observedLabel": null,
+      "expectedLabel": null
     },
     {
       "id": "H4c/dst<=-100/48-72h",
@@ -940,7 +955,10 @@
             1
           ]
         }
-      }
+      },
+      "statisticLabel": null,
+      "observedLabel": null,
+      "expectedLabel": null
     }
   ],
   "correction": {
@@ -958,11 +976,12 @@
     "tail": "upper",
     "iterations": 200,
     "baselineWindowDays": 365.25,
-    "spatialSplitDegrees": null
+    "spatialSplitDegrees": null,
+    "completenessModel": null
   },
   "caveats": [
     "Span truncated to the catalogue's 1970-01-01 completeness bound; the registered 1963 start reflects only geomagnetic-index availability.",
-    "M5.0+ event counts rose approximately 36% from the 1970s to the 2010s; the moving local baseline (±182.6 days) is the registered mitigation, not a removal of that trend.",
+    "M5.0+ event counts rose approximately 36% from the 1970s to the 2010s; the moving local baseline (\u00b1182.6 days) is the registered mitigation, not a removal of that trend.",
     "Kp>=6 and Dst<=-100 episodes overlap substantially in time, so the six tests in this family are positively correlated rather than independent; Benjamini-Hochberg remains valid under this, but the correlation is not zero."
   ]
 }

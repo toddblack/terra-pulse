@@ -51,7 +51,7 @@ Applied to all hypotheses unless an entry overrides them.
 | Background model | Poisson, binned by region and magnitude |
 | Null distribution | Monte Carlo permutation, 10,000 iterations |
 | Multiple-comparison correction | Benjamini-Hochberg FDR, q = 0.05 |
-| Completeness correction | Magnitude-of-completeness map (required for spatial tests) |
+| Completeness correction | Required for spatial tests. A magnitude-of-completeness map is one way; **conditioning** — a null that reuses the same detected events, so detection bias cancels rather than being estimated — is another, and is what H5 uses. Either is acceptable; neither being present is not. |
 | Time base | UTC throughout |
 
 ---
@@ -633,7 +633,7 @@ to stop edits *after* a result is known; there is no result here to protect).
 | Field | Value |
 |---|---|
 | **Registered** | 2026-07-24 |
-| **Status** | Not yet run |
+| **Status** | **Run 2026-08-20 — not rejected** |
 | **Statement** | M6.0+ earthquakes are followed by an excess of M5.0+ events at short distances from the mainshock's antipode. |
 | **Trigger set** | Declustered M6.0+ global |
 | **Target set** | Declustered M5.0+ global |
@@ -641,9 +641,146 @@ to stop edits *after* a result is known; there is no result here to protect).
 | **Distance treatment** | **No fixed radius.** Record distance-to-antipode for every target event and test the full distribution against the background-rate prediction. Rings at 250/500/1000 km are visualization only and carry no statistical meaning. |
 | **Test statistic** | Kolmogorov–Smirnov against the completeness-weighted null distance distribution |
 | **Completeness correction** | **Mandatory.** Only ~4% of Earth's land is antipodal to other land; most land antipodes fall in ocean where seismometer coverage is sparse. Uncorrected, this measures the instrument network rather than the Earth. |
+| **Time range** | **1970-01-01 onward** |
+| **Null model** | Trigger instants redrawn uniformly without replacement from every hour in the analysis span, keeping the same count as the real declustered M6.0+ trigger set. **Trigger locations and the target catalogue are both held fixed** — only the temporal coincidence is broken. |
+| **Test statistic, precisely** | One-sided KS **D⁺**: the maximum amount by which the observed distance-to-antipode ECDF **exceeds** the null reference ECDF (i.e. an excess at short distances). |
+| **Tail** | Upper — a larger D⁺ is more extreme. |
+| **Self-exclusion** | A trigger is excluded from its own 0–72h window. |
+| **Seed** | 2026082001 |
 | **Tests in family** | 1 |
 | **Mechanism plausibility** | Moderate — antipodal focusing of seismic waves is a real, documented wave phenomenon |
-| **Result** | — |
+| **Result** | **Not rejected.** KS D⁺ = 0.0016 against a null mean of 0.0024 (sd 0.0016); p = 0.6203 raw, 1.0000 adjusted against the 19-test matrix. The observed directional excess is *below* what the null produces by chance. |
+
+**Result, in full (run 2026-08-20).** 92,119 raw M5.0+ events since 1970 →
+**48,382 independent** after one Gardner-Knopoff pass, of which **5,777** are
+M6.0+ and serve as triggers. 42,557 target events fell inside a trigger's 0–72h
+window. Engine time 51 s, seed 2026082001, 10,000 permutations.
+
+| quantity | value |
+|---|---|
+| KS D⁺ (the registered statistic) | 0.0016 |
+| null mean D⁺ | 0.0024 (sd 0.0016; p95 0.0055, p99 0.0070) |
+| p (raw) | 0.6203 |
+| p (adjusted, 19-test matrix) | 1.0000 |
+| two-sided D (descriptive only) | 0.0442 |
+
+**A null result, and one whose direction is worth stating plainly:** the observed
+D⁺ sits *below* the null mean. There is less directional excess at short
+distances than random redraws of the trigger times produce. This is not evidence
+that antipodal triggering does not occur — see the power limitation registered
+above — but it is not a near-miss in the other direction either.
+
+### The registered test turned out to be insensitive to its own hypothesis
+
+This is the most useful thing the run produced, and it is a finding about the
+**method**, not about the Earth.
+
+The two-sided D is 0.0442 — 27× the D⁺ — so the observed distance distribution
+does differ substantially from the null reference. It differs in the **far**
+tail. Measured descriptively after the run:
+
+| distance from antipode | observed | reference |
+|---|---|---|
+| beyond 19,500 km (i.e. within ~500 km of the *trigger*) | 5.56% | 1.57% |
+| beyond 19,000 km | 7.87% | 3.48% |
+
+That is residual near-trigger clustering surviving declustering — aftershock-like
+structure that Gardner-Knopoff did not remove — and it has nothing to do with
+antipodes. It dominates the two-sided statistic entirely.
+
+**Why that matters for the registered design.** "No fixed radius" was chosen in
+2026-07-24 to avoid the p-hacking hazard of picking a search radius, and that
+reasoning was sound. But a KS statistic on the full distribution puts its
+sensitivity where the probability *mass* is, and the near-antipode region holds
+**0.05% of it**. A KS test on this distribution is therefore structurally
+dominated by the bulk and the far tail, and can barely see the region the
+hypothesis is actually about. The registered test avoided one methodological
+error by adopting another.
+
+**What must not be done with this.** The descriptive comparison below is
+recorded because hiding it would be worse, and it is **not a result**:
+
+| within | observed | reference | ratio |
+|---|---|---|---|
+| 250 km | 0.056% (~24 events) | 0.025% (~11) | 2.2× |
+| 500 km | 0.160% | 0.100% | 1.6× |
+| 1000 km | 0.515% | 0.461% | 1.1× |
+| 2000 km | 2.124% | 2.090% | 1.0× |
+
+Turning any row of that table into a test would be choosing a radius **after
+seeing the data** — exactly what the original registration forbade, and what the
+"rings carry no statistical meaning" note has said since the Explore panel was
+built. The counts are also small (≈24 against ≈11 expected is about two
+standard deviations on Poisson noise), and the registered test, which is the one
+that was actually run, does not distinguish it from chance.
+
+A radius-based or annulus-based test of antipodal triggering is defensible
+*a priori* — but it has to be registered as its own hypothesis, with its radius
+fixed from physics rather than from this table, tested against data not used
+here where possible (rule 6), and paid for in the FDR denominator. See the
+antipodal-ring note under Exploratory Observations, which was written **before**
+this run for exactly this reason.
+
+**The lesson for future registrations:** "avoid a free parameter by testing the
+whole distribution" is not automatically the conservative choice. It can trade a
+p-hacking hazard for a power failure, and the trade should be measured — by
+asking what fraction of the distribution's mass lies in the region the
+hypothesis is about — *at registration time*, not discovered afterwards.
+
+**Five parameters completed 2026-08-20 before the first run**, by the same rule
+as H4c's, H3b's, H2b's and H1b's own completions: the trigger set, target set,
+time window, distance treatment and the *fact* of a completeness correction were
+registered, but the null model, the precise statistic, the tail, the time range
+and the seed were left implied — which rule 2 forbids. H5 has never been run, so
+this finishes the registration rather than amending a result. `CircularShift` in
+`engine/terra_pulse_engine/pipeline/monte_carlo.py` states the same rule from the
+code side: a null model without its own registered entry cannot produce a real
+result.
+
+**The completeness correction is satisfied by conditioning, not by an Mc map,
+and this is the substantive decision here.** `PROJECT_PLAN.md` §5.3 specified a
+magnitude-of-completeness map, and H5 was marked "blocked" on it for weeks. The
+time-shuffled null makes that map **unnecessary rather than deferred**:
+
+- The null keeps every target event exactly where the catalogue recorded it, and
+  keeps every trigger's antipode exactly where it is. Only the *timing* is
+  randomised.
+- So the observed and null distributions live in the same instrument-biased
+  world, and detection bias **cancels** instead of needing to be estimated. "No
+  quake detected near this antipode" suppresses the observed and the null
+  identically.
+- An Mc map would introduce several new free parameters — grid size, Mc
+  estimator, minimum events per cell — in order to *estimate* what the shuffle
+  *conditions on* exactly. Under non-negotiable #3 that is strictly worse.
+
+This is why the entry above says "completeness-weighted" is met while no Mc map
+exists. **It is not a weakening of the requirement**; the requirement was that
+absence near an antipode must not be read as evidence, and conditioning enforces
+that more strictly than weighting would.
+
+**Registered in advance: this test is underpowered, and a null result will not
+mean the effect is absent.** Measured over the whole 1970– record before any
+statistic was computed:
+
+| radius | M6.0+ antipodes with *zero* M5.0+ ever recorded |
+|---|---|
+| 250 km | **63.3%** (5,010 of 7,916) |
+| 500 km | **35.6%** (2,818 of 7,916) |
+| 1000 km | 9.4% (743 of 7,916) |
+
+The median antipode has recorded **2 events in 57 years**. Seismicity is also
+extremely concentrated — 15 of 648 ten-degree cells hold half of all M5.0+
+events — which is why a uniform-on-sphere null was never an option. Stating this
+*before* the run is the point: afterwards, "no excess found" could be dressed up
+as evidence of absence, and it will not be that.
+
+**Why the whole distribution and not a radius.** Kept exactly as registered in
+2026-07-24. Antipodal focusing is documented to be strongest at 180° and to fall
+off within a few degrees, so a near-antipode excess is the directional
+prediction — but choosing a radius after seeing the data is the p-hacking hazard
+the original entry already named. The full-distribution KS avoids it. The
+empirical distance CDF is reported alongside the test as a *description*, not as
+a family of implicit radius tests.
 
 ### H6 — Lunisolar tidal stress
 
@@ -722,7 +859,8 @@ the data was surprising again.
 
 ## Progress against the matrix (2026-08-20)
 
-**16 of the 19 unblocked tests have been run. None was rejected.**
+**17 of the 19 unblocked tests have been run. None was rejected.** Only H4b's 2
+remain, and they are blocked on data this app does not yet ingest.
 
 | Family | Tests | Run | Outcome |
 |---|---|---|---|
@@ -730,11 +868,14 @@ the data was surprising again.
 | H2b | 2 | 2026-08-19 | Not rejected — ratios 0.925-1.063 |
 | H3b | 4 | 2026-08-19 | Not rejected — ratios 0.986-1.021 |
 | H4c | 6 | 2026-08-18 | Not rejected — ratios 0.974-1.013 |
-| H5 | 1 | — | Blocked on the magnitude-of-completeness map |
+| H5 | 1 | 2026-08-20 | Not rejected — KS D⁺ 0.0016, below the null mean |
 | H4b | 2 | — | Blocked — no magnetometer table exists |
 | H6 | 2 | — | Deferred to Phase 5 |
 
-**Not one test in four families produced a deviation larger than 7%, and the
+**H5 is no longer blocked on a magnitude-of-completeness map**, and that map is
+not merely deferred — the registered null makes it unnecessary. See H5's entry.
+
+**Not one test in five families produced a deviation larger than 7%, and the
 smallest raw p-value anywhere is 0.0872.** After correction against the 19-test
 matrix, every adjusted p-value in every family is 1.0000. That is the honest
 summary of Phase 4 so far, and rule 5 says it gets recorded exactly as
@@ -777,6 +918,36 @@ possible, testing against data not used to generate the observation.
 | Date | Observation | Registered as |
 |---|---|---|
 | 2026-07-27 | Interest in whether **slow slip events and earthquake swarms act as precursors** to larger events. Raised before any swarm data had been looked at in this app — nothing here was prompted by an observed pattern. | Not registered |
+| 2026-08-20 | Whether antipodal triggering, if it exists, concentrates in a **ring some tens of degrees from the antipode** rather than at the antipode itself. Raised from a half-remembered secondary source, before H5 was run and before any distance distribution had been computed. | Not registered — see the note below |
+
+### Notes on the antipodal-ring idea (2026-08-20)
+
+Recorded before H5's first run, so the date is the guarantee that it was not
+suggested by H5's output.
+
+**There is a real physical basis, and it is not at 30°.** Antipodal focusing at
+exactly 180° is well documented — body-wave phases (PKP, PP, PPP, SS and others)
+converge there and amplify by up to an order of magnitude, with the effect
+falling off within a few degrees. Separately, a **second convergence exists at
+the PKP caustic near 140° epicentral distance**, where core-refracted waves focus
+strongly enough that small events become detectable on the far side of the
+Earth. 140° epicentral is **40° from the antipode**, which is the likeliest
+origin of the recollection.
+
+**Why it is not being tested now, and what would license testing it.** H5's
+registered statistic is the *full* distance distribution, so caustic structure
+would appear as a deviation and will be visible in the reported CDF. That does
+**not** license claiming a caustic result afterwards. Registering a directed
+band test once H5's distribution has been seen — at whatever radius the bump
+happens to be — is precisely the free-parameter-after-the-fact non-negotiable #3
+forbids, and it is the specific trap this file's own
+`ANTIPODAL_WINDOW_HOURS` note already warns about in another form.
+
+To become a hypothesis it needs, fixed in advance and before consulting H5's
+output: a band derived from a **citable** source rather than from a remembered
+figure, its own entry, and its own slot in the FDR denominator (21 → 22, which
+makes every other hypothesis here harder to pass). That cost is the reason to be
+sure of the mechanism first.
 
 ### Notes on the slow-slip / swarm idea (2026-07-27)
 
