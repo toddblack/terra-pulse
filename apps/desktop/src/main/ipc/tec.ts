@@ -57,9 +57,3 @@ export function registerTecIpcHandlers(): void {
     }
   });
 }
-
-/** Test seam: drops the cache between cases. */
-export function resetTecCache(): void {
-  cached = null;
-  inFlight = null;
-}

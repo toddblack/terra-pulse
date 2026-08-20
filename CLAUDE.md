@@ -1212,9 +1212,12 @@ spatial test has n = 8 with a single-region confounder. Note also that the *most
 charged* atmosphere by electron density is not the aurora but the equatorial
 ionization anomaly at ±10-20° magnetic latitude — which overlaps that 68%
 **because both are equatorial**, the same spurious-by-construction trap as the
-antipodal South America/Indonesia pairing. The viable form of that question is
-**H4b**: local magnetometer disturbance and nearby seismicity, which works at
-all latitudes because induced currents are global.
+antipodal South America/Indonesia pairing. The viable form of that question was
+**H4b** — local magnetometer disturbance and nearby seismicity, which works at
+all latitudes because induced currents are global — but **H4b was withdrawn
+unrun on 2026-08-20** and there is now no live form of this question. See its
+entry in `HYPOTHESES.md`; the short version is that local dB/dt turns out to be
+ρ = 0.736 with planetary Kp, so it would largely have re-run H4c.
 
 
 
@@ -1553,9 +1556,18 @@ Python package would just be scaffolding ahead of need.
 
 ### Packaging
 
-`pnpm --filter @terra-pulse/desktop package` → `apps/desktop/release/`:
-a **105 MB NSIS installer** plus a `win-unpacked/` folder with a runnable
-`Terra Pulse.exe`. Config in `electron-builder.yml`. Windows x64 only so far.
+`pnpm engine:bundle` then `pnpm --filter @terra-pulse/desktop package` →
+`apps/desktop/release/`: a **119.5 MB NSIS installer** plus a `win-unpacked/`
+folder with a runnable `Terra Pulse.exe`. Config in `electron-builder.yml`.
+Windows x64 only so far.
+
+- **The engine bundle is a separate step and packaging will not do it for
+  you.** electron-builder skips a missing `extraResources.from` path *without
+  failing the build*, so packaging without `pnpm engine:bundle` first produces
+  a perfectly valid installer that quietly contains no engine — and the symptom
+  is Analyze mode reporting `python-not-found` on a machine that was never
+  supposed to need Python. Check `release/win-unpacked/resources/engine/`
+  exists. See the PyInstaller entry below for the rest.
 
 - **`- '!node_modules/**'` in `files` is load-bearing.** electron-builder adds
   everything in `dependencies` *on top of* whatever `files` lists, so listing
@@ -1656,15 +1668,14 @@ cross-checked against `scipy.stats.false_discovery_control` rather than
 adding a dependency for it). `engine/README.md` has the setup/run/test
 commands.
 
-**Dev-only this round, and that's a scope decision, not an oversight.**
-Electron main adopts an already-running engine on 127.0.0.1:8787 (the normal
-dev loop — run `pnpm engine:dev` in a second terminal) or spawns one itself;
-either way, failure is a typed status (`python-not-found`, `start-timeout`,
+**Was dev-only when it shipped; bundled since 2026-08-20.** Electron main
+adopts an already-running engine on 127.0.0.1:8787 (the normal dev loop — run
+`pnpm engine:dev` in a second terminal) or spawns one itself; either way,
+failure is a typed status (`python-not-found`, `start-timeout`,
 `contract-mismatch`, `crashed`, ...) pushed to the renderer, never a crash —
-same posture as a missing DONKI key. A packaged build reports the engine
-`unavailable` and Analyze mode stays visible rather than hidden, because a
-hidden feature is a second code path nobody exercises. PyInstaller/bundling
-is still open (§10 of `PROJECT_PLAN.md`).
+same posture as a missing DONKI key. Analyze mode stays visible even when the
+engine is unavailable, because a hidden feature is a second code path nobody
+exercises.
 
 **Why H4c first, not H5 (which has richer Explore-mode prior art) or H1b.**
 H4c (Kp/Dst geomagnetic disturbance) needs zero new ingest — Kp since 1932,
@@ -1780,12 +1791,22 @@ further. Noted in `engine/README.md`, not fixed this round.
 isn't complete.** `pipeline/multiple_comparisons.py`'s `benjamini_hochberg`
 takes a `family_size` separate from the number of p-values actually
 supplied: this round reports BH within the 6 tests run *and* BH against the
-19-test unblocked registered matrix (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H4b 2 +
-H5 1 — H6's 2 stay deferred to Phase 5, H4b's 2 stay blocked, no
-magnetometer table exists), and the 19-test figure is always the
+unblocked registered matrix, and the full-matrix figure is always the
 conservative one the UI leads on. `correction.partialMatrix` and a
 plain-English note travel with every result rather than letting a UI
 convention carry that caveat alone.
+
+**That denominator was 19 and is now 17** (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H5 1;
+H6's 2 stay deferred to Phase 5). It moved on 2026-08-20 when **H4b was
+withdrawn unrun**, taking its 2 with it — legitimate only because nothing was
+ever computed under H4b, which is the same condition that let H1-H4 transfer
+their tests. `REGISTERED_MATRIX_TESTS` in `packages/schema` is the single
+definition; main sends it and the engine never hard-codes it. **No recorded
+result changed**: the smallest raw p-value anywhere is 0.0872, and 0.0872 × 17
+still exceeds 1, so every adjusted value stays 1.0000 and nothing was re-run.
+If a future result ever sits near the threshold, note that shrinking a
+denominator is the move to be most suspicious of — it has to happen before the
+result exists, or not at all.
 
 **Next:** H1b, H2b or H3b (same pipeline shape, minor parameter changes —
 proving that reuse was the point of choosing H4c first), or the
@@ -2098,8 +2119,8 @@ different statistic, and the one whose most useful output was a finding about
 its own method.** Declustered M6.0+ mainshocks vs. the distance-to-antipode
 distribution of declustered M5.0+ events in the following 0-72h. Clean null:
 **KS D⁺ = 0.0016 against a null mean of 0.0024**, p = 0.6203 raw, 1.0000
-adjusted. 17 of 19 unblocked tests are now run; only H4b's 2 remain, blocked on
-magnetometer data.
+adjusted. With H4b withdrawn later the same day, this completed the matrix:
+**all 17 unblocked tests are run and none was rejected.**
 
 - **The magnitude-of-completeness map it was blocked on for weeks turned out to
   be unnecessary, not merely deferred.** The registered null redraws *trigger
@@ -2164,21 +2185,107 @@ magnetometer data.
   contribute one artefact to the far tail. The null needs no equivalent and must
   not have one — its drawn instants are not real events.
 
-**Next — there is no unblocked hypothesis left to run.** All five that could be
-are done. What remains, in the order it makes sense to take it:
+**H4b withdrawn unrun 2026-08-20 — the first entry here withdrawn on
+measurement rather than superseded, and the reasoning is worth reading before
+anyone proposes building it.** It was the last blocked test; withdrawing it
+means **all 17 unblocked tests are run and none was rejected**, and the FDR
+denominator moved 19 → 17 (see the note above on why that changed nothing).
 
-1. **H4b's ingest (2 tests), the only thing blocking a complete matrix.** It
-   needs a magnetometer table that does not exist. `SOURCES.md` already settles
-   the source: **INTERMAGNET** — CC BY-NC 4.0, no credential, 138 stations,
-   definitive through 2024 — and records why SuperMAG was rejected despite being
-   technically better (mandatory account, and redistribution forbidden outright,
-   so no sample database could ever ship). This is an ingest round shaped like
-   the GOES one, not an analysis round.
-2. **H6 (2 tests)** is deferred to Phase 5 by its own registration and needs the
-   Skyfield / JPL DE440 ephemeris work.
-3. **Engineering, not science:** PyInstaller bundling so a packaged build needs
-   no system Python (`PROJECT_PLAN.md` §10), which is the last thing keeping
-   Analyze mode dev-only.
+Three measured reasons, all taken *before* an ingest was built, which is the
+point — `HYPOTHESES.md`'s own rule says not to register against an unqueried
+source, and this is the first time that rule produced "don't run this" instead
+of another supersession:
+
+- **Its distinguishing premise is about half true.** The entry claims H4b is
+  stronger than H4 because it doesn't average over the planet. Measured at
+  Kakioka over 2003/2011/2015 (26,280 station-hours of real INTERMAGNET minute
+  data joined to the stored Kp): **52.7% of its trigger hours are also H4c
+  trigger hours** (Kp ≥ 6, base rate 1.5%), 72.0% are Kp ≥ 5, and the rank
+  correlation between hourly dB/dt and planetary Kp is **ρ = 0.736**. H4c is
+  already six clean nulls. The independent fraction is real but modest.
+- **There is no "do it properly" version worth buying.** 31 of 138 open stations
+  have *zero* M5.0+ within 500 km ever; 9 stations carry 71% of the target
+  pairs. Power goes as √n, so 5 stations → ~12% minimum detectable rate excess
+  and all 138 → ~9.4%, for **27× the download**. Nothing in this matrix has
+  deviated more than 7%.
+- **Every install would pay for it.** INTERMAGNET is CC BY-NC with bulk
+  redistribution needing written permission per institute, so standing rule 1
+  applies and nothing can ship pre-fetched. The smallest credible version is
+  ~1 GB and ~1 hour per machine, for a hypothesis whose own registered mechanism
+  plausibility is "low".
+
+**Do not re-propose this as "just ingest a few stations" without re-reading the
+ρ = 0.736 measurement** — the cheap version is not a compromise on cost, it is a
+test that mostly re-asks a question already answered null.
+
+**The INTERMAGNET recon is kept in `SOURCES.md`** because it was the expensive
+part: `GetCapabilities` serves the whole station list, month-chunking is
+mandatory (a 31 MB year request dropped mid-transfer), there is no hourly
+cadence, element sets vary by station *and* era (Kakioka is HDZ in 2003 and XYZG
+from 2011), and **gaps arrive as JSON `null`, which passes `Number.isFinite`
+once you subtract it** — validating the difference instead of the operands moved
+Paratunka's p99 from 7.36 to 21,675 nT/min with no error at all.
+
+**Next — Phase 4's science is finished.** What remains:
+
+1. **H6 (2 tests)** is deferred to Phase 5 by its own registration and needs the
+   Skyfield / JPL DE440 ephemeris work. It is the only registered test left.
+2. ~~**Engineering, not science:** PyInstaller bundling~~ — **shipped
+   2026-08-20**, see below.
+
+**PyInstaller bundling — shipped.** A packaged Terra Pulse carries its own
+frozen engine and needs no system Python. `pnpm engine:bundle` →
+`engine/dist/terra-pulse-engine/`, shipped as an electron-builder
+`extraResource` to `resources/engine/`. This closes `PROJECT_PLAN.md` §10 and
+was the last thing keeping Analyze mode dev-only.
+
+- **The check that mattered was not "does it start" but "does it compute the
+  same numbers".** numpy and scipy freeze into something that runs while
+  computing subtly different results if a hook goes wrong, and a working
+  binary returning plausible wrong statistics is the worst outcome available
+  here. A full H4c run against the frozen binary is **byte-identical** to the
+  source build (everything but `durationMs`), checked by POSTing the same
+  synthetic request to both. Do that again after any spec change.
+- **One-folder, not one-file, and it is not a style preference.** `--onefile`
+  is a self-extracting archive: it unpacks the whole of numpy and scipy to a
+  temp directory *on every launch*, which is seconds of startup per spawn and
+  looks exactly like malware to antivirus. One-folder starts in about the time
+  the interpreter takes.
+- **Uvicorn's imports are invisible to static analysis.** It picks its event
+  loop, HTTP protocol and lifespan implementation at runtime by importing a
+  string, so nothing in the source graph points at them. Frozen without the
+  `hiddenimports` list the binary builds cleanly and dies on startup with a
+  bare `ModuleNotFoundError`. The app is also referenced by import string from
+  `__main__`, so it needs listing too.
+- **`extraResources`, not `files`** — you cannot exec a binary out of an asar,
+  and `asar: true` is on.
+- **`cwd` is load-bearing.** `spawn` with a non-existent `cwd` fails on
+  Windows, and a packaged build's `engineDir` points into a source tree that
+  was never shipped. Defaulting it there would make every packaged spawn fail
+  with an ENOENT that reads as "Python is missing". `EngineCommand` carries a
+  cwd that is always a directory that exists; a test pins it.
+- **In dev the source always wins over a bundle.** `bundledEngineDir` is only
+  passed when `app.isPackaged`, so a bundle built hours ago cannot silently
+  shadow the engine code you are editing. `TERRA_PULSE_ENGINE_BIN` aims a dev
+  run at a bundle deliberately.
+- **Packaging does not build the bundle, and fails silently if it is missing.**
+  electron-builder skips a missing `extraResources.from` without erroring. The
+  installer is valid and contains no engine.
+- Cost, measured: 57 MB on disk, **+14.5 MB to the installer** (105 → 119.5
+  MB), because NSIS compresses it well. Cheaper than the deferral assumed.
+- **macOS and Linux bundles are unbuilt** — PyInstaller does not cross-compile,
+  the same constraint that already blocks `.dmg` builds here.
+
+**`ELECTRON_RUN_AS_NODE=1` was set in this environment and cost a real
+detour** — the trap already documented further up this file, met for the first
+time. The packaged app exited **0 immediately, with no output and no window**,
+which reads exactly like a crash-on-launch regression from whatever you just
+changed. It was not: the variable makes the Electron binary run as plain Node.
+`Remove-Item Env:ELECTRON_RUN_AS_NODE` and it launches normally. **Check that
+variable before debugging any "packaged app won't start" symptom** — the
+existing note said it makes Electron a liar about `require('electron')`, and
+this adds the other half: it also makes a perfectly good packaged app look
+stillborn.
 
 ## Non-negotiables
 

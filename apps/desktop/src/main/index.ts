@@ -424,15 +424,20 @@ app
       archive.cancel();
     });
 
-    // The Phase 4 statistical engine — dev-only this round (PROJECT_PLAN
-    // §10 defers PyInstaller/bundling to a later round). Adopts an
-    // already-running engine if it finds one healthy on 127.0.0.1:8787 (the
-    // normal dev loop — `pnpm engine:dev` in a second terminal), otherwise
-    // spawns one. `engineDir` climbs from the compiled main bundle's own
+    // The Phase 4 statistical engine. Adopts an already-running engine if it
+    // finds one healthy on 127.0.0.1:8787 (the normal dev loop — `pnpm
+    // engine:dev` in a second terminal), otherwise spawns one: the shipped
+    // PyInstaller bundle when packaged, a local Python running the source
+    // when not. `engineDir` climbs from the compiled main bundle's own
     // location the same four levels `.env`'s path does above, since both
     // need to reach the repo root regardless of what launched this process.
     const engine = createEngineController({
       engineDir: join(__dirname, '../../../../engine'),
+      // Only when packaged. In dev this stays undefined so the engine venv —
+      // the source you are actually editing — always wins over a bundle that
+      // may have been built hours ago. `TERRA_PULSE_ENGINE_BIN` is the way to
+      // aim a dev run at a bundle on purpose.
+      bundledEngineDir: app.isPackaged ? join(process.resourcesPath, 'engine') : undefined,
       onStatusChange: (status) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send('analysis:engine-status', status);

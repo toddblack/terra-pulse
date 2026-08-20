@@ -460,13 +460,16 @@ export interface SpaceWeatherProgress {
 /**
  * A ground magnetometer observatory.
  *
- * The network H4b is registered against. Unlike the auroral oval — which is
- * organised by the magnetic poles and therefore sits over almost nowhere that
- * has large earthquakes — ground magnetometers respond to storms at **all**
- * latitudes, through currents induced in the ground rather than through
- * particle precipitation. Measured against this app's own catalogue: 21.3% of
- * M7+ events have an INTERMAGNET station within H4b's registered 500 km, against
- * 0.77% under the ordinary auroral oval.
+ * Unlike the auroral oval — which is organised by the magnetic poles and
+ * therefore sits over almost nowhere that has large earthquakes — ground
+ * magnetometers respond to storms at **all** latitudes, through currents
+ * induced in the ground rather than through particle precipitation. Measured
+ * against this app's own catalogue: 21.3% of M7+ events have an INTERMAGNET
+ * station within 500 km, against 0.77% under the ordinary auroral oval.
+ *
+ * That reach is why H4b was registered against this network — and H4b was
+ * **withdrawn unrun on 2026-08-20**, so this type now serves the live Explore
+ * layer alone and nothing here feeds an analysis.
  */
 export interface MagnetometerStation {
   /** IAGA three-letter code. */
@@ -498,10 +501,15 @@ export interface StationDisturbance {
 /**
  * Where a station's disturbance stops being ordinary, in nT per hour.
  *
- * **Display emphasis only.** H4b's registered trigger is the 99th percentile of
- * *that station's own* distribution, which is a per-station quantity this
- * cannot stand in for — a quiet mid-latitude site and an auroral-zone site
- * differ by an order of magnitude on an ordinary day. Kept apart for the same
+ * **Display emphasis only, and now the only station-level threshold here.**
+ * H4b registered a per-station trigger — the 99th percentile of *that
+ * station's own* distribution — which this flat value could never stand in
+ * for: a quiet mid-latitude site and an auroral-zone site differ by an order
+ * of magnitude on an ordinary day. **H4b was withdrawn unrun on 2026-08-20**,
+ * so there is no registered constant left for this one to be confused with.
+ *
+ * It stays a display constant regardless. If a per-station hypothesis is ever
+ * registered again, it needs its own value under its own name, for the same
  * reason `KP_STORM_THRESHOLD` is kept apart from H4c's trigger.
  */
 export const STATION_DISTURBED_NT = 50;

@@ -16,10 +16,12 @@ import type { MagnetometerStation, StationDisturbance } from '@terra-pulse/schem
  * (South Africa) and the Canadian chain, so the live view is sparse but not
  * parochial.
  *
- * **INTERMAGNET remains the right source for the H4b archive**, where day-at-a-
- * time requests are exactly the granularity a backfill wants. Same split as the
- * earthquakes: a cheap rolling view and a deliberate archive, from sources
- * shaped for each.
+ * INTERMAGNET *would* have been the right source for an archive, where
+ * day-at-a-time requests are the granularity a backfill wants — but **H4b, the
+ * only thing that wanted one, was withdrawn unrun on 2026-08-20**, so no
+ * magnetometer archive is planned and this adapter is the whole of the app's
+ * magnetometer story. `SOURCES.md` keeps the measured INTERMAGNET service shape
+ * in case that is ever revisited.
  *
  * ## What is measured
  *

@@ -137,11 +137,47 @@ rather than merely displayed, the INTERMAGNET conditions below apply to them.
 | Redistributable | Yes, **non-commercially**, with attribution |
 | Bulk distribution to third parties | **Needs written permission** from the operating institute |
 | Credential | None |
-| Coverage | 138 open observatories worldwide; **definitive data only** — 2024 returns full minute data, 2025 onward returns empty, and the last few days come back `embargo_applied: true` with every value null |
+| Coverage | 154 observatories listed, **138 open**; minute and second cadence, no hourly. `Best available` returns definitive data through 2024 and **quasi-definitive for 2025-2026**; `Definitive` returns a payload with every value null for those years |
 
-Intended as the **archive** source for H4b. Preferred acknowledgement is to cite
-the relevant DOIs; where none exists, INTERMAGNET publishes acknowledgement
-templates. Conditions: <https://intermagnet.org/data_conditions.html>
+**Not currently ingested — H4b was withdrawn unrun on 2026-08-20** and was the
+only thing that needed this. The evaluation below is kept because it was the
+expensive part and because the entry would otherwise read as an open task.
+Preferred acknowledgement is to cite the relevant DOIs; where none exists,
+INTERMAGNET publishes acknowledgement templates.
+Conditions: <https://intermagnet.org/data_conditions.html>
+
+**What the service actually looks like, measured 2026-08-20** with Node `fetch`
+(per the GFZ lesson — `curl` on this box uses a Schannel TLS backend and lies
+about reachability):
+
+- `?Request=GetCapabilities&format=json` returns the **whole station list with
+  coordinates** in 29 KB. Nothing needs vendoring. Longitudes are 0-360, like
+  the USGS service above.
+- `GetData` takes `dataDuration` in days, so a station-year is one request —
+  but **don't**: a 31 MB year response dropped mid-transfer ("other side
+  closed" at 10 MB). Twelve monthly chunks fetched the same year in 10 s with
+  no retries. Chunk by month.
+- gzip is served. A station-year is ~28 MB decoded but **~3 MB on the wire**.
+- `samplesPerDay` accepts `minute` (or `1440`) and `second` only. There is no
+  hourly product; anything hourly has to be derived.
+- Element sets vary **by station and by era** — Kakioka reports `HDZ` in 2003
+  and `XYZG` from 2011. A parser has to handle both orientations or it will
+  crash on the older half of the record.
+
+**An earlier note here said "definitive data only — 2025 onward returns
+empty."** That is true of `publicationState=Definitive` and misleading as
+written: with `Best available`, 2025 and 2026 return full quasi-definitive
+minute data. For anything built on **dB/dt** that distinction barely matters,
+since a rate of change cancels the baseline offsets definitive processing
+exists to fix.
+
+**The trap, recorded here as well as in `HYPOTHESES.md` because it belongs to
+the source rather than to the hypothesis:** gaps are reported as JSON `null`,
+and in JavaScript `null - 21585.5` evaluates to `-21585.5` — a finite number.
+Validating a *difference* rather than its *operands* turns every gap edge into a
+spike the size of the field. Measured at Paratunka in 2011, 1,400 nulls moved
+the station's 99th-percentile dB/dt from 7.36 nT/min to **21,675 nT/min**, with
+no error and a perfectly plausible-looking result.
 
 ### SuperMAG — evaluated and rejected, 2026-08-16
 
@@ -164,8 +200,12 @@ research service, and worth respecting rather than working around.
 
 Its rules also carry an obligation worth remembering if it is ever reconsidered:
 where a few stations are **central to a scientific conclusion**, co-authorship
-must be offered to those stations' PIs. That would attach directly to H4b, which
-is a per-station hypothesis by construction.
+must be offered to those stations' PIs. That would have attached directly to
+H4b, which was a per-station hypothesis by construction — and the measurement
+that withdrew it makes the point sharper than the rule does: **9 stations carry
+71% of the usable target events**, so any per-station result here would have
+rested on a handful of observatories by construction, whichever archive it came
+from.
 
 Rules of the road: <https://supermag.jhuapl.edu/info/?page=rulesoftheroad>
 

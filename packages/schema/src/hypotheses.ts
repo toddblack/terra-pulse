@@ -83,14 +83,25 @@ export const H4C_Q = 0.05;
 export const H4C_REQUESTED_START_UTC = '1963-01-01T00:00:00.000Z';
 
 /**
- * HYPOTHESES.md "Total Test Matrix": 19 unblocked registered tests
- * (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H4b 2 + H5 1). H6's 2 are deferred to
- * Phase 5; H4b's 2 are blocked (no magnetometer table exists yet) — neither
- * changes this number, since the document's own "Total" of 21 already
- * counts them. This is the conservative denominator the full-matrix FDR
- * correction uses until more of the matrix is actually run.
+ * HYPOTHESES.md "Total Test Matrix": 17 unblocked registered tests
+ * (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H5 1). H6's 2 are deferred to Phase 5,
+ * which is why the document's own "Total" is 19 rather than 17.
+ *
+ * **This was 19 until 2026-08-20, when H4b was withdrawn unrun** and its 2
+ * tests left the denominator. That is the same accounting H1, H2, H3 and H4
+ * already got: rule 5 keeps a *run* family's tests in the correction forever,
+ * but nothing was ever computed under H4b, so there is no result being
+ * dropped. See its entry for the measured reasons.
+ *
+ * No recorded result changes as a consequence. The smallest raw p-value
+ * anywhere in the matrix is H1b's 0.0872, and 0.0872 x 17 still exceeds 1, so
+ * every adjusted value stays 1.0000 under either denominator — the five
+ * completed runs did not need re-running.
+ *
+ * This is the conservative denominator the full-matrix FDR correction uses
+ * until the rest of the matrix is actually run.
  */
-export const REGISTERED_MATRIX_TESTS = 19;
+export const REGISTERED_MATRIX_TESTS = 17;
 
 /** Seeded so a run is reproducible; echoed back in every result. */
 export const H4C_SEED = 20260818;

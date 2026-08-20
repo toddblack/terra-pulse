@@ -965,11 +965,11 @@
     "method": "benjamini-hochberg",
     "q": 0.05,
     "testsRun": 6,
-    "registeredMatrixTests": 19,
+    "registeredMatrixTests": 17,
     "deferredTests": 2,
-    "blockedTests": 2,
+    "blockedTests": 0,
     "partialMatrix": true,
-    "note": "6 of 19 registered, unblocked tests have been run so far (2 more deferred to Phase 5, 2 blocked on missing magnetometer data). Adjusted p-values are provisional until the full matrix is complete."
+    "note": "6 of 17 registered, unblocked tests have been run so far (2 more are deferred to Phase 5). Adjusted p-values are provisional until the full matrix is complete."
   },
   "method": {
     "nullModel": "uniform-redraw",

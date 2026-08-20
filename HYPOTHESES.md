@@ -617,16 +617,112 @@ to stop edits *after* a result is known; there is no result here to protect).
 | Field | Value |
 |---|---|
 | **Registered** | 2026-07-24 |
-| **Status** | Not yet run |
+| **Status** | **Withdrawn unrun 2026-08-20 — not replaced** |
 | **Statement** | Disturbance measured at an individual ground magnetometer station is followed by an elevated M5.0+ rate **within 500 km of that station**. |
 | **Data source** | INTERMAGNET / SuperMAG 1-minute vector data |
 | **Trigger definition** | Station-level dB/dt exceeding the 99th percentile of that station's own distribution |
 | **Spatial window** | 500 km radius of station |
 | **Lag windows** | 0–24h, 24–72h (2 windows) |
 | **Completeness correction** | Required — station distribution is geographically biased toward instrumented regions |
-| **Tests in family** | 2 |
+| **Tests in family** | 2 — **withdrawn unrun**, see the matrix note |
 | **Mechanism plausibility** | Low, but spatially specific — a materially stronger test than H4, since it does not average over the whole planet |
-| **Result** | — |
+| **Result** | — (never run) |
+
+**Withdrawn on measurement, not on effort.** Unlike H1→H1b, H2→H2b, H3→H3b and
+H4→H4c, this one is **not replaced by a corrected entry**. The registered
+parameters above are left exactly as written per rule 3; only `Status` moved.
+
+The decision rests on three things measured on 2026-08-20, before any ingest was
+built. Each is recorded here because "we didn't get round to it" and "we checked
+and it wasn't worth it" are very different claims, and only the second is true.
+
+**1. Its distinguishing premise is about half true.** The entry claims H4b is "a
+materially stronger test than H4, since it does not average over the whole
+planet." Measured at Kakioka across 2003, 2011 and 2015 — 26,280 station-hours
+of INTERMAGNET 1-minute data, joined to the Kp already stored here:
+
+| | H4b trigger hours (dB/dt ≥ p99) | all hours |
+|---|---|---|
+| Kp ≥ 5 | **72.0%** | 5.4% |
+| Kp ≥ 6 | **52.7%** | 1.5% |
+
+Spearman rank correlation between hourly max dB/dt and planetary Kp: **0.736**.
+
+So **over half of H4b's local triggers are literally H4c trigger hours**, and
+H4c returned six clean nulls with ratios inside 2.5% of 1.0. It is not a pure
+duplicate — only 35.9% of Kp ≥ 6 hours clear Kakioka's own p99, and ~47% of
+local triggers occur below Kp 6 — but the independent fraction is modest, and it
+is the fraction where local conditions diverge from planetary, which is the
+noisiest part of the record rather than the most diagnostic.
+
+**2. Power barely responds to scope, so there is no "do it properly" version
+worth the cost.** Of 138 open INTERMAGNET observatories, measured against this
+app's own catalogue (M5.0+ within 500 km, 1991 onward), **31 have zero nearby
+events ever** and the distribution is brutally concentrated — 23 stations hold
+87% of all station-event pairs, 9 hold 71%. Because power goes as √n:
+
+| stations | share of targets | download | min. detectable rate excess |
+|---|---|---|---|
+| 5 | 57% | ~525 MB | ~12% |
+| 9 | 71% | ~945 MB | ~11% |
+| 23 | 87% | ~2.4 GB | ~10% |
+| 41 | 96% | ~4.3 GB | ~9.5% |
+| 138 | 100% | ~14 GB | ~9.4% |
+
+Eight times the download buys 12% → 9.5%. And **nothing anywhere in this matrix
+has deviated more than 7% from 1.0**, so a test that cannot see below ~10% is
+unlikely to resolve whatever is or is not there.
+
+**3. The cost is paid by every install, and it is not ours to redistribute.**
+INTERMAGNET is CC BY-NC 4.0 with bulk distribution to third parties requiring
+written permission from each operating institute, so standing rule 1 in
+`SOURCES.md` applies: every install fetches its own copy. That makes the smallest
+credible version a ~1 GB, ~1-hour download on every machine that wants the test,
+against a hypothesis whose own registered mechanism plausibility is "low".
+
+**What this costs the matrix: nothing that was ever computed.** No p-value was
+ever produced under H4b, so rule 5 does not apply and its 2 tests leave the
+denominator, exactly as H1's, H2's, H3's and H4's did. The unblocked matrix goes
+**19 → 17**. No recorded result changes: the smallest raw p-value anywhere is
+H1b's 0.0872, and 0.0872 × 17 still exceeds 1, so every adjusted value stays
+1.0000 under either denominator. The five completed runs did **not** need
+re-running, and were not re-run.
+
+**What it does not settle.** This is a judgement that the test is not worth its
+price, not a finding that local magnetometer disturbance is unrelated to local
+seismicity. Nothing here measures that. If it is ever revisited, the honest form
+is the 9-station version above, and it needs a **new entry** with its own
+registration — the parameters in the table above were written against an
+unqueried source and are underspecified in six places (no time range at all, no
+episode definition, no baseline window, no null model, no tail, and "the 99th
+percentile of that station's own distribution" never says of *what* — 1-minute
+values or hourly maxima, per year or per record).
+
+**The recon it produced is kept, because it was the expensive part.** See
+`SOURCES.md` for INTERMAGNET's real service shape, and the note below on the
+null-arithmetic trap.
+
+#### The trap that would have defined the trigger set out of telemetry gaps
+
+Recorded because it is not specific to H4b and will recur in any dB/dt work.
+INTERMAGNET's JSON reports data gaps as `null`. In JavaScript `null` fails
+`Number.isFinite`, but **`null - 21585.5` evaluates to `-21585.5`, which passes
+it** — so validating the *difference* rather than the *operands* turns every gap
+edge into a spike the size of the field itself.
+
+Measured at Paratunka in 2011: 1,400 null samples produced 362 false jumps above
+100 nT/min and pushed the station's 99th percentile from a real **7.36 nT/min**
+to **21,675 nT/min**. At that threshold the trigger set would have been composed
+almost entirely of telemetry dropouts, and it would have looked entirely healthy
+— a plausible count of triggers, at plausible times, with no error anywhere.
+
+Same family as OMNI's 99999 sentinel already documented in `CLAUDE.md`, but
+worse: `null` looks like the safe representation, and the check that catches a
+sentinel is the one that misses this.
+
+With the operands validated instead, the corrected figures are physical and the
+top days at each station are recognisable storms — Kakioka 2015 peaks on 22 June
+and 17 March (St Patrick's Day), Paratunka 2011 on 26 September and 5 August.
 
 ### H5 — Antipodal triggering
 
@@ -825,10 +921,28 @@ not as a discovery.
 | H3b | 4 |
 | ~~H4~~ | 0 — withdrawn unrun 2026-08-14, replaced by H4c |
 | H4c | 6 |
-| H4b | 2 |
+| ~~H4b~~ | 0 — withdrawn unrun 2026-08-20, **not** replaced |
 | H5 | 1 |
 | H6 | 2 |
-| **Total** | **21** |
+| **Total** | **19** |
+
+**H4b is the one withdrawal that is not a supersession**, and it is accounted
+for differently on purpose. The four above it each transferred their tests to a
+replacement, so the total never moved. H4b has no replacement, so its 2 tests
+leave the matrix outright: **21 → 19 total, 19 → 17 unblocked.**
+
+That is legitimate on the same condition as the others and no weaker one:
+**H4b was never run.** No p-value was computed under it, so nothing is being
+removed from the correction — there is no result, not a discarded one. A family
+that *has* been run keeps its tests in the denominator forever whatever happens
+to it afterwards; that is rule 5, and it is not what happened here.
+
+The check that keeps this honest is that **shrinking the denominator made no
+result easier to pass.** Every adjusted p-value in the file was already 1.0000
+at 19, and the smallest raw p-value anywhere is 0.0872 — which stays 1.0000 at
+17. Had any result been near the threshold, dropping a denominator would be the
+one move to be most suspicious of, and it would have needed to happen *before*
+that result existed or not at all.
 
 **Why the total did not move when H1b, H2b, H3b and H4c were added.** None is a
 new question — each is its predecessor with a corrected data source or a
@@ -857,10 +971,20 @@ cheap and feels like rigour; it is only rigour if the parameters in it can
 survive the data. A fifth supersession means this rule is being ignored, not that
 the data was surprising again.
 
+**H4b is the fifth entry that failed on contact with its source, and it is the
+first one the rule actually caught.** It was registered the same day as H1-H4,
+against a source nobody had queried, and when INTERMAGNET was finally measured
+on 2026-08-20 the entry turned out to be underspecified in six places and to
+rest on a premise the data contradicts. The difference is what happened next: it
+was checked **before** an ingest was built rather than after, and the answer was
+to withdraw rather than to write H4d. That is the rule working — the outcome it
+is supposed to produce is sometimes "don't run this", not "register it again
+more carefully."
+
 ## Progress against the matrix (2026-08-20)
 
-**17 of the 19 unblocked tests have been run. None was rejected.** Only H4b's 2
-remain, and they are blocked on data this app does not yet ingest.
+**All 17 unblocked tests have been run. None was rejected.** Nothing remains
+blocked; H6's 2 are deferred to Phase 5 by its own registration.
 
 | Family | Tests | Run | Outcome |
 |---|---|---|---|
@@ -869,17 +993,24 @@ remain, and they are blocked on data this app does not yet ingest.
 | H3b | 4 | 2026-08-19 | Not rejected — ratios 0.986-1.021 |
 | H4c | 6 | 2026-08-18 | Not rejected — ratios 0.974-1.013 |
 | H5 | 1 | 2026-08-20 | Not rejected — KS D⁺ 0.0016, below the null mean |
-| H4b | 2 | — | Blocked — no magnetometer table exists |
+| ~~H4b~~ | 0 | — | **Withdrawn unrun 2026-08-20** — see its entry |
 | H6 | 2 | — | Deferred to Phase 5 |
 
 **H5 is no longer blocked on a magnitude-of-completeness map**, and that map is
 not merely deferred — the registered null makes it unnecessary. See H5's entry.
 
 **Not one test in five families produced a deviation larger than 7%, and the
-smallest raw p-value anywhere is 0.0872.** After correction against the 19-test
-matrix, every adjusted p-value in every family is 1.0000. That is the honest
-summary of Phase 4 so far, and rule 5 says it gets recorded exactly as
+smallest raw p-value anywhere is 0.0872.** After correction against the
+unblocked matrix, every adjusted p-value in every family is 1.0000. That is the
+honest summary of Phase 4 so far, and rule 5 says it gets recorded exactly as
 prominently as a rejection would have been.
+
+The five runs recorded above were executed against a **19**-test denominator,
+before H4b was withdrawn; the denominator is **17** from 2026-08-20. Neither
+figure changes any recorded value — 0.0872 × 17 already exceeds 1 — so nothing
+was re-run on account of the withdrawal, and this note exists so that the
+mismatch between the runs' own reported denominator and the current one is a
+recorded fact rather than a discrepancy someone finds later.
 
 **All four were re-run on 2026-08-20 and reproduced.** The `Status` and
 `Result` fields had drifted — they still read "Not yet run" for H4c, H3b and
@@ -896,12 +1027,14 @@ catalogue; nothing was re-parameterised, and no result changed direction. Had a
 re-run disagreed with what was recorded, the discrepancy would belong in this
 file rather than being resolved in favour of whichever was more convenient.
 
-Every run reports adjusted p-values against the full **19** unblocked tests,
-not against the handful executed in one session — so no result has been
-compared against a conveniently small denominator.
+Every run reports adjusted p-values against the full unblocked matrix — **17**
+tests from 2026-08-20, 19 before that — not against the handful executed in one
+session, so no result has been compared against a conveniently small
+denominator.
 
 At an uncorrected threshold of p < 0.05, roughly **1 false positive is expected
-from noise alone** across this matrix. FDR correction is applied across all 21.
+from noise alone** across this matrix. FDR correction is applied across all 19
+registered tests, H6's deferred pair included.
 
 Any hypothesis registered later increases this denominator and requires
 recomputing the correction. Do not compare a newly-added test against the old
