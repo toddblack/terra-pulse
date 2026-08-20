@@ -12,6 +12,7 @@ import type {
   ArchiveProgress,
   CmeArrival,
   DonkiProgress,
+  GoesFlareProgress,
   EarthquakeEvent,
   EarthquakeQuery,
   EarthquakeSyncResult,
@@ -100,6 +101,19 @@ declare global {
         onProgress(callback: (progress: DonkiProgress) => void): () => void;
         /** Fires when the live poll stores something new. */
         onUpdated(callback: () => void): () => void;
+      };
+      /**
+       * The GOES XRS historical flare backfill (1996-2016). Its rows are read
+       * through `solarEvents.queryFlares` like any other flare, so there is no
+       * query channel here — only the download's own controls.
+       */
+      goesFlares: {
+        status(): Promise<GoesFlareProgress>;
+        /** Settles when the whole backfill finishes — follow onProgress instead. */
+        start(): Promise<GoesFlareProgress>;
+        cancel(): Promise<GoesFlareProgress>;
+        /** Subscribe to backfill progress; returns an unsubscribe function. */
+        onProgress(callback: (progress: GoesFlareProgress) => void): () => void;
       };
       shell: {
         /** Resolves false if main refused to open the URL. */

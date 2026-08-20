@@ -213,3 +213,74 @@ export const H2B_REQUESTED_START_UTC = '2014-01-01T00:00:00.000Z';
 /** H3b was also completed 2026-08-19 — the trailing `01` keeps the two seeds
  * distinct rather than colliding on the same date. */
 export const H2B_SEED = 2026081901;
+
+// ---------------------------------------------------------------------------
+// H1b — solar flares vs. global seismicity rate (HYPOTHESES.md, registered
+// 2026-08-17, completed 2026-08-19). H4c's statistic with H2b's trigger
+// delivery: the same moving-window Poisson baseline and lag-window ratio, but
+// the triggers are a discrete catalogue of flares rather than episodes
+// extracted from a thresholded series — which is why it needs neither a
+// TriggerDefinition nor a gap-handling rule.
+// ---------------------------------------------------------------------------
+
+/** HYPOTHESES.md H1b: "Target set: Declustered M5.0+ global — unchanged from H1." */
+export const H1B_TARGET_MIN_MAGNITUDE = 5.0;
+
+/**
+ * HYPOTHESES.md H1b: "Trigger set: Flares classified M1.0 or above."
+ *
+ * Applied in main, before the request is built, so the engine receives peak
+ * instants rather than classes to re-derive the registered threshold from a
+ * second time — the same rule that keeps `isDirectImpact` out of `h2b.py`.
+ */
+export const H1B_MIN_FLARE_CLASS = 'M' as const;
+export const H1B_MIN_FLARE_MAGNITUDE = 1.0;
+
+/** HYPOTHESES.md H1b: "Lag windows: 0-24h, 24-48h, 48-72h, 3-7d (4 windows)." */
+export const H1B_LAG_WINDOWS_HOURS: readonly (readonly [number, number])[] = [
+  [0, 24],
+  [24, 48],
+  [48, 72],
+  [72, 168],
+];
+
+export const H1B_DECLUSTERING = 'gardner-knopoff' as const;
+
+/**
+ * HYPOTHESES.md H1b, "Baseline window" (completed 2026-08-19): ±182.625 days,
+ * one year total, centred on each trigger.
+ *
+ * The same value H4c and H3b use, and this is the hypothesis whose own
+ * measured secular drift (+36% per five decades at M5.0+) is the argument for
+ * it — H3b's completion cites this entry, not the other way round.
+ */
+export const H1B_BASELINE_WINDOW_DAYS = 365.25;
+
+/**
+ * HYPOTHESES.md H1b, "Null model" (completed 2026-08-19): flare peak instants
+ * redrawn uniformly without replacement from every hour in the span.
+ *
+ * Every hour, not an eligibility-masked subset. H4c and H3b exclude hours
+ * where a qualifying threshold window could not have started; a flare
+ * catalogue has no series behind it for such a rule to act on, so the pool is
+ * unrestricted exactly as H2b's is.
+ */
+export const H1B_NULL_MODEL = 'uniform-redraw' as const;
+
+/** HYPOTHESES.md H1b, "Tail" (completed 2026-08-19): one-sided upper. */
+export const H1B_TAIL = 'upper' as const;
+
+export const H1B_ITERATIONS = 10_000;
+
+export const H1B_Q = 0.05;
+
+/**
+ * HYPOTHESES.md H1b: "Time range: 1996-01-01 onward."
+ *
+ * Needs no effective-span adjustment, unlike H4c's 1963: it already sits
+ * inside the M5.0+ catalogue's own 1970 completeness bound, having been chosen
+ * for a stricter solar-side reason (the GOES 1-7 flux scaling correction).
+ */
+export const H1B_REQUESTED_START_UTC = '1996-01-01T00:00:00.000Z';
+
+export const H1B_SEED = 2026081902;

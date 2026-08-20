@@ -192,6 +192,7 @@ export function parseFlares(payload: unknown): SolarFlare[] {
 
     flares.push({
       id,
+      source: 'donki',
       classType: String(raw.classType),
       flareClass: parsed.flareClass,
       magnitude: parsed.magnitude,

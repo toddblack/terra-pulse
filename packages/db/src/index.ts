@@ -45,7 +45,10 @@ export {
   recordDonkiChunk,
   completedDonkiYears,
   donkiChunkSummary,
+  recordGoesFlareChunk,
+  completedGoesFlareYears,
+  goesFlareChunkSummary,
 } from './solar-events-queries';
-export type { DonkiSource } from './solar-events-queries';
+export type { DonkiSource, QuerySolarFlaresOptions } from './solar-events-queries';
 export { queryAnalysisCatalog } from './analysis-queries';
 export type { AnalysisCatalog } from './analysis-queries';

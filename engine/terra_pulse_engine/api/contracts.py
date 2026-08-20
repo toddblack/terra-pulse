@@ -99,6 +99,36 @@ class HemisphereParameters(ApiModel):
     registered_matrix_tests: int
 
 
+class DiscreteLagWindowParameters(ApiModel):
+    """H1b's shape: a *discrete catalogued* trigger (solar flare peaks) tested
+    against a moving-window Poisson baseline over fixed lag windows.
+
+    Deliberately its own model rather than `LagWindowParameters` with an
+    optional `triggers`. That field carries a `series` literal, a comparison
+    and a `minConsecutiveHours` — the anatomy of a threshold crossing on a
+    continuous series, none of which means anything for a list of flares
+    already classified by NOAA. There is no series literal that could name
+    "M1.0+ flare peak times", and adding a nullable one would reintroduce the
+    "field present but silently unused" shape the split exists to prevent.
+
+    Everything else *is* H4c/H3b's, including `baselineWindowDays` — H1b
+    registers the same ±182.625-day moving window, for the secular-drift
+    reason its own registration documents.
+    """
+
+    target_min_magnitude: float
+    lag_windows_hours: list[tuple[float, float]]
+    declustering: Literal["gardner-knopoff"]
+    baseline_window_days: float
+    null_model: Literal["uniform-redraw"]
+    tail: Literal["upper", "lower"]
+    iterations: int
+    seed: int
+    q: float
+    requested_start_utc: str
+    registered_matrix_tests: int
+
+
 class CatalogPayload(ApiModel):
     time_ms: list[int]
     latitude: list[float]
@@ -159,6 +189,31 @@ class HemisphereRunRequest(ApiModel):
         return self
 
 
+class DiscreteTriggerRunRequest(ApiModel):
+    """H1b. No `series` — its triggers arrive as instants, like H2b's, rather
+    than being derived from an hourly grid the way H4c's and H3b's are.
+
+    `flareCoverageComplete` is not a statistical parameter and does not appear
+    in HYPOTHESES.md. It reports whether main actually holds the registered
+    GOES 1996-2016 record, so a run against a partly-downloaded catalogue is
+    marked rather than silently reported as if it were the registered one —
+    the same posture as the recurrence panel refusing on an incomplete
+    archive.
+    """
+
+    contract_version: int
+    hypothesis_id: Literal["H1b"]
+    parameters: DiscreteLagWindowParameters
+    catalog: CatalogPayload
+    flare_peak_times_ms: list[int]
+    flare_coverage_complete: bool
+
+    @model_validator(mode="after")
+    def _check(self) -> "DiscreteTriggerRunRequest":
+        _validate_epoch_ms(self.flare_peak_times_ms, field="flarePeakTimesMs")
+        return self
+
+
 # The manual per-hypothesis dispatch in api/main.py picks the right member of
 # this union by `hypothesisId` before validating — see that module's own
 # note on why this isn't a single shared request model or a Pydantic
@@ -167,7 +222,7 @@ class HemisphereRunRequest(ApiModel):
 # mean marking fields optional across families, which is exactly the kind of
 # "field present but silently unused" shape non-negotiable #3 exists to rule
 # out.
-AnalysisRunRequest = LagWindowRunRequest | HemisphereRunRequest
+AnalysisRunRequest = LagWindowRunRequest | HemisphereRunRequest | DiscreteTriggerRunRequest
 
 
 # ---- Response ----

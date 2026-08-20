@@ -92,3 +92,14 @@ that signal, not a false alarm to silence on this side alone.
   match an independent SQL/JS recomputation exactly, and the expected daily
   rate (~2.31/day) matches the catalogue's own global declustered rate
   (~2.37/day) to within a few percent.
+
+  **H1b's data volume did push it further, and `hypotheses/h1b.py` shows what
+  to do about it.** At 4,598 triggers (4x H4c's largest) the per-row loop
+  measured 102 s, and batch-vectorizing it across the permutation dimension
+  did *not* fix that — it removes numpy call overhead, not the underlying
+  work. What fixed it: both quantities the null needs (the local baseline
+  rate, and the lag-window count) are **pure functions of the trigger
+  instant**, and the null draws from a fixed hourly pool — so both are
+  evaluated once per eligible hour and read by index. **102 s → 12.2 s,
+  bit-identical results.** Prefer that shape over vectorizing the loop; see
+  `tests/test_h1b.py` for the exact-equality oracle it is pinned against.

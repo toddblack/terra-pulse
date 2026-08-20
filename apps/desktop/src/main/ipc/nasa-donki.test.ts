@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DonkiProgress } from '@terra-pulse/schema';
 import { DONKI_START_YEAR } from '@terra-pulse/schema';
-import { openDatabase, saveDonkiApiKey } from '@terra-pulse/db';
+import { completedDonkiYears, openDatabase, saveDonkiApiKey } from '@terra-pulse/db';
 import { DonkiRateLimitError } from '@terra-pulse/ingest';
 import {
   createDonkiController,
@@ -358,5 +358,43 @@ describe('saving a key', () => {
     const result = saveApiKey(undefined, 'a-fresh-key') as DonkiProgress;
 
     expect(result.hasApiKey).toBe(true);
+  });
+});
+
+describe('lazy coverage never records years DONKI does not cover', () => {
+  it('a deep-archive window fetches nothing and records nothing', async () => {
+    // The playhead reaches back to 1896 (the deep earthquake archive). Before
+    // this was clamped, scrubbing there with a solar layer on asked for each
+    // pre-2010 year in turn: every one fetched nothing, stored nothing, and
+    // was then recorded *complete*. Measured on a real database that left 12
+    // phantom rows and made the archive panel's progress bar read 129%.
+    //
+    // A narrow window on purpose — a wide one would exceed
+    // LAZY_FETCH_MAX_MISSING_YEARS and return early for an unrelated reason,
+    // so it would pass even with the bug present.
+    const db = openDatabase(':memory:');
+    registerDonkiIpcHandlers(db, createDonkiController(db, () => undefined, now), () => undefined, now);
+
+    await handlerFor('solar-events:query-flares')(undefined, {
+      startUtc: '1896-01-01T00:00:00.000Z',
+      endUtc: '1896-06-01T00:00:00.000Z',
+    });
+
+    expect(fetchSolarFlares).not.toHaveBeenCalled();
+    expect(completedDonkiYears(db, 'flares')).toEqual(new Set());
+  });
+
+  it('still fetches a year that DONKI does cover', async () => {
+    // The guard must not be so eager that it breaks the feature it protects.
+    const db = openDatabase(':memory:');
+    registerDonkiIpcHandlers(db, createDonkiController(db, () => undefined, now), () => undefined, now);
+
+    await handlerFor('solar-events:query-flares')(undefined, {
+      startUtc: `${String(DONKI_START_YEAR)}-03-01T00:00:00.000Z`,
+      endUtc: `${String(DONKI_START_YEAR)}-06-01T00:00:00.000Z`,
+    });
+
+    expect(fetchSolarFlares).toHaveBeenCalledTimes(1);
+    expect(completedDonkiYears(db, 'flares')).toEqual(new Set([DONKI_START_YEAR]));
   });
 });

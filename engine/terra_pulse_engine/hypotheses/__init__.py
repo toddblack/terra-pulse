@@ -1,4 +1,9 @@
-from terra_pulse_engine.api.contracts import HemisphereRunRequest, LagWindowRunRequest
+from terra_pulse_engine.api.contracts import (
+    DiscreteTriggerRunRequest,
+    HemisphereRunRequest,
+    LagWindowRunRequest,
+)
+from terra_pulse_engine.hypotheses.h1b import run_h1b
 from terra_pulse_engine.hypotheses.h2b import run_h2b
 from terra_pulse_engine.hypotheses.h3b import run_h3b
 from terra_pulse_engine.hypotheses.h4c import run_h4c
@@ -26,5 +31,11 @@ REGISTRY = {
         "tests_in_family": 2,
         "implemented": True,
         "request_model": HemisphereRunRequest,
+    },
+    "H1b": {
+        "run": run_h1b,
+        "tests_in_family": 4,
+        "implemented": True,
+        "request_model": DiscreteTriggerRunRequest,
     },
 }

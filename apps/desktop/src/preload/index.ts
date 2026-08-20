@@ -10,6 +10,7 @@ import type {
   ArchiveProgress,
   CmeArrival,
   DonkiProgress,
+  GoesFlareProgress,
   EarthquakeEvent,
   EarthquakeQuery,
   EarthquakeSyncResult,
@@ -247,6 +248,28 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.on('solar-events:updated', listener);
       return () => {
         ipcRenderer.removeListener('solar-events:updated', listener);
+      };
+    },
+  },
+  /**
+   * The GOES XRS historical flare backfill. Narrower than `solarEvents`: no
+   * query channel (its rows are read through `solarEvents.queryFlares` like any
+   * other flare), no key, and no `onUpdated` — completion is signalled on
+   * `solar-events:updated`, since it fills the same table.
+   */
+  goesFlares: {
+    status: (): Promise<GoesFlareProgress> => ipcRenderer.invoke('goes-flares:status'),
+    // Resolves when the whole backfill settles. The UI follows `onProgress`.
+    start: (): Promise<GoesFlareProgress> => ipcRenderer.invoke('goes-flares:start'),
+    cancel: (): Promise<GoesFlareProgress> => ipcRenderer.invoke('goes-flares:cancel'),
+
+    onProgress: (callback: (progress: GoesFlareProgress) => void): (() => void) => {
+      const listener = (_event: unknown, progress: GoesFlareProgress) => {
+        callback(progress);
+      };
+      ipcRenderer.on('goes-flares:progress', listener);
+      return () => {
+        ipcRenderer.removeListener('goes-flares:progress', listener);
       };
     },
   },

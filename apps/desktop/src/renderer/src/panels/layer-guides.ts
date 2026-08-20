@@ -268,10 +268,12 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
     ],
     limits: [
       'A-, B- and C-class flares are not drawn at all. They occur several times a day and are not geoeffective, so including them would turn the globe into a dense scatter with no readable signal. This is the same M1.0-or-above floor H1b’s registered trigger uses.',
-      'This shows raw occurrence only. Whether flares are followed by elevated earthquake rates is H1b’s question, registered in HYPOTHESES.md and answered — once Phase 4’s analysis engine exists — with a proper significance test, never by eyeballing this layer.',
-      'Coverage is source-dependent and uneven before 2014 — see DONKI_START_YEAR and FLARE_COMPLETE_SINCE_YEAR in packages/schema. A quiet-looking early year may be an incompletely observed one, not a genuinely quiet Sun.',
+      'Two catalogues sit behind this, split at 2017: NOAA’s GOES XRS reports below, NASA’s DONKI above. Each year is drawn from one of them, never both, so a flare in their 2014–2016 overlap is shown once. The deeper half is a separate download — until it runs, nothing before 2010 appears and 2011–2013 is only about a quarter complete.',
+      'The record starts in 1996 even though GOES reports reach 1975, because earlier fluxes need a scaling correction this app has not verified — so "M1.0" would not mean the same thing across the join. A quiet-looking early year may be an incompletely observed one, not a genuinely quiet Sun.',
+      'This shows raw occurrence only. Whether flares are followed by elevated earthquake rates is H1b’s question, registered in HYPOTHESES.md and answered with a proper significance test, never by eyeballing this layer.',
     ],
-    source: 'NASA DONKI /FLR. Public domain (US Government work).',
+    source:
+      'NOAA NCEI/NGDC GOES XRS flare reports (1996–2016) and NASA DONKI /FLR (2017 onward). Both public domain (US Government work).',
   },
 
   'cme-arrivals': {

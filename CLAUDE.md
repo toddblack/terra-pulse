@@ -1596,6 +1596,23 @@ a **105 MB NSIS installer** plus a `win-unpacked/` folder with a runnable
   queue to have filled before an empty queue counts, latches so a basemap switch
   can't blink the layers out, and keeps a timeout fallback so an offline basemap
   can't hold the data hostage.
+- **`.parent element { ... }` out-specifies a bare state class, and the failure
+  is invisible.** Both mode switches wrote `background: none` on
+  `.switch button` / `.hypothesisSwitch button` — specificity (0,1,1) — while
+  the selected state set `background-color` on `.active` / `.hypothesisActive`
+  at (0,1,0). The element-qualified rule wins regardless of source order, so
+  **the "filled = active" fill never rendered at all**, leaving near-black text
+  on a dark panel: the selected item was the least readable thing in the
+  switch. Nothing errored, the CSS read correctly at a glance, and it survived
+  every review until a user said the tabs were hard to read. Confirmed with
+  `getComputedStyle` — the active tab reported `rgba(0, 0, 0, 0)` — rather than
+  by reasoning about the cascade. **Put state styling on state classes only**,
+  and reach for computed styles before arguing about colour values.
+- **The fix also changed polarity, on the user's call**: the active tab is now
+  cyan text on an 18% cyan tint, not dark text on a solid fill. Solid-fill +
+  dark text is fine at 13px (the Run button) and muddy at 11px inside an
+  otherwise dark UI, whatever its luminance ratio says — the same
+  "pick the right metric" lesson the depth ramp taught, applied to type.
 - **Never read `Date.now()` during render** — use `useNow`. It's impure, and
   nothing re-renders when a clock ticks, so the value silently goes stale.
 - Layers declare `consumesEvents`; those that don't are not rebuilt when the
@@ -1910,8 +1927,9 @@ the same shape H3b already proved.
   UI change was making `MethodInfo.baselineWindowDays` nullable (H2b has
   none) and rendering `spatialSplitDegrees` alongside it when present —
   the registered-parameters block already only shows fields that exist.
-- **Next:** H1b remains the one hypothesis needing new ingest (GOES XRS
-  1996-2016 flares); H5 needs the completeness map.
+- **Next:** H1b's ingest is now built (see the GOES XRS entry below), so what
+  remains for it is the engine module and its registration completion; H5 needs
+  the completeness map.
 
 **Tabbed Analyze results — shipped (2026-08-19).** `useAnalysisStore` is now
 keyed by hypothesis (`Record<HypothesisId, {result, running, error}>`) rather
@@ -1943,6 +1961,136 @@ the same forcing function `HYPOTHESIS_COPY` already relies on.
   and the H3b tab carries the running dot while inactive, then confirmed
   H3b's own result lands correctly and H4c's is still untouched after a full
   round trip.
+
+**GOES XRS historical flare ingest — shipped (2026-08-19).** H1b's registered
+source below 2017, and the last hypothesis that needed new ingest. Round 1 of
+two: the engine's `h1b.py` and the registration completion are next.
+
+- **Nothing ingested this before, and H1b would have run on a quarter of its
+  data.** `solar_flares` had exactly one writer — the DONKI backfill, starting
+  at 2010 — so a run today would have got **zero flares before 2010** and, per
+  the coverage table already in `solar-events.ts`, **23-25% of M/X for
+  2011-13**, against a registration claiming a validated record from 1996.
+- **The parser was validated against numbers this repo already had.** Counting
+  M/X per year reproduces `FLARE_COMPLETE_SINCE_YEAR`'s independently-measured
+  table **exactly** across all six DONKI-overlap years (2011:119, 2012:130,
+  2013:111, 2014:221, 2016:16). That table was measured when H1 was written, so
+  it is a real cross-check rather than a tautology. Stored: **36,288 flares for
+  1996-2016, 2,304 at M1.0+**; largest X28 at 2003-11-04T19:50Z in AR 10486,
+  which is the largest ever recorded and lands where the record says.
+- **The unexplained 2015 disagreement is explained, and NOAA had already fixed
+  it.** `solar-events.ts` recorded GOES 106 M/X against DONKI's 126 for 2015 as
+  "real and unexplained", guessing the GOES report was partial across a
+  satellite transition. It was: NOAA publishes
+  `goes-xrs-report_2015_modifiedreplacedmissingrows.txt` for that year alone,
+  carrying **119**. The ingest takes it, and `HYPOTHESES.md` records the
+  filename exception — it moves 13 real M/X flares into a solar-max year's
+  trigger set, so it is not a detail to leave in code.
+- **`querySolarFlares` now defaults to one catalogue per year, not to
+  everything stored.** Both catalogues overlap across 2014-2016, so an
+  unfiltered read returns the same flare twice — double-counted in H1b and
+  drawn twice on the globe. `preferredFlareSourceFor` is the single definition
+  (GOES ≤ 2016, DONKI above), shared by the query layer, the globe and the
+  analysis, the same reasoning that makes `displayWindow` single. Verified
+  through the app's own IPC: 2014-2016 returns **5,412 rows, all GOES**, with
+  the 400 overlapping DONKI rows correctly excluded. `{ source: 'all' }` is the
+  explicit opt-in that checking the join needs.
+- **Duplicates are real here and DONKI's "no dedupe, deliberately" does not
+  transfer.** 305 groups of rows share a flare identity across 1996-2016, **294
+  of them byte-identical repeated lines**. The synthesised `goes:<peak>-<class>`
+  id collapses them, which is what makes re-running the backfill an upsert. Of
+  the 11 groups that genuinely differ, every one is the same flare re-reported
+  with different completeness — `richerOf` keeps whichever says more, so line
+  order doesn't decide. All 11 are C class or below, so none reaches a trigger.
+  Confirmed after the real run: **16 peak instants carry two flares, and zero
+  pairs share a class** — those are genuinely distinct overlapping flares from
+  one active region, which NOAA lists separately and we keep separately.
+- **242 rows genuinely cross midnight** (`2359 0008 0004`), 24 of them M/X.
+  Reading the peak on the start date would put those triggers 24 hours early.
+  Four further rows are anomalous — peak before start on an event that does not
+  cross midnight — and are dropped rather than guessed at; all four are B/C.
+- **Its own controller and chunks table, not DONKI's.** `donki_chunks.source`
+  carries a CHECK that SQLite cannot alter, so reusing it would force a
+  create-copy-drop-rename for no benefit. The controller is also strictly
+  simpler: the range is **closed at 2016 and entirely in the past**, so every
+  year is final and recordable and there is no current-year rule; and with no
+  429 to handle, the `for(;;)` retry wrapper, the `'waiting'` state and
+  `retryAtUtc` are all absent. No poller either — the reports will never gain a
+  row.
+- **Migration 11 is adds-only** — `source TEXT NOT NULL DEFAULT 'donki'` is
+  correct for every existing row, so it backfills itself with no UPDATE.
+  Verified against a copy of the real 219 MB database: **4.9 s**, all 314,548
+  earthquake / 829,557 space-weather / 3,355 flare rows preserved, every
+  pre-existing flare reading back as `donki`.
+- Measured cost of the whole backfill: **16.5 s for 21 requests, ~2.7 MB**.
+  Still user-triggered rather than automatic, like every other historical record
+  here — fetching a thirty-year archive on someone's behalf at launch is not a
+  thing to start doing quietly.
+**H1b shipped the same day — the fourth hypothesis, and the one that needed a
+real optimisation rather than more parameter reuse.** Solar flares (GOES
+1996-2016 + DONKI 2017 onward) vs. declustered global M5.0+ rate. Clean null:
+ratios 0.974–1.011, smallest raw p = 0.0872, all four adjusted to 1.0000 against
+the 19-test matrix.
+
+- **Its registration was completed before any code ran**, same rule and same day
+  as H2b's. The baseline window's *width*, the null model and the tail were
+  implied but never stated; the engine's contract requires all three, so it
+  physically could not run until they existed. ±182.625 days / uniform-redraw /
+  one-sided upper — H4c's and H3b's values, and this is the hypothesis whose own
+  measured drift is the argument for them, so it is one mitigation applied to
+  the case that motivated it rather than borrowed parameters.
+- **Structurally it is h4c.py's statistic with h2b.py's trigger delivery**, which
+  is why a third request family was needed rather than a nullable field.
+  `series` is required and non-nullable on `LagWindowRunRequest` by design, and
+  `TriggerParameters` describes a threshold crossing on a continuous series —
+  there is no `series` literal that could name "M1.0+ flare peak times".
+  `pipeline/triggers.py` is unused here entirely; the null pool is every hour in
+  the span, as H2b's is, because a flare catalogue has no series whose gaps
+  could disqualify an hour.
+- **The performance problem was real and the obvious fix was not enough.**
+  4,598 triggers against H4c's largest of 1,149. The per-row loop h4c.py uses
+  would have taken ~110 s; batch-vectorising it across the permutation
+  dimension gave **102 s against main's 120 s timeout** — inside the budget
+  with no headroom worth having, because the fundamental work is unchanged when
+  only numpy call overhead is removed.
+- **What actually fixed it: both quantities the null needs are pure functions
+  of the trigger instant, and the null draws from a fixed hourly pool.** So the
+  baseline rate and the lag-window count are evaluated **once per eligible
+  hour** (268,531 of them) and read by index, instead of four binary searches
+  per drawn trigger per iteration. Because the pool is a uniform `arange`, a
+  drawn time maps back to its index by exact integer arithmetic — no search at
+  all. **102 s → 12.2 s, and every observed count, ratio and p-value is
+  bit-identical.** ~4 MB for the two tables.
+  - This is exact, not an approximation, and it is pinned that way:
+    `test_h1b.py` asserts `np.array_equal` (not `allclose`) against a per-row
+    reference built from the same pipeline functions, plus a separate test that
+    the index arithmetic recovers the pool exactly — because a future change to
+    how the eligible pool is built would break that silently and produce
+    plausible wrong numbers rather than an error.
+  - **The generalisable lesson, and it is not "vectorise":** it is that a
+    statistic recomputed per Monte Carlo draw over a *finite, known* domain
+    should be precomputed over that domain instead. h4c.py's own note says the
+    per-row loop is "the first place to look"; the answer turned out to be one
+    level up from that.
+- **`flareCoverageComplete` is the guard round 1 flagged, and it is not a
+  registered parameter.** The GOES record is a separate user-triggered
+  download, so main reports whether it actually holds all 21 years and the
+  engine leads its caveats with `INCOMPLETE TRIGGER SET` when it does not.
+  Chosen over refusing to run: the same posture as the recurrence panel, which
+  states what it can and says plainly what is missing.
+- **Verified end-to-end against the real database and then in the running app**:
+  4,598 triggers (2,302 GOES + 2,296 DONKI, matching an independent SQL
+  recomputation of the same M1.0+ filter and the same registered join), 26,577
+  declustered targets from 52,726 raw. Internal consistency: the 3–7d window's
+  expected count is exactly 4.0000× the 24-hour windows', as it must be when
+  expectation is rate × duration. The tab strip built earlier the same day took
+  a fourth hypothesis with no change beyond the two `Record<HypothesisId, …>`
+  forcing functions, which both failed the build until updated — as intended.
+- **`HYPOTHESES.md` has drifted and it is worth fixing.** H4c, H3b and H2b were
+  all run in earlier rounds and all returned clean nulls, but their `Status`
+  fields still read "Not yet run". H1b's is now recorded properly; the other
+  three are not, which means the pre-registration of record understates how much
+  of the matrix has been tested.
 
 ## Non-negotiables
 

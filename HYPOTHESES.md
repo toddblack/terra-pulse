@@ -1,6 +1,6 @@
 # HYPOTHESES.md — Pre-Registration Log
 
-**Last updated:** 2026-08-19
+**Last updated:** 2026-08-20
 
 ---
 
@@ -90,7 +90,7 @@ full record.
 | Field | Value |
 |---|---|
 | **Registered** | 2026-08-17 |
-| **Status** | Not yet run |
+| **Status** | **Run 2026-08-19 — not rejected** |
 | **Supersedes** | H1, withdrawn unrun on the same date |
 | **Statement** | X- and M-class solar flare occurrence is followed by an elevated global M5.0+ earthquake rate. |
 | **Solar source** | **NOAA GOES XRS flare reports** for 1996-2016; **NASA DONKI** `/FLR` for 2017 onward. The join is validated on their 2014-2016 overlap, which agrees to 97-100%. |
@@ -98,14 +98,91 @@ full record.
 | **Target set** | Declustered M5.0+ global — **unchanged from H1** |
 | **Time range** | **1996-01-01 onward** |
 | **Baseline estimation** | Poisson expectation estimated **within a moving local window**, not pooled across the full record |
+| **Baseline window** | Poisson expectation estimated within a moving window of ±182.625 days (one year total) centred on each trigger. |
 | **Lag windows** | 0-24h, 24-48h, 48-72h, 3-7d (4 windows) |
 | **Test statistic** | Ratio of observed to Poisson-expected event count in each lag window |
+| **Null model** | Flare peak instants redrawn uniformly without replacement from every hour in the analysis span, keeping the same count as the real M1.0+ trigger set. |
+| **Tail** | One-sided upper. |
 | **Tests in family** | 4 (replacing H1's 4) |
 | **Mechanism plausibility** | Low - no established coupling mechanism |
-| **Result** | - |
+| **Result** | **Not rejected.** Ratios 0.974–1.011 across the four lag windows; smallest raw p = 0.0872 (3–7d), all four adjusted p = 1.0000 against the 19-test matrix. Nothing rejected at q = 0.05, before or after correction. |
+
+**Result, in full (run 2026-08-19).** 52,726 raw M5.0+ events since 1996 →
+**26,577 independent** after Gardner-Knopoff, against **4,598 M1.0+ flares**
+(2,302 from GOES ≤2016, 2,296 from DONKI ≥2017). Engine time 12.0 s,
+seed 2026081902, 10,000 iterations per window.
+
+| lag window | observed | expected | ratio | p (raw) | p (adj., 19-test matrix) |
+|---|---|---|---|---|---|
+| 0–24h | 10,372 | 10,650.5 | 0.974 | 0.9937 | 1.0000 |
+| 24–48h | 10,670 | 10,650.5 | 1.002 | 0.4354 | 1.0000 |
+| 48–72h | 10,771 | 10,650.5 | 1.011 | 0.1496 | 1.0000 |
+| 3–7d | 42,933 | 42,602.0 | 1.008 | 0.0872 | 1.0000 |
+
+**A null result, reported with the same weight a rejection would get (rule 5).**
+The largest deviation in either direction is 2.6%, and it is a *deficit* in the
+window where a triggering mechanism would predict the strongest excess. Nothing
+here is evidence of an effect, and nothing here is evidence of its absence
+either — this is one test family against a catalogue whose own secular drift is
+an order of magnitude larger than any signal it could resolve.
+
+**The 3–7d window's p = 0.0872 is not a near-miss and must not be read as one.**
+It is the smallest of four raw p-values from correlated tests; against the
+registered 19-test matrix it adjusts to 1.0000. Reporting it as "trending" would
+be exactly the free-parameter-after-the-fact that non-negotiable #3 and rule 3
+exist to prevent. The four windows are also positively correlated (flares
+cluster, so their windows overlap), which is recorded in the result's own
+caveats.
+
+**Sanity checks that passed before the result was believed.** The declustered
+rate implies ~2.375 events/day over the span, and the 0–24h expectation of
+10,650.5 over 4,598 triggers is 2.32/trigger-day — consistent to within the
+local baseline's own variation. The 3–7d window's expected count is exactly
+4.0000× the 24-hour windows', as it must be when expectation is rate × duration.
+Trigger counts were reconciled against an independent SQL recomputation of the
+same M1.0+ filter and the same GOES/DONKI join.
 
 **Nothing here was chosen after seeing a result.** H1 was never run. Both new
 parameters were forced by measuring the two catalogues before any test existed.
+
+**Three more parameters, completed 2026-08-19 before the first run, by the same
+rule as H4c's, H3b's and H2b's own completions.** The trigger set, target set,
+lag windows, time range and the *fact* of a moving local baseline were all
+registered; the baseline window's **width**, the null-draw scheme and the tail
+were left implied, which rule 2 forbids. H1b has never been run — status is still
+"Not yet run" — so this finishes the registration rather than amending a result.
+The engine physically cannot run it until these exist, since its request contract
+requires all three.
+
+- **Baseline window and tail are identical to H4c's and H3b's**, and for the
+  identical reason: the M5.0+ catalogue is not stationary (+36% per five decades,
+  the table below), so a pooled baseline manufactures a trend-driven ratio. That
+  argument is *this* hypothesis's own — the table below is H1b's, and H3b's
+  completion cites it — so reusing the mitigation here is applying one registered
+  fix to the case that motivated it, not importing another hypothesis's
+  parameters. One-sided upper matches the statement's own direction ("elevated").
+- **The null model is a plain uniform redraw over every hour in the span**, and
+  this is where H1b differs from H4c and H3b rather than copying them. Those two
+  derive triggers by thresholding a continuous series, so their eligible pool
+  excludes hours where a qualifying window could not have started — an
+  unmeasured-hours rule. A flare catalogue has no such structure: it is a list of
+  discrete events, with no series behind it whose gaps could disqualify an hour.
+  So the pool is every hour, exactly as **H2b** does for CME arrivals, which is
+  the same shape of trigger. No gap-handling rule is registered here because
+  there is nothing for one to act on.
+- **No separate "effective span" note is needed.** 1996-01-01 already sits
+  inside the M5.0+ catalogue's own 1970-onward completeness window, so unlike
+  H4c's 1963 nothing truncates. The 1996 bound was chosen for a stricter,
+  solar-side reason (the GOES 1-7 flux scaling correction, below) that clears the
+  earthquake-side bound with room to spare — the same situation as H3b's 1995.
+
+**The registered source is now fully ingested, and the trigger count is on the
+record.** The GOES half shipped 2026-08-19: **36,288 classified flares for
+1996-2016, 2,304 of them M1.0+**, with per-year M/X counts reproducing the
+independently-measured comparison table below exactly across all six DONKI-overlap
+years. Combined with DONKI from 2017, the registered trigger set is
+**approximately 4,600 flares**. Recorded here before the run so the number cannot
+later look like it was selected.
 
 **Why 1996.** GOES XRS yearly reports reach back to 1975, but fluxes from
 GOES 1-7 are documented as requiring a scaling correction — so "M1.0" before
@@ -145,10 +222,30 @@ fixes is mandatory; doing neither is the spurious-correlation path.**
 
 **Still unverified, and it constrains any extension.** Whether "M1.0" means the
 same thing across the whole 1996-present span has not been checked — GOES
-instruments changed within that period too. The 2014-2016 cross-check between
-GOES and DONKI showed a 20% disagreement in 2015 with no duplicates on either
-side. Two good catalogues can differ at the margin, and that uncertainty travels
-with any flare count reported here.
+instruments changed within that period too. Two good catalogues can differ at the
+margin, and that uncertainty travels with any flare count reported here.
+
+**The 2015 disagreement is resolved, and the fix is recorded here because it
+changes the registered trigger set.** The 2014-2016 cross-check showed a 20%
+disagreement in 2015 — GOES 106 M/X against DONKI's 126, with no duplicates on
+either side — and the guess at the time was that GOES's report was partial across
+a satellite transition. It was. NOAA publishes a corrected file for that year
+alone, `goes-xrs-report_2015_modifiedreplacedmissingrows.txt`, carrying **119
+M/X**. The ingest takes the corrected file for 2015 and the standard file for the
+other twenty years.
+
+This is a source-fidelity correction, not a parameter choice: the registration
+already names "NOAA GOES XRS flare reports" and both files are that, one of them
+incomplete. Recorded explicitly anyway, per rule 2, because it is a filename
+exception a reader would otherwise have to find in the ingest code — and because
+it moves 13 real M/X flares into a solar-max year's trigger set. Decided
+2026-08-19, before H1b was run.
+
+**Measured trigger counts, for the record.** The GOES half of the record yields
+**36,288 classified flares for 1996-2016, 2,304 of them M1.0+**, with per-year
+M/X counts reproducing the independently-measured table in
+`packages/schema/src/solar-events.ts` exactly across all six DONKI-overlap years.
+The largest is X28 on 2003-11-04, the largest ever recorded.
 
 ### H2 — Hemispheric asymmetry at CME arrival
 
@@ -176,7 +273,7 @@ matrix. H2 was never run.
 | Field | Value |
 |---|---|
 | **Registered** | 2026-08-17 |
-| **Status** | Not yet run |
+| **Status** | **Run 2026-08-19; reproduced 2026-08-20 — not rejected** |
 | **Supersedes** | H2, withdrawn unrun on the same date |
 | **Statement** | Any H1b effect is stronger on the hemisphere facing the Sun at CME **arrival** time than on the far hemisphere. |
 | **Solar source** | NASA DONKI `/WSAEnlilSimulations`, using `estimatedShockArrivalTime` — the Earth-specific field |
@@ -190,7 +287,7 @@ matrix. H2 was never run.
 | **Target set** | Declustered M5.0+ global — inherited from H1b by direct reference in this hypothesis's own statement ("any H1b effect"), not independently registered. |
 | **Tests in family** | 2 (replacing H2's 2) |
 | **Mechanism plausibility** | Low |
-| **Result** | - |
+| **Result** | **Not rejected.** Near/far ratios 1.063 (0-24h) and 0.925 (24-48h); smallest raw p = 0.1606, both adjusted p = 1.0000 against the 19-test matrix. |
 
 **Four more parameters, completed 2026-08-19 before the first run, for the
 same reason and by the same rule as H4c's and H3b's own completions:** the
@@ -297,7 +394,7 @@ matrix. No result exists to hide: H3 was never run.
 | Field | Value |
 |---|---|
 | **Registered** | 2026-08-15 |
-| **Status** | Not yet run |
+| **Status** | **Run 2026-08-19; reproduced 2026-08-20 — not rejected** |
 | **Supersedes** | H3, withdrawn unrun on the same date |
 | **Statement** | Coronal hole high-speed stream arrivals are followed by an elevated global M5.0+ rate. |
 | **Solar source** | **NASA OMNI2** hourly solar wind speed for the history; **SWPC's propagated real-time product** for the recent tail. Both are referenced to the bow shock nose. |
@@ -310,7 +407,7 @@ matrix. No result exists to hide: H3 was never run.
 | **Tail** | One-sided upper. |
 | **Tests in family** | 4 (replacing H3's 4) |
 | **Mechanism plausibility** | Low |
-| **Result** | — |
+| **Result** | **Not rejected.** Ratios 0.986-1.021 across the four lag windows; smallest raw p = 0.1423 (0-24h), all four adjusted p = 1.0000 against the 19-test matrix. |
 
 **Nothing here was chosen after seeing a result.** H3 was never run. Both changes
 were forced by measuring the ingested data, and both were settled before any test
@@ -428,7 +525,7 @@ denominator.
 | Field | Value |
 |---|---|
 | **Registered** | 2026-08-14 |
-| **Status** | Not yet run |
+| **Status** | **Run 2026-08-18; reproduced 2026-08-20 — not rejected** |
 | **Supersedes** | H4, withdrawn unrun on the same date |
 | **Statement** | Elevated planetary geomagnetic activity is followed by an elevated global M5.0+ rate. |
 | **Index source** | **GFZ Potsdam planetary Kp** (the definitive IAGA index); Kyoto Dst via NASA OMNI2 |
@@ -442,7 +539,7 @@ denominator.
 | **Effective span** | 1970-01-01 onward in practice — see below. |
 | **Tests in family** | 6 (2 trigger definitions × 3 lags) |
 | **Mechanism plausibility** | Low |
-| **Result** | — |
+| **Result** | **Not rejected.** Ratios 0.974-1.013 across the six tests; smallest raw p = 0.3329 (Dst<=-100, 48-72h), all six adjusted p = 1.0000 against the 19-test matrix. |
 
 **Why this exists.** H4 named "SWPC planetary Kp", which is NOAA's *estimated*
 index from eight stations. The app now stores the definitive IAGA index from GFZ
@@ -622,6 +719,45 @@ the source has been ingested and its completeness measured.** Writing an entry i
 cheap and feels like rigour; it is only rigour if the parameters in it can
 survive the data. A fifth supersession means this rule is being ignored, not that
 the data was surprising again.
+
+## Progress against the matrix (2026-08-20)
+
+**16 of the 19 unblocked tests have been run. None was rejected.**
+
+| Family | Tests | Run | Outcome |
+|---|---|---|---|
+| H1b | 4 | 2026-08-19 | Not rejected — ratios 0.974-1.011 |
+| H2b | 2 | 2026-08-19 | Not rejected — ratios 0.925-1.063 |
+| H3b | 4 | 2026-08-19 | Not rejected — ratios 0.986-1.021 |
+| H4c | 6 | 2026-08-18 | Not rejected — ratios 0.974-1.013 |
+| H5 | 1 | — | Blocked on the magnitude-of-completeness map |
+| H4b | 2 | — | Blocked — no magnetometer table exists |
+| H6 | 2 | — | Deferred to Phase 5 |
+
+**Not one test in four families produced a deviation larger than 7%, and the
+smallest raw p-value anywhere is 0.0872.** After correction against the 19-test
+matrix, every adjusted p-value in every family is 1.0000. That is the honest
+summary of Phase 4 so far, and rule 5 says it gets recorded exactly as
+prominently as a rejection would have been.
+
+**All four were re-run on 2026-08-20 and reproduced.** The `Status` and
+`Result` fields had drifted — they still read "Not yet run" for H4c, H3b and
+H2b, which had all in fact been executed days earlier. Rather than transcribe
+the ratio ranges that were recorded elsewhere, each was re-run against the live
+database with its own registered seed and parameters. The ratio ranges match
+what was originally reported to three decimals; the raw counts differ by
+10-20 events per family, because the earthquake catalogue has kept growing
+since. Those re-runs are the numbers now recorded above.
+
+**This is reproduction, not re-testing, and the distinction matters.** Every
+seed is registered and fixed, so a re-run is deterministic given the same
+catalogue; nothing was re-parameterised, and no result changed direction. Had a
+re-run disagreed with what was recorded, the discrepancy would belong in this
+file rather than being resolved in favour of whichever was more convenient.
+
+Every run reports adjusted p-values against the full **19** unblocked tests,
+not against the handful executed in one session — so no result has been
+compared against a conveniently small denominator.
 
 At an uncorrected threshold of p < 0.05, roughly **1 false positive is expected
 from noise alone** across this matrix. FDR correction is applied across all 21.

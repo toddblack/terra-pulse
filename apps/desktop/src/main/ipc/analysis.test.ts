@@ -1,13 +1,37 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { openDatabase, insertEarthquakes, insertCmeArrivals } from '@terra-pulse/db';
+import {
+  openDatabase,
+  insertEarthquakes,
+  insertCmeArrivals,
+  insertSolarFlares,
+  recordGoesFlareChunk,
+} from '@terra-pulse/db';
+import { goesFlareYears } from '@terra-pulse/ingest';
 import type { DatabaseSync } from 'node:sqlite';
 import { CONTRACT_VERSION } from '@terra-pulse/schema';
-import type { CmeArrival, EarthquakeEvent } from '@terra-pulse/schema';
+import type { CmeArrival, EarthquakeEvent, FlareClass, SolarFlare } from '@terra-pulse/schema';
 import { createEngineController, registerAnalysisIpcHandlers, resolvePythonInterpreter } from './analysis';
 
 const ipcHandle = vi.hoisted(() => vi.fn());
 vi.mock('electron', () => ({ ipcMain: { handle: ipcHandle } }));
+
+/** A GOES-shaped flare fixture, matching the ids that adapter synthesises. */
+function goesFlare(id: string, peakTimeUtc: string, flareClass: FlareClass, magnitude: number): SolarFlare {
+  return {
+    id,
+    source: 'goes',
+    classType: `${flareClass}${String(magnitude)}`,
+    flareClass,
+    magnitude,
+    peakTimeUtc,
+    beginTimeUtc: null,
+    endTimeUtc: null,
+    sourceLocation: null,
+    activeRegionNumber: null,
+    link: null,
+  };
+}
 
 function handlerFor(channel: string): (event: unknown, request?: unknown) => unknown {
   const call = ipcHandle.mock.calls.find(([registered]) => registered === channel);
@@ -419,5 +443,65 @@ describe('registerAnalysisIpcHandlers', () => {
     const result = await handlerFor('analysis:run')(undefined, 'H4c');
 
     expect(result).toEqual({ ok: false, reason: 'python-not-found', detail: 'no python' });
+  });
+  it('analysis:run dispatches H1b with a discrete flare trigger set, not a series', async () => {
+    const db = makeDb();
+    // GOES below 2017, DONKI above — the registered join. The C-class flare
+    // must not survive the M1.0 filter, and the pre-1996 one must not survive
+    // the registered start.
+    insertSolarFlares(db, [
+      goesFlare('goes:1999', '1999-05-01T00:00:00.000Z', 'M', 2.4),
+      goesFlare('goes:1994', '1994-05-01T00:00:00.000Z', 'M', 3.1),
+      goesFlare('goes:2015c', '2015-05-01T00:00:00.000Z', 'C', 5.0),
+      { ...goesFlare('donki:2020', '2020-05-01T00:00:00.000Z', 'X', 1.2), source: 'donki' as const },
+    ]);
+    const postJson = vi.fn().mockResolvedValue({ ok: true, json: { hypothesisId: 'H1b', tests: [] } });
+    const engine = {
+      status: () => ({ state: 'ready' as const, engineVersion: '0.1.0', contractVersion: 1, adopted: true }),
+      getJson: vi.fn(),
+      postJson,
+      dispose: vi.fn(),
+    };
+    registerAnalysisIpcHandlers(db, engine, () => new Date('2026-08-19T00:00:00.000Z'));
+
+    await handlerFor('analysis:run')(undefined, 'H1b');
+
+    const [, body] = postJson.mock.calls[0] as [string, Record<string, unknown>];
+    expect(body.parameters).toMatchObject({
+      targetMinMagnitude: 5.0,
+      baselineWindowDays: 365.25,
+      requestedStartUtc: '1996-01-01T00:00:00.000Z',
+    });
+    // No series, and no trigger definitions — H1b's whole structural difference.
+    expect(body['series']).toBeUndefined();
+    expect((body.parameters as Record<string, unknown>)['triggers']).toBeUndefined();
+    // Only the M2.4 (1999) and X1.2 (2020) survive both filters.
+    expect(body['flarePeakTimesMs']).toEqual([
+      Date.parse('1999-05-01T00:00:00.000Z'),
+      Date.parse('2020-05-01T00:00:00.000Z'),
+    ]);
+  });
+
+  it('analysis:run tells the engine when the GOES record is not fully downloaded', async () => {
+    // The guard that stops H1b silently reporting a quarter of its registered
+    // trigger set as if it were the whole thing.
+    const db = makeDb();
+    const postJson = vi.fn().mockResolvedValue({ ok: true, json: { hypothesisId: 'H1b', tests: [] } });
+    const engine = {
+      status: () => ({ state: 'ready' as const, engineVersion: '0.1.0', contractVersion: 1, adopted: true }),
+      getJson: vi.fn(),
+      postJson,
+      dispose: vi.fn(),
+    };
+    registerAnalysisIpcHandlers(db, engine, () => new Date('2026-08-19T00:00:00.000Z'));
+
+    await handlerFor('analysis:run')(undefined, 'H1b');
+    expect((postJson.mock.calls[0] as [string, Record<string, unknown>])[1]['flareCoverageComplete']).toBe(false);
+
+    // Every registered year recorded -> complete.
+    for (const year of goesFlareYears()) recordGoesFlareChunk(db, year, 1);
+    postJson.mockClear();
+    await handlerFor('analysis:run')(undefined, 'H1b');
+    expect((postJson.mock.calls[0] as [string, Record<string, unknown>])[1]['flareCoverageComplete']).toBe(true);
   });
 });
