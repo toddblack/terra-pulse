@@ -1089,10 +1089,24 @@ server-side proxying of all third-party API calls.
   recomputation exactly) — another clean null. The Analyze-mode hypothesis
   switch built for H3b needed no changes to support this third, structurally
   different hypothesis.
-- **Next:** H1b (needs a new GOES XRS 1996-2016 flare ingest — the one
-  hypothesis of the four originally considered that still does), or H5 once
-  the magnitude-of-completeness map above exists. H4b stays blocked — no
+- **H1b shipped 2026-08-19**, both halves: the GOES XRS 1996-2016 ingest (the
+  one new source any of the four originally-considered hypotheses still needed)
+  and the engine module. Clean null, 12.0 s, 4,598 triggers. All four of H4c,
+  H3b, H2b and H1b are now implemented and run.
+- **Next:** H5, once the magnitude-of-completeness map above exists — it is the
+  only remaining hypothesis with a structurally different test shape (a KS test
+  against a null, not a lag-window or hemispheric ratio). H4b stays blocked: no
   magnetometer table exists.
+- **The cost prediction was right and the obvious fix was not enough.** H1b's
+  trigger set is 4x H4c's largest, and the per-row `statistic_fn` loop landed at
+  102 s against the 120 s IPC timeout even after batch vectorisation. What
+  fixed it was precomputing the null's two quantities over the eligible-hour
+  domain and reading them by index — 102 s → 12.2 s with bit-identical results.
+  **Any future hypothesis whose Monte Carlo recomputes a pure function of the
+  trigger instant should do the same before it is called done.**
+- **`HYPOTHESES.md` needs reconciling:** H4c, H3b and H2b have all been run and
+  returned clean nulls, but their `Status` fields still say "Not yet run". Only
+  H1b's result is recorded there so far.
 - **Milestone:** H1–H5 tested and honestly reported. Not yet reached — three
   of six families run.
 

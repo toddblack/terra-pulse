@@ -38,7 +38,20 @@ import {
   H4C_TAIL,
   H4C_TARGET_MIN_MAGNITUDE,
   H4C_TRIGGERS,
+  H1B_BASELINE_WINDOW_DAYS,
+  H1B_DECLUSTERING,
+  H1B_ITERATIONS,
+  H1B_LAG_WINDOWS_HOURS,
+  H1B_MIN_FLARE_CLASS,
+  H1B_MIN_FLARE_MAGNITUDE,
+  H1B_NULL_MODEL,
+  H1B_Q,
+  H1B_REQUESTED_START_UTC,
+  H1B_SEED,
+  H1B_TAIL,
+  H1B_TARGET_MIN_MAGNITUDE,
   REGISTERED_MATRIX_TESTS,
+  flareAtLeast,
   isDirectImpact,
   type AnalysisResult,
   type AnalysisRunOutcome,
@@ -46,7 +59,9 @@ import {
   type HypothesisId,
   type HypothesisSummary,
 } from '@terra-pulse/schema';
-import { queryAnalysisCatalog, queryCmeArrivals } from '@terra-pulse/db';
+import { queryAnalysisCatalog, queryCmeArrivals, querySolarFlares } from '@terra-pulse/db';
+import { completedGoesFlareYears } from '@terra-pulse/db';
+import { goesFlareYears } from '@terra-pulse/ingest';
 import { querySpaceWeather } from '@terra-pulse/db';
 
 /**
@@ -478,13 +493,70 @@ function buildH2bRequest(db: DatabaseSync, nowUtc: string): unknown {
   };
 }
 
+/**
+ * H1b's request — H4c's parameter shape with H2b's trigger delivery.
+ *
+ * The M1.0+ filter is applied here via `flareAtLeast`, the exact registered
+ * threshold (HYPOTHESES.md H1b: "Flares classified M1.0 or above"), so the
+ * engine receives peak instants and never re-derives it. Same rule as
+ * `isDirectImpact` above.
+ *
+ * **`flareCoverageComplete` is the one thing here that is not a registered
+ * parameter.** H1b registers GOES 1996-2016 as its source below 2017, and that
+ * is a separate, user-triggered download — so a run before it finishes would
+ * silently test a fraction of the registered trigger set and report it as the
+ * real thing. Rather than block the run, main tells the engine what it
+ * actually has and the engine leads its caveats with it: the same posture as
+ * the recurrence panel refusing to state a median over an incomplete archive,
+ * and the opposite of quietly answering from whatever happens to be stored.
+ */
+function buildH1bRequest(db: DatabaseSync, nowUtc: string): unknown {
+  const catalog = queryAnalysisCatalog(db, {
+    minMagnitude: H1B_TARGET_MIN_MAGNITUDE,
+    startUtc: CATALOG_QUERY_START_UTC,
+    endUtc: nowUtc,
+  });
+  // Reads through the registered join (GOES at or below 2016, DONKI above),
+  // which `querySolarFlares` applies by default — so a flare in the
+  // 2014-2016 overlap enters the trigger set exactly once.
+  const flares = querySolarFlares(db, H1B_REQUESTED_START_UTC, nowUtc);
+  const flarePeakTimesMs = flares
+    .filter((flare) => flareAtLeast(flare, H1B_MIN_FLARE_CLASS, H1B_MIN_FLARE_MAGNITUDE))
+    .map((flare) => Date.parse(flare.peakTimeUtc));
+
+  const goesYears = completedGoesFlareYears(db);
+  const flareCoverageComplete = goesFlareYears().every((year) => goesYears.has(year));
+
+  return {
+    contractVersion: CONTRACT_VERSION,
+    hypothesisId: 'H1b',
+    parameters: {
+      targetMinMagnitude: H1B_TARGET_MIN_MAGNITUDE,
+      lagWindowsHours: H1B_LAG_WINDOWS_HOURS,
+      declustering: H1B_DECLUSTERING,
+      baselineWindowDays: H1B_BASELINE_WINDOW_DAYS,
+      nullModel: H1B_NULL_MODEL,
+      tail: H1B_TAIL,
+      iterations: H1B_ITERATIONS,
+      seed: H1B_SEED,
+      q: H1B_Q,
+      requestedStartUtc: H1B_REQUESTED_START_UTC,
+      registeredMatrixTests: REGISTERED_MATRIX_TESTS,
+    },
+    catalog,
+    flarePeakTimesMs,
+    flareCoverageComplete,
+  };
+}
+
 const REQUEST_BUILDERS: Record<HypothesisId, (db: DatabaseSync, nowUtc: string) => unknown> = {
   H4c: buildH4cRequest,
   H3b: buildH3bRequest,
   H2b: buildH2bRequest,
+  H1b: buildH1bRequest,
 };
 
-const SUPPORTED_HYPOTHESES: readonly HypothesisId[] = ['H4c', 'H3b', 'H2b'];
+const SUPPORTED_HYPOTHESES: readonly HypothesisId[] = ['H4c', 'H3b', 'H2b', 'H1b'];
 
 export function registerAnalysisIpcHandlers(
   db: DatabaseSync,

@@ -32,6 +32,12 @@ const HYPOTHESIS_COPY: Record<HypothesisId, { title: string; statement: string; 
       'Any H1b effect is stronger on the hemisphere facing the Sun at CME arrival time than on the far hemisphere.',
     registeredDate: '2026-08-17',
   },
+  H1b: {
+    title: 'H1b — Solar flares',
+    statement:
+      'X- and M-class solar flare occurrence is followed by an elevated global M5.0+ earthquake rate.',
+    registeredDate: '2026-08-17',
+  },
 };
 
 /**

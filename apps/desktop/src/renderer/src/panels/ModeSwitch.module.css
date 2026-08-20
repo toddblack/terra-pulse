@@ -13,11 +13,13 @@
   z-index: 10;
 }
 
+/* No `background` here, deliberately — see `.active` below. Every button gets
+   its background from its state class instead, so the UA default is still
+   overridden. */
 .switch button {
   padding: 0.35rem 0.9rem;
   border: none;
   border-radius: 0.35rem;
-  background: none;
   font-size: 0.75rem;
   font-weight: 500;
   cursor: pointer;
@@ -25,6 +27,7 @@
 }
 
 .inactive {
+  background-color: transparent;
   color: rgb(148 163 184);
 }
 
@@ -34,9 +37,27 @@
 }
 
 /* Filled, not just a colour change — a mode is a bigger switch than a
-   disclosure toggle, so it gets more emphasis than the collapsible
-   sections' flat/outlined language. */
+   disclosure toggle, so it gets more emphasis than the collapsible sections'
+   flat/outlined language.
+
+   **Cyan text on a tinted fill, not dark text on a solid one**, so the active
+   button keeps the light-on-dark polarity every other surface in this app
+   uses. The solid-fill version inverted to near-black text at 12px inside an
+   otherwise dark UI, which reads as muddy however good its luminance ratio
+   is — the "pick the right metric" note in CLAUDE.md, applied to type rather
+   than to a mark. Measured against the composited backdrop: 5.6:1 for the
+   active label, 6.3:1 for the inactive one.
+
+   **The fill was invisible entirely until 2026-08-19, and the cause is worth
+   remembering.** `.switch button` used to carry `background: none`, which is
+   specificity (0,1,1) — a class *and* an element — against this rule's
+   (0,1,0). The element-qualified rule therefore won regardless of source
+   order, so the active button had no fill at all and its near-black text sat
+   on the dark panel: the selected item was the *least* readable thing in the
+   switch. Nothing errored, and the CSS read correctly at a glance. Any
+   `.parent element { ... }` reset will out-specify a bare state class the
+   same way — state styling belongs on state classes only. */
 .active {
-  background-color: rgb(56 189 248 / 90%);
-  color: rgb(15 23 42);
+  background-color: rgb(56 189 248 / 18%);
+  color: rgb(125 211 252);
 }

@@ -350,13 +350,32 @@ export function createDonkiController(
 }
 
 /**
- * Which calendar years a half-open UTC range touches.
+ * Which calendar years a half-open UTC range touches, **clamped to the years
+ * DONKI actually covers**.
  *
  * DONKI is fetched year-by-year (see `runYear`), so any range — however
  * narrow — needs at least the year(s) it falls inside.
+ *
+ * The lower clamp is load-bearing, and its absence shipped a real bug. This
+ * app's playhead reaches back to 1896 (the deep earthquake archive), so
+ * scrubbing there with a solar layer on asked `ensureCoverage` for years long
+ * before DONKI's 2010 start. Each one fetched nothing, stored nothing, and was
+ * then *recorded complete* — leaving phantom rows for 1896-1901 in
+ * `donki_chunks`, which `donkiChunkSummary` counts. The visible symptom was
+ * the archive panel's progress bar reading **129%** (46 completed chunks
+ * against a 34-chunk total, and still climbing). Migration 12 clears the rows
+ * this already created; the clamp stops more appearing.
+ *
+ * **Only the start is clamped**, deliberately. A future end year needs no
+ * equivalent guard because `isYearFinal` already refuses to record any year
+ * that has not finished, so a fetch past the present can never leave a phantom
+ * row behind. Clamping it as well looked tidy and was caught by the existing
+ * "more than 2 missing years fetches nothing" test — it would have narrowed a
+ * deliberately-wide window back under `LAZY_FETCH_MAX_MISSING_YEARS` and
+ * started fetching where the cap says not to.
  */
 function yearsInRange(startUtc: string, endUtc: string): number[] {
-  const startYear = new Date(startUtc).getUTCFullYear();
+  const startYear = Math.max(new Date(startUtc).getUTCFullYear(), DONKI_START_YEAR);
   const endYear = new Date(endUtc).getUTCFullYear();
   const years: number[] = [];
   for (let year = startYear; year <= endYear; year += 1) years.push(year);

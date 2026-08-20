@@ -1,8 +1,10 @@
 import type { DatabaseSync } from 'node:sqlite';
-import type { CmeArrival, SolarFlare } from '@terra-pulse/schema';
+import type { CmeArrival, FlareSource, SolarFlare } from '@terra-pulse/schema';
+import { GOES_FLARE_LAST_YEAR } from '@terra-pulse/schema';
 
 interface FlareRow {
   id: string;
+  source: string;
   class_type: string;
   flare_class: string;
   magnitude: number;
@@ -24,22 +26,29 @@ interface CmeRow {
 }
 
 /**
- * Upserts flares by DONKI's own id.
+ * Upserts flares by id.
  *
  * `SAVEPOINT`-wrapped like `insertSpaceWeather`, for the same reason: without a
- * transaction every row pays its own durability flush. DONKI does not
- * duplicate — see nasa-donki.ts's note on `parseFlares` — so a plain overwrite
- * on conflict is correct rather than a `COALESCE`: a later fetch of the same id
- * is a revision, not a second, partial observation of it.
+ * transaction every row pays its own durability flush. A plain overwrite on
+ * conflict is correct rather than a `COALESCE`, for both catalogues but for
+ * slightly different reasons: DONKI revises records in place under a stable id
+ * (see nasa-donki.ts's note on `parseFlares`), so a later fetch is a revision
+ * rather than a second partial observation; GOES never changes a published year,
+ * so a conflict there means the same row re-ingested and overwriting it is a
+ * no-op that keeps re-running the backfill idempotent.
+ *
+ * `source` is written but deliberately **not** in the `DO UPDATE SET` list — a
+ * row's catalogue is part of its identity, and an id collision across the two
+ * namespaces would be a bug rather than something to silently reassign.
  */
 export function insertSolarFlares(db: DatabaseSync, flares: readonly SolarFlare[]): number {
   if (flares.length === 0) return 0;
 
   const statement = db.prepare(`
     INSERT INTO solar_flares
-      (id, class_type, flare_class, magnitude, peak_time_utc, begin_time_utc,
+      (id, source, class_type, flare_class, magnitude, peak_time_utc, begin_time_utc,
        end_time_utc, source_location, active_region_number, link)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       class_type = excluded.class_type,
       flare_class = excluded.flare_class,
@@ -57,6 +66,7 @@ export function insertSolarFlares(db: DatabaseSync, flares: readonly SolarFlare[
     for (const flare of flares) {
       statement.run(
         flare.id,
+        flare.source,
         flare.classType,
         flare.flareClass,
         flare.magnitude,
@@ -119,6 +129,7 @@ export function insertCmeArrivals(db: DatabaseSync, arrivals: readonly CmeArriva
 function flareFromRow(row: FlareRow): SolarFlare {
   return {
     id: row.id,
+    source: row.source as FlareSource,
     classType: row.class_type,
     flareClass: row.flare_class as SolarFlare['flareClass'],
     magnitude: row.magnitude,
@@ -142,22 +153,80 @@ function cmeArrivalFromRow(row: CmeRow): CmeArrival {
   };
 }
 
-/** Flares peaking in a half-open range, oldest first. Bound on both ends — see `querySpaceWeather`. */
+/**
+ * The year after the last GOES-owned one, as an ISO instant — the single
+ * boundary in the SQL below. Derived from the schema constant rather than
+ * written as a literal, so the registered join moves in one place if it ever
+ * moves at all.
+ */
+const DONKI_OWNS_FROM_UTC = `${String(GOES_FLARE_LAST_YEAR + 1)}-01-01T00:00:00.000Z`;
+
+export interface QuerySolarFlaresOptions {
+  /**
+   * `'preferred'` (the default) applies H1b's registered join — GOES at or
+   * below `GOES_FLARE_LAST_YEAR`, DONKI above it — so each flare is returned
+   * exactly once. `'all'` returns both catalogues including the 2014-2016
+   * overlap, which is what checking that they agree needs, and is *never* what
+   * a count or a drawn layer wants.
+   */
+  source?: 'preferred' | 'all' | FlareSource;
+}
+
+/**
+ * Flares peaking in a half-open range, oldest first. Bound on both ends — see
+ * `querySpaceWeather`.
+ *
+ * **Defaults to one catalogue per year, not to everything stored.** Both
+ * catalogues overlap across 2014-2016, so an unfiltered read would return the
+ * same flare twice — double-counting it in H1b's trigger set and drawing it
+ * twice on the globe. The default here is the same rule the analysis uses, so
+ * the marks and the count cannot disagree; `{ source: 'all' }` is the explicit
+ * opt-in for comparing the two.
+ */
 export function querySolarFlares(
   db: DatabaseSync,
   startUtc: string,
   endUtc: string,
+  options: QuerySolarFlaresOptions = {},
 ): SolarFlare[] {
+  const source = options.source ?? 'preferred';
+  const columns = `id, source, class_type, flare_class, magnitude, peak_time_utc,
+                   begin_time_utc, end_time_utc, source_location, active_region_number, link`;
+
+  if (source === 'preferred') {
+    const rows = db
+      .prepare(
+        `SELECT ${columns}
+           FROM solar_flares
+          WHERE peak_time_utc >= ? AND peak_time_utc < ?
+            AND ((source = 'goes' AND peak_time_utc < ?)
+              OR (source = 'donki' AND peak_time_utc >= ?))
+          ORDER BY peak_time_utc`,
+      )
+      .all(startUtc, endUtc, DONKI_OWNS_FROM_UTC, DONKI_OWNS_FROM_UTC) as unknown as FlareRow[];
+    return rows.map(flareFromRow);
+  }
+
+  if (source === 'all') {
+    const rows = db
+      .prepare(
+        `SELECT ${columns}
+           FROM solar_flares
+          WHERE peak_time_utc >= ? AND peak_time_utc < ?
+          ORDER BY peak_time_utc`,
+      )
+      .all(startUtc, endUtc) as unknown as FlareRow[];
+    return rows.map(flareFromRow);
+  }
+
   const rows = db
     .prepare(
-      `SELECT id, class_type, flare_class, magnitude, peak_time_utc, begin_time_utc,
-              end_time_utc, source_location, active_region_number, link
+      `SELECT ${columns}
          FROM solar_flares
-        WHERE peak_time_utc >= ? AND peak_time_utc < ?
+        WHERE peak_time_utc >= ? AND peak_time_utc < ? AND source = ?
         ORDER BY peak_time_utc`,
     )
-    .all(startUtc, endUtc) as unknown as FlareRow[];
-
+    .all(startUtc, endUtc, source) as unknown as FlareRow[];
   return rows.map(flareFromRow);
 }
 
@@ -223,6 +292,54 @@ export function donkiChunkSummary(
          FROM donki_chunks WHERE source = ?`,
     )
     .get(source);
+
+  return {
+    completedChunks: Number(row?.['chunks'] ?? 0),
+    storedEvents: Number(row?.['events'] ?? 0),
+  };
+}
+
+/**
+ * Marks one GOES year done. Call only once its flares are committed — the same
+ * contract `recordArchiveChunk` and `recordDonkiChunk` carry.
+ *
+ * No `source` argument, unlike the DONKI pair: there is only one thing to fetch
+ * here. And no "is this year final" question either — the record is closed at
+ * 2016, so every year in range is final by construction.
+ */
+export function recordGoesFlareChunk(db: DatabaseSync, year: number, eventCount: number): void {
+  db.prepare(
+    `INSERT INTO goes_flare_chunks (year, event_count, completed_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(year) DO UPDATE SET
+       event_count = excluded.event_count,
+       completed_at = excluded.completed_at`,
+  ).run(year, eventCount, new Date().toISOString());
+}
+
+/**
+ * GOES years already fetched.
+ *
+ * Explicit bookkeeping rather than "does this year have any rows", and this
+ * record makes the case unusually well: **2009 has zero M/X flares** and several
+ * solar-minimum years have almost none, so row presence genuinely cannot tell a
+ * quiet year from an unfetched one.
+ */
+export function completedGoesFlareYears(db: DatabaseSync): Set<number> {
+  const rows = db.prepare('SELECT year FROM goes_flare_chunks').all();
+  return new Set(rows.map((row) => row['year'] as number));
+}
+
+export function goesFlareChunkSummary(db: DatabaseSync): {
+  completedChunks: number;
+  storedEvents: number;
+} {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS chunks, COALESCE(SUM(event_count), 0) AS events
+         FROM goes_flare_chunks`,
+    )
+    .get();
 
   return {
     completedChunks: Number(row?.['chunks'] ?? 0),

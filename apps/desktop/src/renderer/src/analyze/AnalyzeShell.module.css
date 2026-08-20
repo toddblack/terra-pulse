@@ -31,11 +31,13 @@
   background-color: rgb(30 41 59 / 60%);
 }
 
+/* No `background` here, deliberately — see `.hypothesisActive` below. Every
+   button gets its background from its state class instead, so the UA default
+   is still overridden. */
 .hypothesisSwitch button {
   padding: 0.25rem 0.65rem;
   border: none;
   border-radius: 0.3rem;
-  background: none;
   font-size: 0.6875rem;
   font-weight: 600;
   cursor: pointer;
@@ -43,6 +45,7 @@
 }
 
 .hypothesisInactive {
+  background-color: transparent;
   color: rgb(148 163 184);
 }
 
@@ -50,9 +53,14 @@
   color: rgb(203 213 225);
 }
 
+/* Cyan text on a tinted fill rather than dark text on a solid one — the same
+   change, and the same reasoning, as `.active` in ModeSwitch.module.css,
+   which carries the full note including the specificity bug that made this
+   fill invisible in the first place. Worse here than there: 11px type, so
+   the inverted version was the least readable label on screen. */
 .hypothesisActive {
-  background-color: rgb(56 189 248 / 90%);
-  color: rgb(15 23 42);
+  background-color: rgb(56 189 248 / 18%);
+  color: rgb(125 211 252);
 }
 
 /* Background-run status, not a verdict, so unlike the histogram/table these
@@ -69,13 +77,13 @@
   vertical-align: middle;
 }
 
+/* One colour in both states. It needed a dark variant only while the active
+   tab was a solid cyan fill; now that the active tab is cyan-on-tint, the dot
+   reads on either background and having two colours for one meaning would be
+   noise. */
 .tabRunning {
-  background-color: rgb(56 189 248 / 90%);
+  background-color: rgb(125 211 252);
   animation: tab-running-pulse 1.2s ease-in-out infinite;
-}
-
-.hypothesisActive .tabRunning {
-  background-color: rgb(15 23 42);
 }
 
 .tabError {

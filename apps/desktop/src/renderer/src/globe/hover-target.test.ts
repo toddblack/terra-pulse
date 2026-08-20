@@ -173,6 +173,7 @@ describe('describeMagnetometer', () => {
 function flare(overrides: Partial<SolarFlare> = {}): SolarFlare {
   return {
     id: '2026-08-10T12:34:00-FLR-001',
+    source: 'donki',
     classType: 'M2.4',
     flareClass: 'M',
     magnitude: 2.4,

@@ -31,11 +31,16 @@
  * H1 registers GOES as its source, which turned out to be both correct and the
  * better choice. This constant governs only the DONKI half.
  *
- * **The 2015 disagreement is real and unexplained.** DONKI reports *more* M/X
- * flares than GOES that year, with no duplicates — 127 records, 127 unique ids,
- * 127 unique peak times, one catalogue. Most likely GOES's 2015 report is partial
- * across a satellite transition. Two good catalogues can differ by 20% at the
- * margin, and any flare count carries that uncertainty.
+ * **The 2015 disagreement was real and is now explained.** DONKI reports *more*
+ * M/X flares than GOES that year, with no duplicates — 127 records, 127 unique
+ * ids, 127 unique peak times, one catalogue. The guess recorded here was that
+ * GOES's 2015 report is partial across a satellite transition, and **that turned
+ * out to be right**: NOAA publishes a corrected file for that year alone,
+ * `goes-xrs-report_2015_modifiedreplacedmissingrows.txt`, carrying **119 M/X
+ * against the standard file's 106**. The ingest takes the corrected file — see
+ * `GOES_FLARE_YEAR_FILENAMES` in `packages/ingest/src/goes-flares.ts`. The
+ * residual 119-vs-127 gap is the ordinary margin between two good catalogues,
+ * and any flare count still carries it.
  */
 export const FLARE_COMPLETE_SINCE_YEAR = 2014;
 
@@ -59,6 +64,47 @@ export const GOES_FLARE_FIRST_FULL_YEAR = 1976;
 export const GOES_FLARE_LAST_YEAR = 2016;
 
 /**
+ * Where this app actually starts ingesting GOES, as against where the reports
+ * start (`GOES_FLARE_FIRST_FULL_YEAR`).
+ *
+ * 1996 rather than 1976 because GOES 1-7 fluxes are documented as needing a
+ * scaling correction, so "M1.0" before 1996 is not the same threshold as after.
+ * Applying that correction would mean introducing a factor nobody here has
+ * verified against a citable source — the free parameter non-negotiable #3
+ * forbids. GOES-8 onward avoids the question and still gives thirty years.
+ *
+ * H1b registers this boundary (`HYPOTHESES.md`, "Why 1996"). Extending back to
+ * 1976 remains possible and would roughly double the record, but only once that
+ * correction is sourced and registered.
+ */
+export const GOES_FLARE_START_YEAR = 1996;
+
+/**
+ * Which catalogue a stored flare came from.
+ *
+ * Both are kept rather than one overwriting the other, because H1b's
+ * registration rests on the two agreeing across 2014-2016 ("the join is
+ * validated on their 2014-2016 overlap") — a claim that stops being checkable
+ * in-app the moment either side is discarded. `preferredFlareSourceFor` below
+ * is what keeps the overlap from being double-counted or drawn twice.
+ */
+export type FlareSource = 'goes' | 'donki';
+
+/**
+ * Which catalogue owns a given year, as H1b registers the join: **GOES at or
+ * below 2016, DONKI above it.**
+ *
+ * One definition, deliberately, rather than the same comparison written out in
+ * the query layer, the globe layer and the analysis request builder. Those three
+ * must agree or the globe draws a flare the analysis didn't count — the same
+ * reasoning that makes `displayWindow` the single definition of the visible
+ * span.
+ */
+export function preferredFlareSourceFor(year: number): FlareSource {
+  return year <= GOES_FLARE_LAST_YEAR ? 'goes' : 'donki';
+}
+
+/**
  * Flare classes, in order. Each letter is ten times the peak X-ray flux of the
  * one before, so the scale is logarithmic and the letters are not comparable as
  * categories — an X is a hundred times an M is not a figure of speech.
@@ -68,8 +114,22 @@ export type FlareClass = 'A' | 'B' | 'C' | 'M' | 'X';
 const CLASS_ORDER: readonly FlareClass[] = ['A', 'B', 'C', 'M', 'X'];
 
 export interface SolarFlare {
-  /** DONKI's own id, e.g. `2026-08-10T12:34:00-FLR-001`. */
+  /**
+   * Stable identity, and its shape depends on `source`.
+   *
+   * DONKI supplies its own — `2026-08-10T12:34:00-FLR-001`. **GOES supplies
+   * none**, so the ingest synthesises one from the record's own fields
+   * (`goes:<peak instant>-<class>`), which is what makes re-running the
+   * backfill an idempotent upsert rather than a duplicate insert. The two
+   * namespaces cannot collide, which matters because both catalogues are
+   * stored across their 2014-2016 overlap.
+   */
   id: string;
+  /**
+   * Which catalogue this row came from. See `FlareSource` for why both are
+   * kept and `preferredFlareSourceFor` for which one a given year is read from.
+   */
+  source: FlareSource;
   /** As published, e.g. `M2.4`. */
   classType: string;
   flareClass: FlareClass;
@@ -183,4 +243,29 @@ export interface DonkiProgress {
    * itself ever crossing IPC.
    */
   hasApiKey: boolean;
+}
+
+/**
+ * What the GOES XRS flare backfill is doing.
+ *
+ * **Deliberately smaller than `DonkiProgress`**, and the missing fields are the
+ * point: there is no `phase` (one source, not two), no `hasApiKey` (NOAA needs
+ * no credential), and no `'waiting'` state or `retryAtUtc` (no rate limit to
+ * pause for). Reusing `DonkiProgress` would have meant four fields that are
+ * permanently null and a reader having to know which — the same "field present
+ * but silently unused" shape the engine's request contracts are split to avoid.
+ *
+ * `totalChunks` is a constant 21: the range is closed at both ends
+ * (`GOES_FLARE_START_YEAR`..`GOES_FLARE_LAST_YEAR`) and entirely in the past, so
+ * unlike every other backfill here there is no current year to leave unrecorded.
+ */
+export interface GoesFlareProgress {
+  state: 'idle' | 'running' | 'complete' | 'failed' | 'cancelled';
+  completedChunks: number;
+  totalChunks: number;
+  storedFlares: number;
+  /** The year currently being fetched, if any. */
+  currentYear: number | null;
+  /** Present when `state` is 'failed'. */
+  error: string | null;
 }

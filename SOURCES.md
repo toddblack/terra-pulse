@@ -91,10 +91,19 @@ activity*, Space Weather, doi:10.1029/2020SW002641
 
 | | |
 |---|---|
-| **NOAA SWPC** — OVATION aurora, propagated solar wind | `services.swpc.noaa.gov` |
+| **NOAA SWPC** — OVATION aurora, propagated solar wind, GOES X-ray flux, GloTEC ionosphere | `services.swpc.noaa.gov` |
 | Licence | Public domain (US Government work) |
 | Redistributable | Yes |
 | Credential | None |
+
+| | |
+|---|---|
+| **NOAA NCEI / NGDC** — GOES XRS yearly flare reports, 1996–2016 (H1b) | `ngdc.noaa.gov/stp/space-weather/solar-data/solar-features/solar-flares/x-rays/goes/xrs/` |
+| Licence | Public domain (US Government work) |
+| Redistributable | Yes |
+| Credential | None |
+| Coverage | Reports exist for 1975–2017. This app ingests **1996–2016**: earlier fluxes need a documented scaling correction that has not been verified against a citable source here, and 2017 onward comes from DONKI instead. See `GOES_FLARE_START_YEAR` in `packages/schema/src/solar-events.ts`. |
+| Note | 2015 is read from NOAA's own corrected file, `goes-xrs-report_2015_modifiedreplacedmissingrows.txt` — the standard file for that year is missing rows (106 M/X against the corrected 119). Distinct from the SWPC entry above: that one is live raw X-ray *flux*, this is the historical catalogue of *classified flare events*. Same instrument, different product. Fetched per install like every other source, per standing rule 1. |
 
 | | |
 |---|---|

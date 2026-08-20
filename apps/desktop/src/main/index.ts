@@ -50,6 +50,7 @@ import {
   registerDonkiIpcHandlers,
   startDonkiPolling,
 } from './ipc/nasa-donki';
+import { createGoesFlareController, registerGoesFlareIpcHandlers } from './ipc/goes-flares';
 import { registerExternalLinkIpcHandlers } from './ipc/external-links';
 import { createEngineController, registerAnalysisIpcHandlers } from './ipc/analysis';
 import { applyTileIdentity } from './tile-identity';
@@ -402,6 +403,19 @@ app
     app.on('will-quit', stopDonkiPolling);
     app.on('will-quit', () => {
       solarEvents.cancel();
+    });
+
+    // The deep half of the same flare record: NOAA's GOES XRS yearly reports,
+    // 1996-2016, which H1b registers as its source below 2017. No poller —
+    // unlike DONKI this record is closed and will never gain a row.
+    const goesFlares = createGoesFlareController(db, (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('goes-flares:progress', progress);
+      }
+    });
+    registerGoesFlareIpcHandlers(goesFlares, notifySolarEventsUpdated);
+    app.on('will-quit', () => {
+      goesFlares.cancel();
     });
 
     // A backfill mid-flight would keep issuing requests and writing to a

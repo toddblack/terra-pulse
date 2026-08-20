@@ -427,4 +427,75 @@ export const migrations: Migration[] = [
       ALTER TABLE space_weather ADD COLUMN xray_flux REAL;
     `,
   },
+  {
+    id: 11,
+    name: 'goes_flares',
+    // The NOAA GOES XRS historical flare record (1996-2016), which H1b
+    // registers as its source below 2017 and which nothing ingested until now
+    // — `solar_flares` had exactly one writer, the DONKI backfill, starting at
+    // 2010. See packages/ingest/src/goes-flares.ts.
+    //
+    // Two adds:
+    //
+    // - `solar_flares.source` distinguishes the two catalogues. DEFAULT 'donki'
+    //   is correct for every row that already exists, since DONKI wrote all of
+    //   them — so this backfills itself and needs no UPDATE. Both catalogues are
+    //   kept across their 2014-2016 overlap on purpose: H1b's registration rests
+    //   on them agreeing there, and that stops being checkable the moment either
+    //   is discarded. `preferredFlareSourceFor` in packages/schema is what keeps
+    //   the overlap from being counted or drawn twice.
+    //
+    // - `goes_flare_chunks` is bookkeeping, the role `donki_chunks` plays for
+    //   DONKI and `archive_chunks` for earthquakes, and necessary for the same
+    //   reason: a genuinely quiet year (2009 has zero M/X flares in this record)
+    //   is indistinguishable from an unfetched one if completion is inferred
+    //   from row presence.
+    //
+    //   It is its own table rather than a third value in `donki_chunks.source`,
+    //   which carries CHECK (source IN ('flares','cme')) — SQLite cannot alter a
+    //   CHECK constraint, so reusing it would force a full create-copy-drop-
+    //   rename for no benefit. It also has no `source` column of its own, since
+    //   unlike DONKI there is only one thing to fetch.
+    //
+    // Adds only, so the create-copy-drop-rename pattern at the top of this file
+    // doesn't apply.
+    sql: `
+      ALTER TABLE solar_flares ADD COLUMN source TEXT NOT NULL DEFAULT 'donki';
+
+      CREATE INDEX idx_solar_flares_source_peak ON solar_flares (source, peak_time_utc);
+
+      CREATE TABLE goes_flare_chunks (
+        year INTEGER PRIMARY KEY,
+        event_count INTEGER NOT NULL,
+        completed_at TEXT NOT NULL
+      );
+    `,
+  },
+  {
+    id: 12,
+    name: 'prune_out_of_range_donki_chunks',
+    // Clears bookkeeping rows for years DONKI never covered.
+    //
+    // `ensureCoverage` in main/ipc/nasa-donki.ts used to derive the years to
+    // fetch straight from the requested window, unclamped. The playhead
+    // reaches back to 1896 (the deep earthquake archive), so scrubbing there
+    // with a solar layer on asked for years decades before DONKI's 2010 start
+    // — each fetched nothing, stored nothing, and was then recorded complete.
+    // Measured on a real database: 12 phantom rows for 1896-1901, which
+    // `donkiChunkSummary` counts, so the archive panel's progress bar read
+    // **129%** (44 completed against a 34-chunk total).
+    //
+    // Deleting them is safe and is not data loss: `donki_chunks` is pure
+    // bookkeeping, these rows all carry `event_count = 0`, and no year outside
+    // the fetch plan can ever be legitimately recorded. The guard in
+    // `yearsInRange` stops new ones appearing; this removes the ones already
+    // written. Bounded by DONKI_START_YEAR rather than a literal so the two
+    // cannot drift apart.
+    //
+    // Deletes only, so the create-copy-drop-rename pattern at the top of this
+    // file doesn't apply.
+    sql: `
+      DELETE FROM donki_chunks WHERE year < 2010;
+    `,
+  },
 ];

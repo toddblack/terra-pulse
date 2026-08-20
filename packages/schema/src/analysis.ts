@@ -18,7 +18,7 @@
  */
 export const CONTRACT_VERSION = 1;
 
-export type HypothesisId = 'H4c' | 'H3b' | 'H2b';
+export type HypothesisId = 'H4c' | 'H3b' | 'H2b' | 'H1b';
 
 export interface HypothesisSummary {
   id: HypothesisId;
