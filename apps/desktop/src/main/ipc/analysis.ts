@@ -50,6 +50,17 @@ import {
   H1B_SEED,
   H1B_TAIL,
   H1B_TARGET_MIN_MAGNITUDE,
+  H5_DECLUSTERING,
+  H5_DISTANCE_BIN_KM,
+  H5_ITERATIONS,
+  H5_NULL_MODEL,
+  H5_Q,
+  H5_REQUESTED_START_UTC,
+  H5_SEED,
+  H5_TAIL,
+  H5_TARGET_MIN_MAGNITUDE,
+  H5_TRIGGER_MIN_MAGNITUDE,
+  H5_WINDOW_HOURS,
   REGISTERED_MATRIX_TESTS,
   flareAtLeast,
   isDirectImpact,
@@ -549,14 +560,55 @@ function buildH1bRequest(db: DatabaseSync, nowUtc: string): unknown {
   };
 }
 
+/**
+ * H5's request — the smallest of the five, because its triggers are drawn from
+ * the same catalogue as its targets.
+ *
+ * No trigger payload, unlike H2b's arrival instants and H1b's flare peaks:
+ * H5's triggers are themselves earthquakes, and Gardner-Knopoff has to see the
+ * whole M5.0+ catalogue in one pass or it marks a different set of events
+ * independent. Sending a separately-declustered M6.0+ list would be sending a
+ * trigger set that disagrees with the target set about what is an aftershock.
+ * So the engine derives both from one mask, and the only registered floor main
+ * applies here is the query floor itself.
+ */
+function buildH5Request(db: DatabaseSync, nowUtc: string): unknown {
+  const catalog = queryAnalysisCatalog(db, {
+    minMagnitude: H5_TARGET_MIN_MAGNITUDE,
+    startUtc: CATALOG_QUERY_START_UTC,
+    endUtc: nowUtc,
+  });
+
+  return {
+    contractVersion: CONTRACT_VERSION,
+    hypothesisId: 'H5',
+    parameters: {
+      targetMinMagnitude: H5_TARGET_MIN_MAGNITUDE,
+      triggerMinMagnitude: H5_TRIGGER_MIN_MAGNITUDE,
+      windowHours: H5_WINDOW_HOURS,
+      declustering: H5_DECLUSTERING,
+      nullModel: H5_NULL_MODEL,
+      tail: H5_TAIL,
+      distanceBinKm: H5_DISTANCE_BIN_KM,
+      iterations: H5_ITERATIONS,
+      seed: H5_SEED,
+      q: H5_Q,
+      requestedStartUtc: H5_REQUESTED_START_UTC,
+      registeredMatrixTests: REGISTERED_MATRIX_TESTS,
+    },
+    catalog,
+  };
+}
+
 const REQUEST_BUILDERS: Record<HypothesisId, (db: DatabaseSync, nowUtc: string) => unknown> = {
   H4c: buildH4cRequest,
   H3b: buildH3bRequest,
   H2b: buildH2bRequest,
   H1b: buildH1bRequest,
+  H5: buildH5Request,
 };
 
-const SUPPORTED_HYPOTHESES: readonly HypothesisId[] = ['H4c', 'H3b', 'H2b', 'H1b'];
+const SUPPORTED_HYPOTHESES: readonly HypothesisId[] = ['H4c', 'H3b', 'H2b', 'H1b', 'H5'];
 
 export function registerAnalysisIpcHandlers(
   db: DatabaseSync,

@@ -32,6 +32,7 @@ const INITIAL_STATE: Record<HypothesisId, HypothesisRunState> = {
   H3b: EMPTY_RUN_STATE,
   H2b: EMPTY_RUN_STATE,
   H1b: EMPTY_RUN_STATE,
+  H5: EMPTY_RUN_STATE,
 };
 
 interface AnalysisState {

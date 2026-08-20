@@ -69,16 +69,22 @@ that signal, not a false alarm to silence on this side alone.
   None of these modules know what a hypothesis id is.
 - `hypotheses/` — one module per implemented hypothesis, assembling the
   `pipeline/` pieces for that hypothesis's exact registered parameters.
-  Currently just `h4c.py`. Adding a hypothesis means adding a module here and
-  a registry entry in `hypotheses/__init__.py` — it should not require
-  touching `pipeline/` unless the new hypothesis needs a genuinely new kind
-  of statistic.
+  `h4c.py`, `h3b.py`, `h2b.py`, `h1b.py`, `h5.py`. Adding a hypothesis means
+  adding a module here and a registry entry in `hypotheses/__init__.py` — it
+  should not require touching `pipeline/` unless the new hypothesis needs a
+  genuinely new kind of statistic. Four of the five needed nothing new; **H5
+  did**, and `pipeline/ks.py` is what that looks like: a supremum-of-CDF-
+  difference is not a rate ratio by any amount of parameter reuse.
 
 ## Known follow-ups (not this round)
 
 - PyInstaller/bundling, so a packaged Terra Pulse build doesn't need a
   system Python at all.
-- The magnitude-of-completeness map H5 needs.
+- ~~The magnitude-of-completeness map H5 needs.~~ **Not needed.** H5 shipped
+  2026-08-20 on a null that conditions on the detected catalogue instead of
+  weighting by an estimated Mc — see `hypotheses/h5.py`'s module docstring and
+  HYPOTHESES.md H5. Any *future* spatial test still has to satisfy the
+  completeness requirement one way or the other.
 - **Vectorizing `hypotheses/h4c.py`'s permutation `statistic_fn` across the
   batch dimension.** Measured against the real dev database (92,106 raw
   M5.0+ events, 48,371 declustered, 496,423 space-weather hours 1970+): a

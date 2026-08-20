@@ -1671,7 +1671,8 @@ H4c (Kp/Dst geomagnetic disturbance) needs zero new ingest — Kp since 1932,
 Dst since 1963 are already in the database — and its
 threshold→episode→lag-window-ratio→Poisson→Monte Carlo shape is shared by
 H1b, H2b and H3b almost unchanged, so proving it once pays off for four of
-the five remaining hypotheses. H5 needs a magnitude-of-completeness map that
+the five remaining hypotheses. H5 at that time was thought to need a
+magnitude-of-completeness map (it did not — see its entry below) and
 doesn't exist yet and uses a structurally different KS-test shape; it's next,
 once that map is built. H1b needs a GOES 1996-2016 flare ingest this app
 doesn't have yet.
@@ -1788,7 +1789,7 @@ convention carry that caveat alone.
 
 **Next:** H1b, H2b or H3b (same pipeline shape, minor parameter changes —
 proving that reuse was the point of choosing H4c first), or the
-magnitude-of-completeness map H5 needs.
+magnitude-of-completeness map H5 was thought to need — see the H5 entry below for why it turned out to be unnecessary.
 
 **H3b shipped the same morning — and the reuse bet paid off exactly as
 argued above.** Coronal hole high-speed streams (OMNI2 wind speed) vs.
@@ -1843,7 +1844,7 @@ round 1's pipeline actually generalized.
   ~37s, same order as H4c's ~30s — the permutation loop, not declustering,
   is still the bottleneck, and it's the same one both hypotheses share.
 - **Next:** H1b or H2b are what's left of the four originally considered;
-  H5 still needs the completeness map.
+  H5 shipped 2026-08-20 without needing the completeness map at all.
 
 **H2b shipped the same day, and it is the one that actually tests whether
 this design generalizes.** H4c and H3b are both "threshold on a series →
@@ -1928,8 +1929,8 @@ the same shape H3b already proved.
   none) and rendering `spatialSplitDegrees` alongside it when present —
   the registered-parameters block already only shows fields that exist.
 - **Next:** H1b's ingest is now built (see the GOES XRS entry below), so what
-  remains for it is the engine module and its registration completion; H5 needs
-  the completeness map.
+  remains for it is the engine module and its registration completion; H5
+  shipped 2026-08-20 (the completeness map turned out to be unnecessary).
 
 **Tabbed Analyze results — shipped (2026-08-19).** `useAnalysisStore` is now
 keyed by hypothesis (`Record<HypothesisId, {result, running, error}>`) rather
@@ -2091,6 +2092,77 @@ the 19-test matrix.
   fields still read "Not yet run". H1b's is now recorded properly; the other
   three are not, which means the pre-registration of record understates how much
   of the matrix has been tested.
+
+**H5 shipped 2026-08-20 — the fifth hypothesis, the first with a genuinely
+different statistic, and the one whose most useful output was a finding about
+its own method.** Declustered M6.0+ mainshocks vs. the distance-to-antipode
+distribution of declustered M5.0+ events in the following 0-72h. Clean null:
+**KS D⁺ = 0.0016 against a null mean of 0.0024**, p = 0.6203 raw, 1.0000
+adjusted. 17 of 19 unblocked tests are now run; only H4b's 2 remain, blocked on
+magnetometer data.
+
+- **The magnitude-of-completeness map it was blocked on for weeks turned out to
+  be unnecessary, not merely deferred.** The registered null redraws *trigger
+  instants only* — every target stays where the catalogue recorded it and every
+  antipode stays where it is — so observed and null are built from the same
+  detected events and **detection bias cancels instead of being estimated**. An
+  Mc map would have added several free parameters (grid size, estimator, minimum
+  events per cell) to approximate what the shuffle conditions on exactly, which
+  under non-negotiable #3 is strictly worse. The four "blocked on the Mc map"
+  notes across the docs are corrected rather than deleted, with the reasoning.
+- **The registered test turned out to be insensitive to its own hypothesis, and
+  that is the round's real result.** "No fixed radius" was chosen in 2026-07-24
+  to avoid p-hacking a search radius, and that reasoning was sound. But a KS
+  statistic puts its sensitivity where the probability *mass* is, and the
+  near-antipode region holds **0.05% of it**. The two-sided D came out at 0.0442
+  — 27× the D⁺ — driven entirely by the **far** tail: 5.56% of windowed events
+  land within ~500 km of the *trigger* against 1.57% expected, which is residual
+  near-trigger clustering surviving Gardner-Knopoff and has nothing to do with
+  antipodes.
+  - **The lesson generalises and is worth carrying into future registrations:**
+    "avoid a free parameter by testing the whole distribution" is not
+    automatically the conservative choice. It can trade a p-hacking hazard for a
+    power failure. Ask what fraction of the distribution's mass lies in the
+    region the hypothesis is about — **at registration time**.
+  - The descriptive near-antipode comparison (2.2× within 250 km, ~24 events
+    against ~11) is recorded in `HYPOTHESES.md` because hiding it would be
+    worse, and fenced with what it is not: turning any row of it into a test
+    means choosing a radius after seeing the data, which is what the original
+    registration forbade.
+- **The user's ~30°-from-antipode question was researched and deliberately not
+  tested.** It has a real basis — antipodal focusing is strongest at 180° and
+  falls off within a few degrees, while the **PKP caustic near 140° epicentral
+  (40° from the antipode)** is a second documented convergence. It is recorded
+  under Exploratory Observations *before* the run, with the condition that a
+  band test needs a citable source and its own FDR slot. Registering one now, at
+  whatever radius this run's distribution happens to bump, is precisely the trap.
+- **`pipeline/ks.py` is the first new pipeline module since round 1**, which
+  `engine/README.md` sanctions only for "a genuinely new kind of statistic" — a
+  supremum-of-CDF-difference is one, and no amount of parameter reuse gets there.
+  The reference CDF is the **exact all-pairs distribution** (every trigger
+  antipode against every target), accumulated as a histogram in chunks because
+  the real catalogue's pair matrix is 280M doubles. 51 s total, well inside the
+  120 s budget; unlike H1b no optimisation was needed.
+- **Three new nullable response fields, and they fix an existing wrong.**
+  `TestResult` requires `observed`/`expected`/`ratio`, so every hypothesis puts
+  *something* there — H2b's have been near/far hemisphere counts rendering under
+  headers reading "Observed"/"Expected" since it shipped, which states something
+  false about what the number is. `observedLabel`/`expectedLabel`/
+  `statisticLabel` let the table headers follow the statistic; `MethodInfo`
+  gains `completenessModel`, without which H5's results panel would have listed
+  every registered parameter *except* the one the whole test turns on. All
+  additive, so **`CONTRACT_VERSION` does not move** — its own rule is that it
+  bumps when a field's *meaning* changes, not when one is added.
+- **A degenerate run now announces itself.** Zero triggers, or zero targets in
+  any window, produces D⁺ = 0 and p = 1 — arithmetically correct and
+  indistinguishable from a genuine clean null. Both are unreachable on the real
+  catalogue; the guard exists so that if one ever is reached it cannot be
+  mistaken for a result.
+- Registered self-exclusion is implemented as `side="right"` on the window's
+  lower bound: an M6.0+ trigger is itself in the M5.0+ target set and sits at the
+  antipodal maximum from its own antipode, so without it every trigger would
+  contribute one artefact to the far tail. The null needs no equivalent and must
+  not have one — its drawn instants are not real events.
 
 ## Non-negotiables
 

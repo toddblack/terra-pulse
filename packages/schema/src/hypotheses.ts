@@ -284,3 +284,64 @@ export const H1B_Q = 0.05;
 export const H1B_REQUESTED_START_UTC = '1996-01-01T00:00:00.000Z';
 
 export const H1B_SEED = 2026081902;
+
+// ---------------------------------------------------------------------------
+// H5 — antipodal triggering (HYPOTHESES.md, registered 2026-07-24, completed
+// 2026-08-20). The only hypothesis here whose statistic is not a rate ratio:
+// a one-sided Kolmogorov-Smirnov D-plus on a distance distribution.
+//
+// The values below duplicate `ANTIPODAL_*` in `antipodal.ts` rather than
+// importing them, following the `KP_STORM_THRESHOLD` precedent: the Explore
+// constant and the registered parameter stay independent declarations, tied
+// together by a test. If Explore's display threshold is ever retuned, the
+// registered parameter must not silently follow it.
+// ---------------------------------------------------------------------------
+
+/** HYPOTHESES.md H5: "Trigger set: Declustered M6.0+ global." */
+export const H5_TRIGGER_MIN_MAGNITUDE = 6.0;
+
+/** HYPOTHESES.md H5: "Target set: Declustered M5.0+ global." */
+export const H5_TARGET_MIN_MAGNITUDE = 5.0;
+
+/** HYPOTHESES.md H5: "Time window: 0-72h following the trigger." One window,
+ * not a ladder — the no-fixed-radius design is what keeps this to one test. */
+export const H5_WINDOW_HOURS: readonly [number, number] = [0, 72];
+
+export const H5_DECLUSTERING = 'gardner-knopoff' as const;
+
+/**
+ * HYPOTHESES.md H5, "Null model" (completed 2026-08-20): trigger instants
+ * redrawn uniformly from every hour in the span, **trigger locations and the
+ * target catalogue both held fixed**.
+ *
+ * That fixity is what satisfies the registered "Completeness correction:
+ * Mandatory" without a magnitude-of-completeness map: observed and null are
+ * built from the same detected events, so detection bias cancels rather than
+ * needing to be estimated. See the entry for why that is stricter than
+ * weighting, not weaker.
+ */
+export const H5_NULL_MODEL = 'uniform-redraw' as const;
+
+/** HYPOTHESES.md H5, "Tail" (completed 2026-08-20): upper — a larger D-plus
+ * is more extreme. */
+export const H5_TAIL = 'upper' as const;
+
+/**
+ * Bin width for the reference CDF, in km.
+ *
+ * Registered rather than tuned. At 100 km the reference has ~201 steps across
+ * the 0-20,015 km domain, far finer than anything this data resolves:
+ * epicentres carry location error of order 10 km, and the narrowest feature
+ * the hypothesis predicts — the antipodal focus — is a few degrees across.
+ */
+export const H5_DISTANCE_BIN_KM = 100;
+
+export const H5_ITERATIONS = 10_000;
+
+export const H5_Q = 0.05;
+
+/** HYPOTHESES.md H5, "Time range" (completed 2026-08-20): the M5.0+
+ * catalogue's own global-completeness bound, same as H4c's effective start. */
+export const H5_REQUESTED_START_UTC = '1970-01-01T00:00:00.000Z';
+
+export const H5_SEED = 2026082001;

@@ -18,7 +18,7 @@
  */
 export const CONTRACT_VERSION = 1;
 
-export type HypothesisId = 'H4c' | 'H3b' | 'H2b' | 'H1b';
+export type HypothesisId = 'H4c' | 'H3b' | 'H2b' | 'H1b' | 'H5';
 
 export interface HypothesisSummary {
   id: HypothesisId;
@@ -94,6 +94,26 @@ export interface AnalysisTestResult {
   pAdjustedFullMatrix: number;
   rejectedAtQ: boolean;
   null: NullInfo;
+  /**
+   * What `observed` and `expected` actually are, when they are not an observed
+   * count and a Poisson expectation. All three statistic fields are required,
+   * so a hypothesis with a different shape repurposes them — H2b's are near/far
+   * hemisphere counts, H5's a sample size and a two-sided D. Rendering those
+   * under headers reading "Observed"/"Expected" states something false about
+   * what the number is. Null means the default reading holds.
+   */
+  observedLabel: string | null;
+  expectedLabel: string | null;
+  /**
+   * What `ratio` actually is, when it is not a ratio.
+   *
+   * `ratio` has to hold whatever statistic the null histogram was built from,
+   * because the histogram's observed-value guide line is drawn from this
+   * field — so a hypothesis whose statistic is not a ratio cannot park it
+   * anywhere else. H5's is a one-sided KS D⁺. Null (H4c/H3b/H1b) means it
+   * really is an observed/expected ratio and renders with the `×` suffix.
+   */
+  statisticLabel: string | null;
 }
 
 export interface CorrectionInfo {
@@ -120,6 +140,13 @@ export interface MethodInfo {
    * one generic results panel for every hypothesis. */
   baselineWindowDays: number | null;
   spatialSplitDegrees: number | null;
+  /**
+   * How a hypothesis meets a registered completeness requirement, when it has
+   * one. H5's is the only one so far and it is the parameter the whole test
+   * turns on — without this the results panel would list every registered
+   * parameter *except* the one a reader most needs to check.
+   */
+  completenessModel: string | null;
 }
 
 /**

@@ -4,7 +4,7 @@ import { useAnalysisStore } from './useAnalysisStore';
 import { useEngineStatus } from './useEngineStatus';
 import { useEngineHypotheses } from './useEngineHypotheses';
 import { layoutNullHistogram, observedFraction } from './null-histogram';
-import { formatCount, formatPValue, formatRatio } from './result-format';
+import { formatCount, formatPValue, formatStatistic } from './result-format';
 import styles from './AnalyzeShell.module.css';
 
 /**
@@ -37,6 +37,12 @@ const HYPOTHESIS_COPY: Record<HypothesisId, { title: string; statement: string; 
     statement:
       'X- and M-class solar flare occurrence is followed by an elevated global M5.0+ earthquake rate.',
     registeredDate: '2026-08-17',
+  },
+  H5: {
+    title: 'H5 — Antipodal triggering',
+    statement:
+      "M6.0+ earthquakes are followed by an excess of M5.0+ events at short distances from the mainshock's antipode.",
+    registeredDate: '2026-07-24',
   },
 };
 
@@ -84,6 +90,15 @@ export function AnalyzeShell() {
   const selectedSummary = implementedHypotheses.find((h) => h.id === selectedHypothesisId) ?? null;
   const selectedCopy = selectedHypothesisId ? HYPOTHESIS_COPY[selectedHypothesisId] : null;
 
+  // Headers follow the statistic rather than assuming a ratio. Every test in
+  // one result carries the same shape, so the first one names the columns —
+  // H5's "Ratio" is a KS D⁺, and H2b's "Observed"/"Expected" are near/far
+  // hemisphere counts. Under the default headings both would state something
+  // false about what the number is.
+  const observedHeading = result?.tests[0]?.observedLabel ?? 'Observed';
+  const expectedHeading = result?.tests[0]?.expectedLabel ?? 'Expected';
+  const statisticHeading = result?.tests[0]?.statisticLabel ?? 'Ratio';
+
   return (
     <div className={styles.panel}>
       <header className={styles.header}>
@@ -124,7 +139,8 @@ export function AnalyzeShell() {
         {selectedCopy && (
           <p className={styles.meta}>
             Registered {selectedCopy.registeredDate}
-            {selectedSummary && ` · ${String(selectedSummary.testsInFamily)} tests in this family`}
+            {selectedSummary &&
+              ` · ${String(selectedSummary.testsInFamily)} test${selectedSummary.testsInFamily === 1 ? '' : 's'} in this family`}
           </p>
         )}
       </header>
@@ -184,6 +200,12 @@ export function AnalyzeShell() {
                   <dd>±{result.method.spatialSplitDegrees}° longitude</dd>
                 </>
               )}
+              {result.method.completenessModel !== null && (
+                <>
+                  <dt>Completeness</dt>
+                  <dd>{result.method.completenessModel}</dd>
+                </>
+              )}
               <dt>Null model</dt>
               <dd>{result.method.nullModel}</dd>
               <dt>Tail</dt>
@@ -215,9 +237,9 @@ export function AnalyzeShell() {
                 <tr>
                   <th>Trigger</th>
                   <th>Lag</th>
-                  <th>Observed</th>
-                  <th>Expected</th>
-                  <th>Ratio</th>
+                  <th>{observedHeading}</th>
+                  <th>{expectedHeading}</th>
+                  <th>{statisticHeading}</th>
                   <th>p (raw)</th>
                   <th>p (adj., full matrix)</th>
                   <th>p (adj., this run)</th>
@@ -238,7 +260,7 @@ export function AnalyzeShell() {
                     </td>
                     <td>{formatCount(test.observed)}</td>
                     <td>{test.expected.toFixed(2)}</td>
-                    <td>{formatRatio(test.ratio)}</td>
+                    <td>{formatStatistic(test.ratio, test.statisticLabel)}</td>
                     <td>{formatPValue(test.pRaw)}</td>
                     <td>{formatPValue(test.pAdjustedFullMatrix)}</td>
                     <td>{formatPValue(test.pAdjustedWithinRun)}</td>
