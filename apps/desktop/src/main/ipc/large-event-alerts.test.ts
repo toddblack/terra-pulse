@@ -148,3 +148,94 @@ describe('createLargeEventAlerter', () => {
     expect(alerts.consider([makeEvent()])).toBeNull();
   });
 });
+
+/**
+ * Retention is what makes the launch alert reachable at all.
+ *
+ * The push on `earthquakes:large-event` fires from the immediate launch poll,
+ * before the renderer subscribes in a React effect — so the first alert of a
+ * session reaches nobody, which is the one a four-hour freshness window exists
+ * to deliver. These pin the pull that covers it.
+ */
+describe('retaining the alert for a renderer that was not listening yet', () => {
+  function alerter(onAlert?: (event: EarthquakeEvent) => void) {
+    return createLargeEventAlerter({ minMagnitude: 6, maxAgeMs: HOUR, onAlert }, () => NOW);
+  }
+
+  it('has nothing to offer before anything has been announced', () => {
+    expect(alerter().current()).toBeNull();
+  });
+
+  it('keeps the announced event so a late reader can still ask for it', () => {
+    const alerts = alerter();
+    alerts.consider([makeEvent()]);
+
+    expect(alerts.current()?.id).toBe('us0001');
+  });
+
+  it('keeps offering it across polls that announce nothing new', () => {
+    // The renderer may mount several polls after the alert fired.
+    const alerts = alerter();
+    alerts.consider([makeEvent()]);
+    alerts.consider([makeEvent()]);
+    alerts.consider([]);
+
+    expect(alerts.current()?.id).toBe('us0001');
+  });
+
+  it('offers the newest when a second event is announced', () => {
+    const alerts = alerter();
+    alerts.consider([makeEvent({ id: 'first' })]);
+    alerts.consider([makeEvent({ id: 'second' })]);
+
+    expect(alerts.current()?.id).toBe('second');
+  });
+
+  it('stops offering it once dismissed', () => {
+    // Without this the renderer's pull would resurrect a dismissed alert on
+    // every ExploreShell remount — which is every switch back from Analyze.
+    const alerts = alerter();
+    alerts.consider([makeEvent()]);
+    alerts.dismiss();
+
+    expect(alerts.current()).toBeNull();
+  });
+
+  it('does not re-announce a dismissed event on the next poll', () => {
+    // Dismissing means "I have seen this", not "show it to me again". The
+    // alerted-id set is deliberately untouched by dismissal.
+    const alerts = alerter();
+    alerts.consider([makeEvent()]);
+    alerts.dismiss();
+
+    expect(alerts.consider([makeEvent()])).toBeNull();
+    expect(alerts.current()).toBeNull();
+  });
+
+  it('still announces and retains a genuinely new event after a dismissal', () => {
+    const alerts = alerter();
+    alerts.consider([makeEvent({ id: 'first' })]);
+    alerts.dismiss();
+
+    expect(alerts.consider([makeEvent({ id: 'second' })])?.id).toBe('second');
+    expect(alerts.current()?.id).toBe('second');
+  });
+
+  it('retains before notifying, so a throwing listener still leaves it fetchable', () => {
+    // Same ordering guarantee the alerted-id set already has: a broken
+    // listener must not be able to lose the alert entirely.
+    const alerts = alerter(() => {
+      throw new Error('listener exploded');
+    });
+
+    expect(() => alerts.consider([makeEvent()])).toThrow();
+    expect(alerts.current()?.id).toBe('us0001');
+  });
+
+  it('retains nothing when the batch did not qualify', () => {
+    const alerts = alerter();
+    alerts.consider([makeEvent({ magnitude: 5 })]);
+
+    expect(alerts.current()).toBeNull();
+  });
+});

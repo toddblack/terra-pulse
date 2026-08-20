@@ -37,6 +37,17 @@ declare global {
         onUpdated(callback: (result: EarthquakeSyncResult) => void): () => void;
         /** Subscribe to large-event alerts; returns an unsubscribe function. */
         onLargeEvent(callback: (event: EarthquakeEvent) => void): () => void;
+        /**
+         * The alert announced but not dismissed, or null.
+         *
+         * Covers the launch poll, which fires before `onLargeEvent` is
+         * subscribed — the alert most worth not losing, since a four-hour
+         * freshness window exists precisely so opening the app after a large
+         * event still announces it.
+         */
+        currentAlert(): Promise<EarthquakeEvent | null>;
+        /** Clears main's retained alert, so `currentAlert` stops offering it. */
+        dismissAlert(): Promise<void>;
         /** What arrived while the app was closed, or null. Fixed at launch. */
         missed(): Promise<MissedEvents | null>;
         /** What actually followed an event. Null if the id isn't catalogued. */

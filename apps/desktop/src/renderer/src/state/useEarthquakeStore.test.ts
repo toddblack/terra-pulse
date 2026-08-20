@@ -14,7 +14,25 @@ import {
   windowStartMs,
 } from './useEarthquakeStore';
 
+/**
+ * Dismissing an alert reaches main, so its retained copy is cleared too.
+ *
+ * Main holds the announced alert so the renderer can ask for one it missed at
+ * launch (the push races the renderer's subscription and the launch poll loses
+ * it). Without this round-trip that pull would hand back a dismissed alert on
+ * every `ExploreShell` remount — which is every switch back from Analyze.
+ *
+ * Stubbed rather than assumed: these run under vitest's node environment,
+ * where there is no `window` at all.
+ */
+const dismissAlertIpc = vi.fn(() => Promise.resolve());
+
 beforeEach(() => {
+  dismissAlertIpc.mockClear();
+  vi.stubGlobal('window', {
+    terraPulse: { earthquakes: { dismissAlert: dismissAlertIpc } },
+  });
+
   useEarthquakeStore.setState({
     selectedEventId: null,
     focusRequest: null,
@@ -118,6 +136,31 @@ describe('large-event alerts', () => {
     useEarthquakeStore.getState().dismissAlert();
 
     expect(useEarthquakeStore.getState().activeAlert).toBeNull();
+  });
+
+  it('tells main to drop its retained copy, so the alert cannot come back', () => {
+    // The banner clearing locally is only half of it: main keeps the alert so
+    // a renderer that missed the launch push can ask for it. If dismissal
+    // stayed renderer-side, that pull would resurrect it on the next mount.
+    useEarthquakeStore.getState().announceLargeEvent(quake);
+    useEarthquakeStore.getState().dismissAlert();
+
+    expect(dismissAlertIpc).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears the banner even if telling main fails', () => {
+    // Fire-and-forget on purpose. The alert is dismissed the moment it is
+    // clicked; a failed IPC must not leave it on screen.
+    dismissAlertIpc.mockRejectedValueOnce(new Error('main is gone'));
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    useEarthquakeStore.getState().announceLargeEvent(quake);
+    expect(() => {
+      useEarthquakeStore.getState().dismissAlert();
+    }).not.toThrow();
+
+    expect(useEarthquakeStore.getState().activeAlert).toBeNull();
+    consoleError.mockRestore();
   });
 
   it('does not move the camera on its own', () => {

@@ -296,7 +296,17 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
 
   announceLargeEvent: (event) => set({ activeAlert: event }),
 
-  dismissAlert: () => set({ activeAlert: null }),
+  dismissAlert: () => {
+    set({ activeAlert: null });
+    // Main retains the alert so the renderer can ask for one it missed at
+    // launch. Without telling it the alert is dismissed, that pull would hand
+    // the same event back every time `ExploreShell` remounts — which happens
+    // on every switch back from Analyze. Fire-and-forget: the banner is
+    // already gone, and a failed IPC must not leave it on screen.
+    void window.terraPulse.earthquakes.dismissAlert().catch((error: unknown) => {
+      console.error('Could not clear the retained alert', error);
+    });
+  },
 
   showMissedEvents: (missed) => set({ missedEvents: missed }),
 

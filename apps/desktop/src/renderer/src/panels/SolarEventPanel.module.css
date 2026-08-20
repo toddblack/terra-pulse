@@ -1,14 +1,15 @@
-/* Top-centre, same slot LocationPanel uses — the closest precedent for
+/* Top-centre, same column LocationPanel uses — the closest precedent for
    "click something, get an info panel". Independent store slots (see
-   SolarEventSelection's doc), so the rare case of both being open at once
-   will overlap; accepted for a first version rather than building a docking
-   system for two panels that are usually not open together. */
+   SolarEventSelection's doc), so both can be open at once.
+
+   That used to overlap, and this comment used to say so: the two shared a
+   single 7.5rem offset, "accepted for a first version rather than building a
+   docking system for two panels that are usually not open together". The
+   docking system turned out to be `.topCentreColumn` in `App.module.css`,
+   which had to exist anyway for the banner and the digest — so both panels now
+   stack for free rather than landing on each other. */
 
 .panel {
-  position: absolute;
-  top: 7.5rem;
-  left: 50%;
-  z-index: 10;
   display: flex;
   flex-direction: column;
   width: 18rem;
@@ -19,7 +20,6 @@
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 45%);
   color: rgb(226 232 240);
   font-size: 0.8125rem;
-  transform: translateX(-50%);
 }
 
 .header {

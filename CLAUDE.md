@@ -1246,14 +1246,50 @@ because they need no new data source, only the existing poll.
 - **Tracks *alerted* ids, not *seen* ones.** USGS revises magnitudes, so an
   M5.8 that arrives below the bar must still be eligible when it comes back as
   M6.1. Recording everything seen would swallow exactly those events.
-- One hour freshness bound, stateless — it handles the first poll after launch
-  pulling a 24-hour feed, without a "have we polled yet" flag to get wrong.
-  **The consequence: an event older than an hour never alerts.** That gap is
-  covered by the launch digest below, not by widening the bound.
+- **Four hour** freshness bound (`ALERT_MAX_AGE_MS`), stateless — it handles the
+  first poll after launch pulling a 24-hour feed, without a "have we polled yet"
+  flag to get wrong. **The consequence: an event older than four hours never
+  alerts.** That gap is covered by the launch digest below, not by widening the
+  bound. *(This entry said "one hour" until 2026-08-20; the constant has been
+  240 minutes. The wider window is deliberate and confirmed by the user — the
+  app is not always running, and opening it shortly after a large event should
+  still announce that event.)*
 - **The poll fires once immediately at launch, not after the first interval.**
   It used to be `setInterval` only, so the first poll — and therefore the first
   possible alert — was five minutes late, while the event itself was already
   drawn on the globe by backfill.
+- **That immediate poll then raced the renderer and won, and the launch alert
+  was silently dropped for as long as this feature has existed.** `onAlert`
+  ran in main, but `webContents.send('earthquakes:large-event')` fired before
+  the renderer had subscribed — the subscription lives in a `useEffect` that
+  cannot run until the 13 MB renderer bundle and Cesium have loaded. **The
+  symptom is exact and is how it was found: the OS notification appears and
+  the in-app banner does not**, because the notification is emitted in main
+  and never crosses IPC.
+  - **It failed precisely where the feature is aimed.** A four-hour window
+    exists so that opening the app shortly after a large event still announces
+    it — and opening the app *is* the launch poll, the one poll guaranteed to
+    lose the race.
+  - Fixed by the pattern already used three times over: the alerter retains
+    the announced alert, `earthquakes:current-alert` serves it, and the
+    renderer asks on mount — same as `earthquakes:missed`, `aurora:latest` and
+    `magnetometer:latest`, whose comments all say "the renderer asks when it
+    is ready, so there is no window in which a push arrives before anyone is
+    listening." The push stays for every later poll, when the renderer is
+    demonstrably subscribed. Announcing twice is harmless: it is the same
+    event, so `announceLargeEvent` is idempotent.
+  - **Dismissal has to round-trip, and that is not optional.** The zustand
+    store is module-level and survives `ExploreShell` unmounting, so the pull
+    re-runs on every switch back from Analyze — without
+    `earthquakes:dismiss-alert` clearing main's copy, a dismissed alert would
+    return every time the mode changed. Dismissing does *not* un-record the id:
+    it means "I have seen this", not "announce it again next poll".
+  - **The generalisable rule: a one-shot `webContents.send` at startup is a
+    race, not a delivery.** Anything main pushes before first paint needs a
+    pull counterpart. This was the fourth instance in this codebase and the
+    only one that shipped broken, because it is the only one whose failure is
+    invisible — nothing errors, and the OS notification makes it look like the
+    feature worked.
 - Threshold is **M5.8**, chosen by frequency: measured 485/year at M5.5 (1.3 a
   day, into ignore-it territory), 233/year at M5.8, 139/year at M6. Deliberately
   *not* a USGS class boundary, unlike `MAGNITUDE_FLOORS` — those encode
