@@ -1758,18 +1758,17 @@ needs nothing H6 is blocked on.
     dropping the old at request time leaves a bare globe because
     `addImageryProvider` resolves before the PNG decodes, and hiding an imagery
     layer destroys its tile imagery.
-- **Teal ↔ amber, chosen by validation rather than taste.** Poles separate at
-  **CVD ΔE 11.8 protan / 23.5 tritan** against a floor of 8, and **20.7
-  normal-vision** against a floor of 15, on both basemaps. One check does not
-  pass and is recorded rather than hidden: the teal pole's chroma is **0.097
-  against a 0.10 floor** — a check meant to stop a *categorical* slot reading
-  grey beside its neighbours, which a diverging pole against a light neutral is
-  not.
+- **It shipped as teal ↔ amber and that was wrong — see the hue entry at the end
+  of this section.** The pair passed every validator check except chroma and was
+  still nearly invisible on two of the three basemaps, because **the validator
+  scores colours against a chart surface, not against the imagery they are drawn
+  over**. Passing it is necessary and was not sufficient. The ramp is violet ↔
+  red-orange now, chosen by measuring against the actual basemap pixels.
   - **The cool arm is where hue separation actually lives.** With a light
     midpoint both poles must be dark, and every dark warm colour converges on
     brown — so the three diverging ramps here (field blue/red, TEC
-    purple/orange, tide teal/amber) are necessarily similar on their warm side
-    and are told apart by their cool side.
+    purple/orange, tide violet/red-orange) are necessarily similar on their warm
+    side and are told apart by their cool side.
 - **Each arm runs to its own physical limit, and this reversed a symmetric
   domain on measurement — the declination bug, repeated and then caught.** The
   first version used one symmetric ±60 cm domain on the principle that equal
@@ -1805,34 +1804,78 @@ needs nothing H6 is blocked on.
   range grows and shrinks over a fortnight. So it names the spring/neap state
   and the lunar distance, which are the two things driving it.
 
-**Open, and asked for directly: the ramp still reads too flat.** Moving each arm
-to its own physical limit fixed the structural half (low-arm usage 47-49% →
-91-95%), and the user still wants **more dramatic colour change across the tidal
-range**. So the remaining flatness is in how strength maps to colour, not in the
-domain. Do not "fix" it by widening or renormalising the domain again — that was
-the last round's bug, and a per-frame domain would destroy the spring/neap
-signal exactly as `field-encoding.ts` warns.
+**The ramp read as flat, and the cause was hue, not the value mapping — teal and
+amber went to violet and red-orange.** Closed 2026-08-21. This is the entry to
+read before touching any raster drawn over imagery, because the finding
+generalises well past the tide.
 
-What is actually left to try, in rough order of honesty:
+- **The first diagnosis was wrong and measuring the wrong thing confirmed it.**
+  Told only "too flat", I measured the *value→position* mapping and found a
+  real defect (stops bunched at both ends, see below) that was nowhere near
+  large enough to explain the complaint. The user's own words settled it: *"it's
+  just the green to brown, it gets a little lost on the relief and seafloor
+  globe settings."* Teal over green land and amber over brown relief **is**
+  camouflage. **Ask what it looks like against, not just how it maps.**
+- **Measured against the real imagery, both poles sat in the two worst hue
+  regions available.** Both basemaps were fetched and decoded (1024×512,
+  area-weighted by cos lat), every hue taken to the most chroma sRGB will hold
+  for it, composited over every real pixel at `TIDE_ALPHA`, and scored on
+  separation from the neutral midpoint **in units of the terrain's own variation
+  along that same direction**:
 
-- **A non-linear position within each arm.** `tideColor` currently maps
-  `|value| / domain` linearly onto the ramp. The globe's distribution is not
-  uniform — measured area-weighted, 35% of cells sit within 40% of neutral even
-  at spring — so a gamma or signed-sqrt on `strength` would spend more of the
-  ramp where the cells actually are. This is a *display* transform on a layer
-  that makes no statistical claim, so it is allowed here in a way it would not
-  be on an Analyze surface; the legend's discrete steps keep it honest because
-  they are generated from the same function.
-- **More ramp steps.** Both arms are 6 stops plus the midpoint, interpolated in
-  sRGB by `rampAt`. More stops, or interpolation in OKLab, would make the
-  gradient read as continuous change rather than a few bands.
-- **Raise `TIDE_ALPHA` (0.66).** The basemap is showing through and washing the
-  ramp toward the terrain underneath. Cheapest thing to try first, and it costs
-  nothing structurally — but it trades away seeing the coastlines under the
-  raster, so check both basemaps.
+  | hue | ratio | |
+  |---|---|---|
+  | 160–250 teal–cyan–blue | 3.5–4.6 | **old low arm, 187** |
+  | 60–110 amber–olive | 4.4–4.9 | **old high arm, 68** |
+  | 270–330 blue-violet–magenta | 7.6–8.4 | |
+  | 0–30 pink-red–red | 7.2–7.3 | |
 
-Re-measure with the area-weighted "within N% of neutral" sweep that found the
-last problem — it is the number that tells you whether a change did anything.
+- **Teal was also at the sRGB gamut ceiling** — the most chroma hue 187 can hold
+  at that lightness *is* 0.097, which is what it used. That arm could not be
+  made more vibrant, only moved. Worth checking early: it turns a "tune it"
+  request into a "replace it" one.
+- **The generalisable finding: terrain varies almost entirely in lightness.**
+  Principal axis 99.3% lightness on relief and 95.0% on seafloor, explaining 94%
+  and 92% of all variance, while chroma barely moves (sd 0.013–0.029 in OKLab).
+  **Chroma is a nearly empty channel** — and a light-midpoint diverging ramp
+  spends its signal in lightness *by construction*, head-on against the
+  basemap's loudest dimension. Any future raster over imagery should be scored
+  this way before its hues are chosen.
+- **Violet won because neither basemap contains it at any strength**, and it
+  holds **0.264 chroma, 2.7× the teal it replaced**. Worst-case ratio across
+  both arms and both basemaps **5.01 → 6.63**. All six dataviz checks now pass
+  in both modes, **including the chroma floor teal never passed**; poles
+  separate at CVD ΔE 32.0 protan / 27.0 tritan and 35.8 normal-vision.
+- **A blue/orange-red pair was rejected on measurement, not taste** — 5.35,
+  barely above what it replaced, because its cool arm still shares a region with
+  ocean. Don't re-propose it as the "safer" option; it is mostly the same ramp.
+- **The cost was taken deliberately, with the user's sign-off: this lands near
+  TEC's purple/orange pair**, breaking "hue is how the rasters stay apart". Both
+  are off by default and both are *global* rasters, so they were never legible
+  simultaneously whatever their hues. Recorded rather than quietly ignored.
+- **Two hue-independent fixes rode along, and the first is a real trap.** The
+  old stops were paced **3.8, 7.5, 8.5, 9.0, 6.6, 4.1 ΔE** — bunched at both
+  ends, with the smallest step landing exactly where most of the globe's cells
+  sit at neap tide (median strength 0.199). Stops are now generated at equal
+  perceptual distance along an OKLab line, even to within 6%; `rampAt`
+  interpolates by *index*, so even spacing is what makes position mean the same
+  amount of colour change everywhere. A test pins it, because a hand-edited stop
+  would undo it with nothing failing.
+- **`TIDE_STRENGTH_GAMMA` is 0.8 and the number defending it is 2.82.** That is
+  the physical median-strength ratio between spring and neap. Evenly-paced stops
+  alone reproduce it almost exactly (2.93); the *old* ramp overstated it at 4.41.
+  Gamma trades that fidelity for legibility and only goes one way — 0.6 shows a
+  2.8× physical difference as 1.9×. 0.8 keeps it near 2.5 while taking the neap
+  median from **3.6 → 7.5 ΔE** from neutral and the share of globe within ΔE 5
+  from **60% → 33%**. **Do not lower it to "make it pop"** — that is spending
+  the spring/neap signal, which is the thing the layer exists to show. Two tests
+  hold both ends of that trade.
+- **Raising `TIDE_ALPHA` was measured and not needed.** 0.66 → 0.85 moves the
+  neap median only 3.6 → 4.4 and costs the coastlines; it scales flatness along
+  with everything else rather than fixing it.
+- Still true and still the rule: **do not widen or renormalise the domain.**
+  That was the previous round's bug and a per-frame domain would destroy the
+  spring/neap signal exactly as `field-encoding.ts` warns.
 
 ## Phase 4 — Statistical Engine. Started.
 
