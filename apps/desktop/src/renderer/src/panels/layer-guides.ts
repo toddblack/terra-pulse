@@ -67,6 +67,28 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
     source: 'NOAA SWPC GloTEC. Public domain (US Government work).',
   },
 
+  tides: {
+    title: 'Tidal potential',
+    shows:
+      'The solid-Earth tide raised by the Moon and the Sun — how much the ground beneath each point is being lifted or pressed down at the instant on the scrubber. Shown as the equilibrium tide in centimetres: the height the surface would take if it responded instantly and completely.',
+    reading: [
+      'There are always two highs, on opposite sides of the planet, and they are exactly equal. That is the whole shape of a tide: the Moon pulls the near side away from the centre and the centre away from the far side, so both ends bulge. It is why there are two high tides a day and not one.',
+      'Amber is raised, teal is drawn down, and the neutral band between them is where the pull is sideways rather than up or down. A trough can only ever be about half as deep as a bulge is tall, so the two ends of the scale carry different numbers — read the legend rather than assuming the colours are symmetric.',
+      'The trough depth barely changes: it sits near −29 cm whatever the Moon is doing. Almost all of the spring/neap swing is on the amber side, where the bulge runs from about 30 cm at the quarters to nearly 60 cm at new and full moon. If the map looks washed out, that is usually a neap tide rather than a display problem.',
+      'The pattern is fixed in space and the Earth turns underneath it, which is why it sweeps westward as you scrub. The Moon dominates: the Sun contributes about 46% as much at mean distance.',
+      'Scrub across a month and watch the range grow and shrink. When the Sun and Moon line up at new and full moon their bulges add — spring tides, around 80 cm peak to trough. At the quarters they fight, and the range falls to about 50 cm. Lunar distance matters even more: the pull goes as the inverse cube, so the Moon at perigee raises a tide 25% larger than at apogee.',
+    ],
+    limits: [
+      'This is not a tide prediction and will not tell you the water level anywhere. Real ocean tides are this forcing filtered through basin shape, resonance and friction, which is why the Bay of Fundy sees 16 m and the Mediterranean sees centimetres. What is drawn is the driving field, identical in form everywhere and lagging nothing.',
+      'It is not the quantity the tidal-triggering hypothesis tests, and the difference matters. That test needs the tidal *stress* resolved onto a fault plane, which is a tensor and needs a fault orientation to become a number. This is the *potential*, which is defined everywhere without reference to any fault and says nothing about whether a fault is closer to failing.',
+      'The stresses involved are tiny. Tidal stress in the crust is of order kilopascals, against the megapascals an earthquake releases — roughly a thousandth. That is exactly why tidal triggering, if it is real, is a weak statistical effect rather than something you could see by eye.',
+      'The ephemeris is a low-precision analytic series, good to about an arcminute in position and a few tenths of a percent in distance. That is far finer than a bulge thousands of kilometres across, but it is not an ephemeris to navigate by.',
+      'Only the Moon and the Sun are included, and nothing else is worth including. Every planet together contributes on the order of a ten-millionth of the Moon — see the note on planetary alignment in the project plan.',
+    ],
+    source:
+      'Computed on this machine from the degree-2 lunisolar tidal potential. No network, no key, no stored data — the ephemeris is a series, not a download.',
+  },
+
   magnetopause: {
     title: 'Magnetopause',
     shows:

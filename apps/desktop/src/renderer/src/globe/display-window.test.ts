@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { offeredWindowHours, previousWindowHours } from '@terra-pulse/schema';
-import { displayWindow, LIVE_END_MARGIN_MS } from './display-window';
+import { displayWindow, instantOnScreen, LIVE_END_MARGIN_MS } from './display-window';
 
 const NOW = Date.UTC(2026, 7, 11, 12, 0, 0);
 const HOUR = 3_600_000;
@@ -115,4 +115,35 @@ describe('displayWindow — the count and the marks must agree', () => {
       expect(forLayers.startMs).toBe(forCounts.startMs);
     },
   );
+});
+
+describe('instantOnScreen', () => {
+  it('never returns a time in the future, however far the window end reaches', () => {
+    // The bug this exists for: `displayWindow`'s end carries
+    // LIVE_END_MARGIN_MS — a full hour — so live mode ends an hour ahead. The
+    // magnetopause floored that to an hour and asked for that hour's solar
+    // wind, which has not been measured yet by construction. It never drew in
+    // live mode at all; playback worked, because a playhead carries no margin.
+    const live = displayWindow(72, null, false, NOW, LIVE_END_MARGIN_MS);
+
+    expect(live.endMs).toBeGreaterThan(NOW);
+    expect(instantOnScreen(live.endMs, NOW)).toBe(NOW);
+  });
+
+  it('leaves a scrubbed playhead alone, because it is already in the past', () => {
+    const scrubbed = displayWindow(72, NOW - 5 * HOUR, false, NOW, LIVE_END_MARGIN_MS);
+
+    expect(instantOnScreen(scrubbed.endMs, NOW)).toBe(scrubbed.endMs);
+    expect(instantOnScreen(scrubbed.endMs, NOW)).toBeLessThan(NOW);
+  });
+
+  it('lands in an hour that can actually hold a measurement', () => {
+    // The concrete failure: flooring the live end to an hour gives the *next*
+    // hour, which no poll has written yet.
+    const live = displayWindow(72, null, false, NOW, LIVE_END_MARGIN_MS);
+    const hourOf = (ms: number) => Math.floor(ms / HOUR) * HOUR;
+
+    expect(hourOf(live.endMs)).toBeGreaterThan(hourOf(NOW));
+    expect(hourOf(instantOnScreen(live.endMs, NOW))).toBe(hourOf(NOW));
+  });
 });

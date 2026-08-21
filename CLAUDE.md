@@ -470,6 +470,28 @@ timer, with nothing on screen having changed.
   the viewer's `setTimeWindow` and that projection. They were separate
   expressions that happened to match, and one of them was about to stop matching.
   Tests assert the two callers agree on `startMs` across live/playhead/trailing.
+- **`displayWindow`'s `endMs` is NOT "now", and treating it as such kept the
+  magnetopause dark in live mode for its entire existence.** The end carries
+  `LIVE_END_MARGIN_MS` — **a full hour** — so a just-published event with clock
+  skew still falls inside the *visibility* window. That margin is an allowance
+  for **events**, not a statement about the time.
+  - `useSolarWindAt(timeWindow.endMs)` floored that to the containing hour and
+    asked for the solar wind of an hour that **has not happened yet**, so it got
+    null every time. The boundary drew only under playback, where a playhead
+    carries no margin — which made it look like an intermittent data gap, and it
+    was reported as one. The user's tell was decisive: *"there is data on the
+    now frame for solar winds, no magnetopause though."*
+  - **`instantOnScreen(endMs, nowMs)` is the fix and the rule**: anything asking
+    "what is the state of the world at the instant on screen" clamps to now;
+    anything asking "which events belong in the window" uses the raw end. The
+    earthquake layer already made this distinction by clamping back to now
+    before measuring 24-hour recency — it was just never generalised.
+  - **Two other layers had the same hour of error**, found once the rule
+    existed: the magnetopause oriented its boundary on a Sun 15° ahead of where
+    it was, and the tide layer drew the bulges an hour into the future. Both
+    were wrong quietly, because 15° of rotation looks like a plausible tide.
+  - Three tests pin it, including that flooring the live end lands in a *later*
+    hour than flooring now — which is the failure in one line.
 - **`useNow` was seven `setInterval`s, one per call site.** Seven timers at seven
   arbitrary phases woke the app every ~4 s in staggered bursts. It is one shared
   ticker behind `useSyncExternalStore` now, so every consumer also sees the
@@ -1693,6 +1715,124 @@ already careful not to *draw* anything untrue — this is the other half.
 The fourth section is also where `SOURCES.md`'s attribution gets paid: a licence
 condition is not satisfied by a file in the repo that nobody reading a rendered
 map ever opens.
+
+**Tidal potential layer — shipped.** The lunisolar equilibrium tide as a raster
+following the scrubber. Phase 5's first piece, built ahead of H6 because it
+needs nothing H6 is blocked on.
+
+- **It is not H6, and the guide says so twice.** H6 registers tidal **stress
+  resolved onto fault geometry**; stress is a tensor and needs a plane to become
+  a number. This is the **potential**, defined everywhere without reference to
+  any fault, making no claim about failure. A single "tidal stress" raster would
+  be inventing a fault orientation for every cell on the globe.
+- **Computed, not fetched — and no Skyfield.** The analytic series (Schlyter's
+  reduction) is the same call `subsolarPoint` already makes in
+  `magnetopause.ts`, for the same reason. DE440/Skyfield belongs to the
+  registered analysis in the Python engine, where precision is worth paying for.
+  Nothing here touches the network or a key.
+- **Distance is where the precision went, not direction.** The potential goes as
+  1/d³ and the Moon's distance swings 356,400-406,700 km — **5.5% in distance is
+  17% in amplitude**. A circular-orbit Moon would be visibly wrong twice a month,
+  so the elliptical orbit and the two main distance perturbations are carried
+  while most longitude terms could have been dropped.
+- **Validated against things true by construction, not against another
+  transcription of the same series**: perigee/apogee reproduced to 0.2%;
+  sun-moon separation < 6° at new moon and > 174° at full; spring range 73-88 cm
+  against neap 50-58 cm, which falls out rather than being fitted; and the solar
+  direction agrees with `magnetopause.ts`'s independent derivation to **6.4e-4
+  degrees**.
+- **The field layer's pre-rendered-frame pattern does NOT transfer, and this is
+  the entry worth reading before touching the repaint path.** IGRF pre-renders
+  66 frames and flips an alpha because the field is static over a year. The tide
+  has a 12.42 h period — quantising finely enough would be thousands of frames
+  per month. What makes live rendering affordable instead is that a tide grid is
+  **0.11 ms at 2°, about 65× cheaper than the field's 7.1 ms**: no spherical
+  harmonics, just two body positions and a dot product per cell.
+  - The grid is not the cost; **making an `ImageryLayer` out of it is.** So
+    repaints are bounded twice: model time quantised to 10 minutes (the pattern
+    turns 15°/hour, so that is a quarter degree — under what a 2° grid can
+    express), and wall-clock throttled to 200 ms with a **trailing edge**, which
+    is what guarantees the final playhead position is the one drawn.
+  - The swap follows `tec-layer.ts`: add the new layer, *then* remove the old,
+    and never touch `show` during a swap. Both halves of that are scar tissue —
+    dropping the old at request time leaves a bare globe because
+    `addImageryProvider` resolves before the PNG decodes, and hiding an imagery
+    layer destroys its tile imagery.
+- **Teal ↔ amber, chosen by validation rather than taste.** Poles separate at
+  **CVD ΔE 11.8 protan / 23.5 tritan** against a floor of 8, and **20.7
+  normal-vision** against a floor of 15, on both basemaps. One check does not
+  pass and is recorded rather than hidden: the teal pole's chroma is **0.097
+  against a 0.10 floor** — a check meant to stop a *categorical* slot reading
+  grey beside its neighbours, which a diverging pole against a light neutral is
+  not.
+  - **The cool arm is where hue separation actually lives.** With a light
+    midpoint both poles must be dark, and every dark warm colour converges on
+    brown — so the three diverging ramps here (field blue/red, TEC
+    purple/orange, tide teal/amber) are necessarily similar on their warm side
+    and are told apart by their cool side.
+- **Each arm runs to its own physical limit, and this reversed a symmetric
+  domain on measurement — the declination bug, repeated and then caught.** The
+  first version used one symmetric ±60 cm domain on the principle that equal
+  colour distance should mean equal magnitude. The degree-2 term runs **-0.5 to
+  +1**, so that capped the low arm at **49% of its range for all time**: half
+  the ramp unreachable by construction. Worse, at neap the high arm collapses
+  too, so **87% of the globe sat within 40% of neutral half the month**. Found
+  by the user saying the colours looked subtle, then measured area-weighted:
+
+  | | low arm used | high arm used | within 40% of neutral |
+  |---|---|---|---|
+  | spring, symmetric | 49% | 98% | 53% |
+  | neap, symmetric | 47% | 50% | **87%** |
+  | spring, per-arm | **95%** | 95% | 35% |
+  | neap, per-arm | **91%** | 49% | 70% |
+
+  **The domain came from the definition rather than the distribution**, which is
+  exactly what `field-encoding.ts` already records for declination.
+  - **Per-arm scaling is legitimate here and is not for declination**, and the
+    distinction is worth keeping: east and west are two directions of *one*
+    quantity, so a reader genuinely compares 20° east against 20° west. Raised
+    and lowered ground are different states with different reachable ranges, and
+    nobody asks whether a -20 cm trough "beats" a +20 cm bulge.
+  - **The trough depth is nearly constant (-28 to -30 cm at every phase) while
+    the bulge swings 30 to 59 cm**, so spring/neap lives entirely on the amber
+    arm. That is why the high arm must not saturate early, and why the remaining
+    softness at neap is the signal rather than a defect.
+  - The legend prints both ends (`-31` / `+62`) because that is how the
+    asymmetry is disclosed rather than implied.
+- **The legend teaches the mechanism because the layer moves too fast to explain
+  itself.** The field legend names the year because the field looks inert; this
+  one has the opposite problem — a reader sees rotation and cannot tell why the
+  range grows and shrinks over a fortnight. So it names the spring/neap state
+  and the lunar distance, which are the two things driving it.
+
+**Open, and asked for directly: the ramp still reads too flat.** Moving each arm
+to its own physical limit fixed the structural half (low-arm usage 47-49% →
+91-95%), and the user still wants **more dramatic colour change across the tidal
+range**. So the remaining flatness is in how strength maps to colour, not in the
+domain. Do not "fix" it by widening or renormalising the domain again — that was
+the last round's bug, and a per-frame domain would destroy the spring/neap
+signal exactly as `field-encoding.ts` warns.
+
+What is actually left to try, in rough order of honesty:
+
+- **A non-linear position within each arm.** `tideColor` currently maps
+  `|value| / domain` linearly onto the ramp. The globe's distribution is not
+  uniform — measured area-weighted, 35% of cells sit within 40% of neutral even
+  at spring — so a gamma or signed-sqrt on `strength` would spend more of the
+  ramp where the cells actually are. This is a *display* transform on a layer
+  that makes no statistical claim, so it is allowed here in a way it would not
+  be on an Analyze surface; the legend's discrete steps keep it honest because
+  they are generated from the same function.
+- **More ramp steps.** Both arms are 6 stops plus the midpoint, interpolated in
+  sRGB by `rampAt`. More stops, or interpolation in OKLab, would make the
+  gradient read as continuous change rather than a few bands.
+- **Raise `TIDE_ALPHA` (0.66).** The basemap is showing through and washing the
+  ramp toward the terrain underneath. Cheapest thing to try first, and it costs
+  nothing structurally — but it trades away seeing the coastlines under the
+  raster, so check both basemaps.
+
+Re-measure with the area-weighted "within N% of neutral" sweep that found the
+last problem — it is the number that tells you whether a change did anything.
 
 ## Phase 4 — Statistical Engine. Started.
 

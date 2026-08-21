@@ -23,6 +23,9 @@ import { GEOMAGNETIC_FIELD_LAYER_ID } from '../layers/geomagnetic-field';
 import { AURORA_LAYER_ID } from '../layers/aurora-layer';
 import { MAGNETOPAUSE_LAYER_ID } from '../layers/magnetopause-layer';
 import { TEC_LAYER_ID } from '../layers/tec-layer';
+import { TIDE_LAYER_ID } from '../layers/tide-layer';
+import { TIDE_UNIT, tideLegendStops } from '../layers/tide-encoding';
+import { tidalBodies } from '../layers/tides';
 import { LayerGuideButton } from './LayerGuideModal';
 import { TEC_SCALES, tecLegendStops } from '../layers/tec-encoding';
 import { tecIsStale, tecPeak, type TecQuantity } from '@terra-pulse/schema';
@@ -99,6 +102,7 @@ export function DepthLegend() {
   const auroraVisible = isLayerOn(AURORA_LAYER_ID);
   const magnetopauseVisible = isLayerOn(MAGNETOPAUSE_LAYER_ID);
   const tecVisible = isLayerOn(TEC_LAYER_ID);
+  const tideVisible = isLayerOn(TIDE_LAYER_ID);
 
   if (collapsed) {
     return (
@@ -293,6 +297,8 @@ export function DepthLegend() {
       {auroraVisible && <AuroraKey />}
 
       {tecVisible && <TecKey tone={backdropTone} />}
+
+      {tideVisible && <TideKey tone={backdropTone} />}
 
       {magnetopauseVisible && <MagnetopauseKey />}
 
@@ -692,6 +698,80 @@ function TecKey({ tone }: { tone: BackdropTone }) {
       {playheadMs !== null && (
         <p className={styles.note}>live only — does not follow the scrubber</p>
       )}
+    </div>
+  );
+}
+
+/**
+ * The tide key.
+ *
+ * **The captions are doing the teaching here, and that is deliberate.** The
+ * field legend had to name the year because the field moves so slowly the layer
+ * looked inert; this one has the opposite problem. The pattern sweeps a quarter
+ * of the globe an hour while its *amplitude* changes over a fortnight, so a
+ * reader watching a minute of playback sees rotation and has no way to know why
+ * the range grows and shrinks. Naming the spring/neap state and the lunar
+ * distance turns that into the two things actually driving it.
+ *
+ * Recomputing the bodies here rather than reading them off the layer is
+ * deliberate too: `tidalBodies` is pure and costs microseconds, so a second
+ * evaluation is far cheaper than the plumbing needed to push state out of a
+ * layer — and it cannot go stale against the playhead the way a pushed value
+ * could.
+ */
+function TideKey({ tone }: { tone: BackdropTone }) {
+  const playheadMs = useEarthquakeStore((state) => state.playheadMs);
+  const nowMs = useNow();
+
+  const stops = tideLegendStops(tone, 7);
+  const { sun, moon } = tidalBodies(new Date(playheadMs ?? nowMs));
+
+  // 1 when the two bodies line up (or oppose), 0 at quadrature. Both alignments
+  // give spring tides, which is why this is an absolute value.
+  const alignment = Math.abs(sun.x * moon.x + sun.y * moon.y + sun.z * moon.z);
+  const phase =
+    alignment > 0.7
+      ? 'spring tides — Sun and Moon in line, their bulges adding'
+      : alignment < 0.3
+        ? 'neap tides — Sun and Moon at right angles, partly cancelling'
+        : 'between spring and neap';
+
+  const lunarDistanceKm = Math.round(moon.distanceM / 1000);
+
+  return (
+    <div className={styles.section}>
+      <h2 className={styles.heading}>
+        Tidal potential
+        <LayerGuideButton layerId={TIDE_LAYER_ID} />
+      </h2>
+
+      <div className={styles.fieldRamp} aria-hidden="true">
+        {stops.map((stop) => (
+          <span
+            key={stop.valueCm}
+            className={styles.fieldRampStep}
+            style={{ backgroundColor: `rgb(${stop.color.join(' ')})` }}
+          />
+        ))}
+      </div>
+
+      <div className={styles.fieldScaleRow}>
+        {/* The two ends differ in magnitude, and printing both is how that is
+            disclosed: a trough can only ever be half as deep as a bulge is
+            tall, so each arm runs to its own physical limit rather than
+            wasting half the ramp on a value the tide cannot reach. */}
+        <span>{stops[0]?.valueCm.toString() ?? ''}</span>
+        <span>{TIDE_UNIT}</span>
+        <span>+{stops[stops.length - 1]?.valueCm.toString() ?? ''}</span>
+      </div>
+
+      <p className={styles.note}>
+        amber raised, teal drawn down · two highs, always opposite each other
+      </p>
+
+      <p className={styles.note}>
+        {phase} · Moon {lunarDistanceKm.toLocaleString()} km
+      </p>
     </div>
   );
 }

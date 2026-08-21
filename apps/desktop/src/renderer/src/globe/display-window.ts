@@ -19,6 +19,32 @@ export interface DisplayWindow {
 }
 
 /**
+ * The instant actually on screen — which is never in the future.
+ *
+ * **`displayWindow`'s end is not this**, and mistaking the two shipped a real
+ * bug. That end carries `LIVE_END_MARGIN_MS` so an event published a moment ago
+ * with slight clock skew still falls inside the *visibility* window. The margin
+ * is an hour long, and it is an allowance for **events**, not a statement about
+ * what time it is.
+ *
+ * A layer that reads `end` as "now" is therefore asking about an hour from now.
+ * The magnetopause did exactly that: it floored the window end to an hour and
+ * asked for that hour's solar wind, which in live mode is always the *next*
+ * hour and by definition has no measurement yet. The boundary never drew in
+ * live mode at all — only under playback, where the playhead carries no margin.
+ * The symptom looked intermittent (fine while playing, gone on reaching now),
+ * which is why it read as a data gap.
+ *
+ * Anything asking "what is the state of the world at the instant on screen"
+ * wants this. Anything asking "which events belong in the window" wants the
+ * raw end. The earthquake layer already made the same distinction by clamping
+ * back to now before measuring 24-hour recency.
+ */
+export function instantOnScreen(endMs: number, nowMs: number): number {
+  return Math.min(endMs, nowMs);
+}
+
+/**
  * The span the globe is showing — the single definition of it.
  *
  * Two places need this and they are required to agree: the viewer hands it to
