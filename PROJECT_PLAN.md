@@ -1157,11 +1157,29 @@ server-side proxying of all third-party API calls.
   of six families run.
 
 ### Phase 5 — Astronomical Extension
-- Skyfield + DE440 integration
+- Skyfield + DE440 integration — **`de440s.bsp` is the one to take: 32.7 MB and
+  covering 1849-2150**, which spans the whole archive. Full `de440.bsp` is
+  119.8 MB and buys only 1550-1849 and 2150-2650, which nothing here touches.
+  Same ephemeris, short-span kernel, so the registration is honoured.
 - Planetary and lunar position layer (labeled decorative)
 - **Lunisolar tidal stress tensors**, resolved onto fault geometry
-- Tidal stress timeline track + globe surface
-- H6 testing
+- ~~Tidal stress globe surface~~ — **the potential half shipped 2026-08-20** as
+  the `tides` layer: the equilibrium tide as a raster following the scrubber,
+  computed locally with an analytic ephemeris and no Skyfield. Deliberately the
+  *potential*, not stress — stress is a tensor and needs a fault plane to become
+  a number, which is H6's problem and not a global scalar. Timeline track still
+  open.
+- H6 testing — **blocked on orientations, not on the ephemeris.** H6 registers
+  stress resolved onto mapped fault planes "where available; otherwise onto the
+  focal mechanism nodal planes", and this app stores neither:
+  `vendor-gem-faults.mjs` explicitly drops dip and rake, and no focal mechanisms
+  are ingested. Measured against USGS products, orientation coverage runs
+  **35-70% of M5+ and the product mix inverts over the record** (moment-tensor
+  0% in 1980, 70% in 2010, 49% in 2024) — the same time-varying-completeness
+  trap that set `SOLAR_WIND_COMPLETE_SINCE_YEAR`. **Global CMT** is the source
+  the tidal-triggering literature actually uses: 1976-present, 23 MB, no
+  account. It starts 1976 rather than 1970 and its completeness floor moves,
+  both of which need measuring before H6 is registered against it.
 - **Milestone:** tidal triggering analysis — the project's best shot at a
   real signal.
 

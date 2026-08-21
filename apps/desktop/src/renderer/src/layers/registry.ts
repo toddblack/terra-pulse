@@ -14,6 +14,7 @@ import { createActiveFaultsLayer } from './active-faults';
 import { createGeomagneticFieldLayer } from './geomagnetic-field';
 import { createAuroraLayer } from './aurora-layer';
 import { createMagnetopauseLayer } from './magnetopause-layer';
+import { createTideLayer } from './tide-layer';
 import { createMagnetometerLayer } from './magnetometer-layer';
 import { createTecLayer } from './tec-layer';
 import { createSolarFlaresLayer } from './solar-flares-layer';
@@ -182,6 +183,18 @@ export const OVERLAY_REGISTRATIONS: readonly OverlayRegistration[] = [
     // Its map arrives over IPC, not from the catalogue, so a poll must not
     // rebuild it. Pushed in through `setGrid`, like the aurora grid.
     create: (context) => createTecLayer(context.backdropTone),
+  },
+  {
+    id: 'tides',
+    label: 'Tidal potential',
+    // `analysis` for the same reason the magnetopause is: this draws computed
+    // output rather than a measurement or a mapped feature. Nothing observed it
+    // — it is the equilibrium tide implied by where the Moon and Sun are.
+    category: 'analysis',
+    defaultVisible: false,
+    // Computed from the playhead alone, so nothing pushes into it and a poll
+    // must not rebuild it. Its only input is `setTimeWindow`.
+    create: (context) => createTideLayer(context.backdropTone),
   },
   {
     id: 'magnetometers',

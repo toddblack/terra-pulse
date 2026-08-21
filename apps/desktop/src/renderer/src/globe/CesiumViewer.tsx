@@ -28,7 +28,7 @@ import { cmeSimulationIdFromEntityId } from '../layers/cme-arrivals-layer';
 import { createLocationHighlight } from '../layers/location-highlight';
 import { watchSelection } from './selection-sync';
 import { useGlobeLayers } from './useGlobeLayers';
-import { displayWindow, LIVE_END_MARGIN_MS } from './display-window';
+import { displayWindow, instantOnScreen, LIVE_END_MARGIN_MS } from './display-window';
 import { useNow } from './useNow';
 import { useSolarWindAt } from '../panels/useSpaceWeather';
 import { useSolarEvents } from '../panels/useSolarEvents';
@@ -98,9 +98,12 @@ export function CesiumViewer() {
   const magnetometerReadings = useGlobeStore((state) => state.magnetometerReadings);
   const tecGrid = useGlobeStore((state) => state.tecGrid);
   const tecQuantity = useGlobeStore((state) => state.tecQuantity);
-  // The magnetopause is an instantaneous state, so it reads the playhead's
-  // leading edge rather than the window.
-  const solarWind = useSolarWindAt(timeWindow.endMs);
+  // The magnetopause is an instantaneous state, so it reads the leading edge
+  // rather than the window — **clamped to now**, because `timeWindow.endMs`
+  // sits an hour in the future in live mode (`LIVE_END_MARGIN_MS`). Passing it
+  // raw asked for a solar-wind hour that has not happened, so the boundary
+  // never drew in live mode at all. See `instantOnScreen`.
+  const solarWind = useSolarWindAt(instantOnScreen(timeWindow.endMs, nowMs));
   // Flares and CME arrivals: loaded against the whole selected span
   // (`windowHours`), not the live `timeWindow` — same split as the earthquake
   // layer's `loadedWindowStartMs` versus `setTimeWindow`. The live edge still

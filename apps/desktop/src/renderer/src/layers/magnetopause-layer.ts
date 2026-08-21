@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import type { GlobeLayer } from '@terra-pulse/schema';
+import { instantOnScreen } from '../globe/display-window';
 import {
   dynamicPressureNPa,
   EARTH_RADIUS_KM,
@@ -249,10 +250,30 @@ export function createMagnetopauseLayer(): MagnetopauseLayer {
       new Cesium.CallbackProperty(() => boundaryColour, false),
     );
 
+    /**
+     * Absence is a hidden entity, not an empty one.
+     *
+     * `mount` builds these before any wind has been pushed, so on the first
+     * frame every callback below returns `[]` — and Cesium will not build a
+     * primitive for a polyline with fewer than two positions. Leaving it to
+     * recover once the callback starts returning points is a bet on the
+     * dynamic updater revisiting invalid geometry, which is the kind of thing
+     * that works when idle and fails under load. **The layer drew nothing on
+     * first enable because of it.**
+     *
+     * With `show` driven by whether a shape exists, the polyline only ever
+     * becomes visible on a frame where `recompute` has already filled its
+     * positions — the two callbacks are evaluated in the same frame — so it
+     * never has to come back from a degenerate state while on screen. Entity
+     * `show` is cheap, unlike `ImageryLayer.show`, which destroys tile imagery.
+     */
+    const drawable = new Cesium.CallbackProperty(() => shape !== null, false);
+
     for (let p = 0; p < PROFILE_COUNT; p += 1) {
       const index = p;
       target.entities.add({
         polyline: {
+          show: drawable,
           positions: new Cesium.CallbackProperty(() => profilePositions[index] ?? [], false),
           width: 1,
           arcType: Cesium.ArcType.NONE,
@@ -265,6 +286,7 @@ export function createMagnetopauseLayer(): MagnetopauseLayer {
       const index = r;
       target.entities.add({
         polyline: {
+          show: drawable,
           positions: new Cesium.CallbackProperty(() => ringPositions[index] ?? [], false),
           width: 1,
           arcType: Cesium.ArcType.NONE,
@@ -313,11 +335,18 @@ export function createMagnetopauseLayer(): MagnetopauseLayer {
     },
 
     setTimeWindow(_start, end) {
-      // The boundary is an instantaneous state, so it follows the playhead's
-      // leading edge rather than the span. Rebuilt only when the hour changes:
-      // the Sun moves 15 degrees an hour and the wind is stored hourly, so
-      // anything finer would redraw identical geometry.
-      const next = new Date(Math.floor(end.getTime() / 3_600_000) * 3_600_000);
+      // The boundary is an instantaneous state, so it follows the leading edge
+      // rather than the span. Rebuilt only when the hour changes: the Sun moves
+      // 15 degrees an hour and the wind is stored hourly, so anything finer
+      // would redraw identical geometry.
+      //
+      // Clamped to now first. In live mode `end` sits an hour in the future
+      // (`LIVE_END_MARGIN_MS`), which would both orient the boundary on a Sun
+      // 15 degrees ahead of where it is and ask for a wind hour that has not
+      // happened yet.
+      const next = new Date(
+        Math.floor(instantOnScreen(end.getTime(), Date.now()) / 3_600_000) * 3_600_000,
+      );
       if (next.getTime() === instant.getTime()) return;
       instant = next;
       if (mounted) recompute();
