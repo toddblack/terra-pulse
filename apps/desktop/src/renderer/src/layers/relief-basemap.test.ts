@@ -1,13 +1,31 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type * as Cesium from 'cesium';
 import { createReliefBasemap } from './relief-basemap';
 
+/** See osm-basemap.test.ts — the polar caps paint to a canvas. */
+beforeAll(() => {
+  vi.stubGlobal('document', {
+    createElement: () => ({
+      width: 0,
+      height: 0,
+      getContext: () => ({ fillStyle: '', fillRect: vi.fn() }),
+      toDataURL: () => 'data:image/png;base64,stub',
+    }),
+  });
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
+
+/** The basemap itself, plus one imagery layer per polar cap. */
+const IMAGERY_LAYERS = 3;
+
 function createFakeViewer(): Cesium.Viewer {
-  const fakeLayer = {} as Cesium.ImageryLayer;
   return {
     isDestroyed: vi.fn(() => false),
     imageryLayers: {
-      addImageryProvider: vi.fn(() => fakeLayer),
+      addImageryProvider: vi.fn(() => ({}) as Cesium.ImageryLayer),
       remove: vi.fn(() => true),
       lowerToBottom: vi.fn(),
     },
@@ -27,10 +45,10 @@ describe('relief basemap layer', () => {
     const viewer = createFakeViewer();
 
     layer.mount(viewer);
-    expect(viewer.imageryLayers.addImageryProvider).toHaveBeenCalledOnce();
+    expect(viewer.imageryLayers.addImageryProvider).toHaveBeenCalledTimes(IMAGERY_LAYERS);
 
     layer.unmount();
-    expect(viewer.imageryLayers.remove).toHaveBeenCalledOnce();
+    expect(viewer.imageryLayers.remove).toHaveBeenCalledTimes(IMAGERY_LAYERS);
   });
 
   it('does not touch an already-destroyed viewer on unmount', () => {
@@ -79,5 +97,19 @@ it('keeps the basemap at the bottom of the imagery stack', () => {
 
   layer.mount(viewer);
 
-  expect(viewer.imageryLayers.lowerToBottom).toHaveBeenCalledOnce();
+  // Once for the basemap, then once per polar cap — see osm-basemap.test.ts.
+  expect(viewer.imageryLayers.lowerToBottom).toHaveBeenCalledTimes(IMAGERY_LAYERS);
+});
+
+it('fills the poles its Mercator tile matrix cannot reach', () => {
+  // GIBS serves this composite through GoogleMapsCompatible_Level8, so it stops
+  // at ±85.05° exactly as OSM does. Its EPSG:4326 endpoint does cover the poles
+  // but steps 2→3→5→10 tiles wide against Cesium's 2→4→8→16, so the pyramids
+  // never line up — see polar-caps.ts.
+  const layer = createReliefBasemap();
+  const viewer = createFakeViewer();
+
+  layer.mount(viewer);
+
+  expect(viewer.imageryLayers.addImageryProvider).toHaveBeenCalledTimes(IMAGERY_LAYERS);
 });

@@ -47,6 +47,121 @@ than permissive, and check before relying on it.
 
 ---
 
+## Focal mechanisms — Global CMT
+
+| | |
+|---|---|
+| **Global CMT** | `www.globalcmt.org`, files under `www.ldeo.columbia.edu/~gcmt/projects/CMT/catalog/` |
+| Licence | **Not formally stated.** NSF-funded research output, published openly with no terms page. |
+| Attribution | Citation **requested** — Dziewonski, Chou & Woodhouse (1981) and Ekström, Nettles & Dziewonski (2012), named on `CMTcite.html`. Not a licence condition, but the only obligation the project states. |
+| Redistributable | Not stated either way. Standing rule 1 applies regardless: every install fetches its own. |
+| Credential | **None** — plain HTTP GET, no account, no key. |
+
+The source H6 needs, since it registers tidal stress resolved onto "the focal
+mechanism nodal planes" and nothing here stores an orientation. Reconnaissance
+run 2026-08-21, ahead of completing H6's registration.
+
+### What it is
+
+`jan76_dec25.ndk` is the whole catalogue in one file: **70,044 events,
+1976-01-01 to 2025-12-31**. **8.8 MB gzipped**, 28.4 MB raw, measured at 1.7 s
+to fetch — a third of the 23 MB `PROJECT_PLAN` carried, which was the
+uncompressed figure. `NEW_MONTHLY/` extends it into the current year and
+`NEW_QUICK/qcmt.ndk` carries the unreviewed tail.
+
+Five 80-character lines per event. Line 1 is the **hypocentre** as reported by a
+reference catalogue — and that is a **USGS** PDE hypocentre for 65,245 of the
+70,044, **93.1%**, so most events already carry the same location and origin
+time the join is matching against. Line 5 ends with
+strike/dip/rake for both nodal planes. **Every event has both planes; zero are
+missing.** H6 registers stress "at hypocenter location and origin time", so
+line 1 is the one to read — the centroid on line 3 is CMT's own inversion and
+sits tens of km away by design.
+
+### Three things to get right in a parser
+
+- **Fields are fixed-column, not whitespace-separated.** The geographic name on
+  line 1 contains spaces and a negative value can run up against the field
+  before it.
+- **Moments are in dyne-cm**, so `Mw = ⅔(log₁₀M₀ − 16.1)`. The N-m constant
+  (9.1) is off by 1.2 magnitude units — a plausible-looking wrong answer.
+- **44 records carry `:60.0` seconds**, meaning the next minute
+  (`PDE 1998/09/27 00:57:60.0`). `Date.parse` rejects them, so a naive parser
+  silently drops 44 real events rather than erroring. Roll the minute over.
+
+### Completeness — it moves, and the 2004 step is sharp
+
+Measured maximum-curvature Mc per era: **5.4** (1976-89), **5.3** (1990s),
+**5.2** (2000-03), **5.0** (2004-12), **4.9** (2013-25). Total events per year
+step 1,087 → 1,622 → 2,106 across 2003/2004/2005, which is the documented
+change to the analysis rather than seismicity. The project's own stated target
+is systematic determination above M5 and rapid solutions above M5.5.
+
+### The number that actually constrains H6
+
+CMT's own completeness is not the binding limit — **what fraction of this app's
+USGS target set can be given an orientation is.** Joined on origin time and
+hypocentre (±60 s, ≤100 km; the real match population sits at p99 = 7.9 s and
+40 km, so the tolerance is not doing any work):
+
+| floor | 1977-89 | 1990-99 | 2000-03 | 2004-12 | 2013-25 | swing |
+|---|---|---|---|---|---|---|
+| M5.0+ | 39.5% | 56.3% | 74.6% | 76.6% | **80.6%** | **2.0×** |
+| M5.5+ | 84.3% | 90.6% | 95.1% | 91.8% | 94.0% | 1.13× |
+| M6.0+ | 93.3% | 95.8% | 97.8% | 95.7% | 97.7% | 1.05× |
+| M6.5+ | 98.5% | 98.6% | 98.3% | 98.6% | 99.1% | flat |
+
+**M5.0+ doubles in orientation coverage across the record.** M5.5+ is the floor
+where it stops moving — the same answer this project already reached
+independently for rate claims, from a different measurement.
+
+### Why that drift is *not* automatically fatal here, unlike elsewhere
+
+A secular drift in detection wrecked things before (M4.5+ rising 3×,
+`SOLAR_WIND_COMPLETE_SINCE_YEAR`) because those were **rate** tests against a
+driver that also varied over the record. H6 bins by **tidal phase**, and every
+era samples tidal phase uniformly, so an aperiodic drift reweights the eras
+without biasing the null.
+
+What *would* be fatal is a detection bias **periodic at a tidal frequency**.
+There is exactly one candidate: **S2, the solar semidiurnal tide, has a period
+of 12.000 h and is permanently locked to solar time**, so a time-of-day
+detection cycle maps straight onto S2 phase and never averages out. (M2 at
+12.42 h beats against the solar day every 14.77 days and does average out.)
+
+Tested by Rayleigh on local solar time — not UTC, which would smear a global
+catalogue flat:
+
+| set | 24.00 h amplitude | S2, 12.00 h amplitude |
+|---|---|---|
+| orientable M5.0+, n = 52,961 | 0.15%, p = 0.97 | **0.19%, p = 0.96** |
+| orientable M5.5+, n = 21,125 | 1.35%, p = 0.38 | **0.17%, p = 0.98** |
+| all USGS M5.0+, n = 82,110 | 1.11%, p = 0.08 | 0.68%, p = 0.39 |
+
+Every resultant sits at its noise floor. **There is no solar-time detection
+cycle to worry about**, and the orientable subset is if anything cleaner than
+the full catalogue, so the join introduces none either.
+
+### Selection effects in what gets a mechanism
+
+- **Mechanism mix is stable**, which is the one that mattered most — H6's second
+  subset is subduction-only, so a drifting thrust fraction would move the split
+  itself. Thrust runs 35.0/38.0/34.3/36.4/35.0% across the five eras at M5.0+,
+  normal 17-19%, strike-slip 45-49%. No trend at any floor.
+- **Depth mix does drift at M5.0+**: shallow (0-70 km) 72.4% → 81.7%, deep
+  (300+ km) 7.6% → 4.8%. At M5.5+ it is much flatter (75.4% → 79.0%, 6.8% →
+  7.2%). Aperiodic in tidal phase, so again a question of which population the
+  answer describes rather than of validity.
+
+### What is deliberately not taken
+
+`PRE1976/` holds solutions for deep events 1962-1976 and intermediate-depth
+1962-1975. Partial by construction — depth-selected, not a complete catalogue —
+so including them would make the pre-1976 record a biased sample of exactly the
+variable that drifts above. 1976 is the start.
+
+---
+
 ## Geology (vendored — see `data/README.md`)
 
 | Dataset | Licence | Obligation |

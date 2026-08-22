@@ -3,6 +3,7 @@ import { ArchivePanel } from './ArchivePanel';
 import { SpaceWeatherArchive } from './SpaceWeatherArchive';
 import { DonkiArchive } from './DonkiArchive';
 import { GoesFlareArchive } from './GoesFlareArchive';
+import { FocalMechanismArchive } from './FocalMechanismArchive';
 import { HISTORICAL_DATA_SECTION_ID } from '../state/useGlobeStore';
 import styles from './HistoricalDataPanel.module.css';
 
@@ -43,6 +44,7 @@ export function HistoricalDataPanel() {
           <SpaceWeatherArchive />
           <DonkiArchive />
           <GoesFlareArchive />
+          <FocalMechanismArchive />
         </div>
       </CollapsibleSection>
     </div>

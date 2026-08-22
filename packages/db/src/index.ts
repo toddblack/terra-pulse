@@ -52,3 +52,12 @@ export {
 export type { DonkiSource, QuerySolarFlaresOptions } from './solar-events-queries';
 export { queryAnalysisCatalog } from './analysis-queries';
 export type { AnalysisCatalog } from './analysis-queries';
+export {
+  insertFocalMechanisms,
+  queryFocalMechanisms,
+  focalMechanismCoverage,
+  completedGcmtChunks,
+  recordGcmtChunk,
+  gcmtChunkSummary,
+} from './focal-mechanism-queries';
+export type { MechanismQuery, MechanismCoverage } from './focal-mechanism-queries';

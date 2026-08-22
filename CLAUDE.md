@@ -1758,18 +1758,17 @@ needs nothing H6 is blocked on.
     dropping the old at request time leaves a bare globe because
     `addImageryProvider` resolves before the PNG decodes, and hiding an imagery
     layer destroys its tile imagery.
-- **Teal ↔ amber, chosen by validation rather than taste.** Poles separate at
-  **CVD ΔE 11.8 protan / 23.5 tritan** against a floor of 8, and **20.7
-  normal-vision** against a floor of 15, on both basemaps. One check does not
-  pass and is recorded rather than hidden: the teal pole's chroma is **0.097
-  against a 0.10 floor** — a check meant to stop a *categorical* slot reading
-  grey beside its neighbours, which a diverging pole against a light neutral is
-  not.
+- **It shipped as teal ↔ amber and that was wrong — see the hue entry at the end
+  of this section.** The pair passed every validator check except chroma and was
+  still nearly invisible on two of the three basemaps, because **the validator
+  scores colours against a chart surface, not against the imagery they are drawn
+  over**. Passing it is necessary and was not sufficient. The ramp is violet ↔
+  red-orange now, chosen by measuring against the actual basemap pixels.
   - **The cool arm is where hue separation actually lives.** With a light
     midpoint both poles must be dark, and every dark warm colour converges on
     brown — so the three diverging ramps here (field blue/red, TEC
-    purple/orange, tide teal/amber) are necessarily similar on their warm side
-    and are told apart by their cool side.
+    purple/orange, tide violet/red-orange) are necessarily similar on their warm
+    side and are told apart by their cool side.
 - **Each arm runs to its own physical limit, and this reversed a symmetric
   domain on measurement — the declination bug, repeated and then caught.** The
   first version used one symmetric ±60 cm domain on the principle that equal
@@ -1805,34 +1804,237 @@ needs nothing H6 is blocked on.
   range grows and shrinks over a fortnight. So it names the spring/neap state
   and the lunar distance, which are the two things driving it.
 
-**Open, and asked for directly: the ramp still reads too flat.** Moving each arm
-to its own physical limit fixed the structural half (low-arm usage 47-49% →
-91-95%), and the user still wants **more dramatic colour change across the tidal
-range**. So the remaining flatness is in how strength maps to colour, not in the
-domain. Do not "fix" it by widening or renormalising the domain again — that was
-the last round's bug, and a per-frame domain would destroy the spring/neap
-signal exactly as `field-encoding.ts` warns.
+**The ramp read as flat, and the cause was hue, not the value mapping — teal and
+amber went to violet and red-orange.** Closed 2026-08-21. This is the entry to
+read before touching any raster drawn over imagery, because the finding
+generalises well past the tide.
 
-What is actually left to try, in rough order of honesty:
+- **The first diagnosis was wrong and measuring the wrong thing confirmed it.**
+  Told only "too flat", I measured the *value→position* mapping and found a
+  real defect (stops bunched at both ends, see below) that was nowhere near
+  large enough to explain the complaint. The user's own words settled it: *"it's
+  just the green to brown, it gets a little lost on the relief and seafloor
+  globe settings."* Teal over green land and amber over brown relief **is**
+  camouflage. **Ask what it looks like against, not just how it maps.**
+- **Measured against the real imagery, both poles sat in the two worst hue
+  regions available.** Both basemaps were fetched and decoded (1024×512,
+  area-weighted by cos lat), every hue taken to the most chroma sRGB will hold
+  for it, composited over every real pixel at `TIDE_ALPHA`, and scored on
+  separation from the neutral midpoint **in units of the terrain's own variation
+  along that same direction**:
 
-- **A non-linear position within each arm.** `tideColor` currently maps
-  `|value| / domain` linearly onto the ramp. The globe's distribution is not
-  uniform — measured area-weighted, 35% of cells sit within 40% of neutral even
-  at spring — so a gamma or signed-sqrt on `strength` would spend more of the
-  ramp where the cells actually are. This is a *display* transform on a layer
-  that makes no statistical claim, so it is allowed here in a way it would not
-  be on an Analyze surface; the legend's discrete steps keep it honest because
-  they are generated from the same function.
-- **More ramp steps.** Both arms are 6 stops plus the midpoint, interpolated in
-  sRGB by `rampAt`. More stops, or interpolation in OKLab, would make the
-  gradient read as continuous change rather than a few bands.
-- **Raise `TIDE_ALPHA` (0.66).** The basemap is showing through and washing the
-  ramp toward the terrain underneath. Cheapest thing to try first, and it costs
-  nothing structurally — but it trades away seeing the coastlines under the
-  raster, so check both basemaps.
+  | hue | ratio | |
+  |---|---|---|
+  | 160–250 teal–cyan–blue | 3.5–4.6 | **old low arm, 187** |
+  | 60–110 amber–olive | 4.4–4.9 | **old high arm, 68** |
+  | 270–330 blue-violet–magenta | 7.6–8.4 | |
+  | 0–30 pink-red–red | 7.2–7.3 | |
 
-Re-measure with the area-weighted "within N% of neutral" sweep that found the
-last problem — it is the number that tells you whether a change did anything.
+- **Teal was also at the sRGB gamut ceiling** — the most chroma hue 187 can hold
+  at that lightness *is* 0.097, which is what it used. That arm could not be
+  made more vibrant, only moved. Worth checking early: it turns a "tune it"
+  request into a "replace it" one.
+- **The generalisable finding: terrain varies almost entirely in lightness.**
+  Principal axis 99.3% lightness on relief and 95.0% on seafloor, explaining 94%
+  and 92% of all variance, while chroma barely moves (sd 0.013–0.029 in OKLab).
+  **Chroma is a nearly empty channel** — and a light-midpoint diverging ramp
+  spends its signal in lightness *by construction*, head-on against the
+  basemap's loudest dimension. Any future raster over imagery should be scored
+  this way before its hues are chosen.
+- **Violet won because neither basemap contains it at any strength**, and it
+  holds **0.264 chroma, 2.7× the teal it replaced**. Worst-case ratio across
+  both arms and both basemaps **5.01 → 6.63**. All six dataviz checks now pass
+  in both modes, **including the chroma floor teal never passed**; poles
+  separate at CVD ΔE 32.0 protan / 27.0 tritan and 35.8 normal-vision.
+- **A blue/orange-red pair was rejected on measurement, not taste** — 5.35,
+  barely above what it replaced, because its cool arm still shares a region with
+  ocean. Don't re-propose it as the "safer" option; it is mostly the same ramp.
+- **The cost was taken deliberately, with the user's sign-off: this lands near
+  TEC's purple/orange pair**, breaking "hue is how the rasters stay apart". Both
+  are off by default and both are *global* rasters, so they were never legible
+  simultaneously whatever their hues. Recorded rather than quietly ignored.
+- **Two hue-independent fixes rode along, and the first is a real trap.** The
+  old stops were paced **3.8, 7.5, 8.5, 9.0, 6.6, 4.1 ΔE** — bunched at both
+  ends, with the smallest step landing exactly where most of the globe's cells
+  sit at neap tide (median strength 0.199). Stops are now generated at equal
+  perceptual distance along an OKLab line, even to within 6%; `rampAt`
+  interpolates by *index*, so even spacing is what makes position mean the same
+  amount of colour change everywhere. A test pins it, because a hand-edited stop
+  would undo it with nothing failing.
+- **`TIDE_STRENGTH_GAMMA` is 0.8 and the number defending it is 2.82.** That is
+  the physical median-strength ratio between spring and neap. Evenly-paced stops
+  alone reproduce it almost exactly (2.93); the *old* ramp overstated it at 4.41.
+  Gamma trades that fidelity for legibility and only goes one way — 0.6 shows a
+  2.8× physical difference as 1.9×. 0.8 keeps it near 2.5 while taking the neap
+  median from **3.6 → 7.5 ΔE** from neutral and the share of globe within ΔE 5
+  from **60% → 33%**. **Do not lower it to "make it pop"** — that is spending
+  the spring/neap signal, which is the thing the layer exists to show. Two tests
+  hold both ends of that trade.
+- **Raising `TIDE_ALPHA` was measured and not needed.** 0.66 → 0.85 moves the
+  neap median only 3.6 → 4.4 and costs the coastlines; it scales flatness along
+  with everything else rather than fixing it.
+- Still true and still the rule: **do not widen or renormalise the domain.**
+  That was the previous round's bug and a per-frame domain would destroy the
+  spring/neap signal exactly as `field-encoding.ts` warns.
+
+**The blue discs at the poles — fixed** (`polar-caps.ts`), reported by the user
+as "circular holes in the globe" right after the tide ramp landed. It was not
+the tide layer, and it was not new: **the bug had been there since the first
+basemap shipped**, on every Mercator basemap, and nothing in the tide commit
+touched anything near it. Worth remembering as a case where the thing that
+*revealed* a bug and the thing that *caused* it were unrelated.
+
+- **Web Mercator is undefined at the poles**, so every tile pyramid built on it
+  stops at **±85.0511°**. Above that a basemap has no pixels and what shows is
+  `Globe.baseColor` — Cesium's default `Color(0, 0, 0.5)`, gamma-corrected by
+  the globe shader to about `#0000ba`. Nothing here had ever set it. Each cap is
+  0.19% of the surface: small, and unmissable, because it is exactly where the
+  eye lands when you spin the globe.
+- **The diagnosis was settled by measuring the disc against Cesium's source, not
+  by running the app.** `WebMercatorTilingScheme().rectangle` is ±85.0511° and
+  `GlobeSurfaceTileProvider` sets that base colour on line 191 — two facts that
+  together predict a saturated navy cap of the measured on-screen radius (~5°,
+  checked against Antarctica's apparent width in the screenshot).
+- **Two of the three basemaps have it and the third does not, and the reason is
+  a default that had been documented backwards.** `seafloor-basemap.ts` said
+  Cesium's WMS defaults were "web-mercator tiling". In 1.143 the WMS provider
+  defaults to **`GeographicTilingScheme`, rectangle ±90°** — verified by
+  constructing one — and GEBCO renders those caps for real (`#3e85b2` Arctic
+  water, `#ffffff` Antarctic ice). So seafloor covers the poles and **must not
+  be given a fill**; the comment is corrected and a test pins the split.
+- **`Globe.baseColor` cannot be the fix, because the two poles are not one
+  colour.** On relief they are `#0a1c40` (Arctic Ocean, near-black) and
+  `#eeeeee` (Antarctic ice) — opposite ends of the lightness range, so any
+  single value puts a black disc in the ice or a white one in the ocean. Two
+  imagery layers, one per cap, is the smallest thing that can be right at both
+  ends. `baseColor` is still set, to a dark neutral, as the backstop for a
+  future basemap nobody has thought about coverage for.
+- **Fixing it at source was measured and rejected.** OSM has no polar pyramid at
+  all. GIBS *does* publish EPSG:4326 covering ±90°, but its `500m` tile matrix
+  set steps **2→3→5→10** tiles wide against Cesium's 2→4→8→16 — the pyramids
+  line up at no level, so a WMTS provider would request the wrong tiles. The
+  only Cesium-compatible route is GIBS' WMS, which trades a CDN read for an
+  on-demand render (measured **0.4–1.1 s per tile**) across the whole basemap to
+  gain 0.4% of it.
+- **A flat fill is close to exact because the imagery there is close to flat**,
+  which is the measurement the whole approach rests on. Per-channel sd, sampled
+  live: OSM at ±85° is **literally 0** (open water and unfeatured ice sheet),
+  Blue Marble's caps are 8–22 on a 0–255 scale. So the fill is
+  indistinguishable from the map continuing.
+- **It is still a patch over an absence, and both guides say so.** The north cap
+  being ocean-blue on OSM and near-black on relief is a fact about how each
+  source draws the Arctic, not about the Arctic.
+- **The cut-off latitude is read from Cesium, never written down.** The fill has
+  to meet the imagery exactly and the imagery's edge is wherever Cesium's own
+  tiling scheme puts it; a hard-coded 85.0511 would be a second copy free to
+  drift. The caps also overlap the basemap by 0.05° and sit **below** it in the
+  stack, so a half-pixel disagreement after tile bounds and texture coordinates
+  cannot draw a hairline ring. That ordering is what makes the overlap free, and
+  a test asserts every cap is lowered.
+- **Built synchronously, unlike every other raster here.** The image is a 4×4
+  solid data URL with nothing to fetch, and `SingleTileImageryProvider`'s
+  constructor loads lazily where `fromUrl` preloads — so there is no window in
+  which a cap is attached but empty, and no swap ordering to get wrong. The
+  constructor is not deprecated in 1.143; it just needs `tileWidth`/`tileHeight`
+  given explicitly, which `fromUrl` otherwise reads off the decoded image.
+
+**Global CMT focal mechanisms — ingest shipped** (migration 13). The orientation
+H6 was blocked on, and the cheapest historical ingest here by a distance: the
+whole 1976-2025 record is **one file, 8.8 MB gzipped, 1.7 s**, against the GOES
+report's 21 requests and OMNI's 63. Registration and reconnaissance are in
+`HYPOTHESES.md` and `SOURCES.md`; this is the code.
+
+- **70,044 mechanisms, zero skipped, parsed in 323 ms; inserted in 348 ms.**
+  Migration 13 applies to a copy of the real 240 MB database in **837 ms**
+  including the `VACUUM INTO` backup, with all 315,914 earthquake / 829,614
+  space-weather / 39,647 flare rows preserved. Adds only, so create-copy-drop-
+  rename doesn't apply.
+- **Three NDK traps, and the first is not in the format description.**
+  - **Line 3's fields can run together with no space between them.** I first
+    read the centroid by splitting on whitespace, reasoning that unlike line 1
+    it has no free-text field so nothing could contain a space. The failure is
+    the opposite: a centroid time error of 60.0 s against a shift of 1.0 renders
+    as `1.060.0`, which splits into one token instead of two and shifts every
+    later field left — latitude then reads the latitude *error*, and a
+    Philippines earthquake lands at (0.03, 0.03) in the Gulf of Guinea. About
+    one event in 35,000. **Caught by asserting centroids sit near their own
+    hypocentres**, which flagged three records 968-14,228 km out; nothing else
+    would have. Fixed columns now.
+  - **The scalar moment is at columns 50-56, *after* the three eigenvalues.**
+    Reading the first eigenvalue instead gives Tohoku 5.305e29 against the true
+    5.312e29 — within 0.001 of the right magnitude, so it cannot be caught by
+    eye. My own test had this wrong before the parser did.
+  - **44 records publish seconds as `:60.0`**, meaning the next minute.
+    `Date.parse` rejects them outright, so a parser that trusts it drops 44 real
+    events with no error at all.
+- **Moments are dyne-cm, so `momentMagnitude` uses 16.1, not the N-m 9.1.**
+  Getting it backwards shifts every magnitude by 1.2 — Tohoku reads 7.88, which
+  is a believable number rather than an obviously broken one.
+- **The combined file's name carries its last complete year** (`jan76_dec25`),
+  so it changes every January. Hard-coding it fails *silently*: the old file
+  keeps being served, so the catalogue quietly stops gaining years. Candidates
+  are derived from the clock and probed newest first.
+- **One mechanism belongs to exactly one event, and nearest-per-event was not
+  enough.** A mainshock and a smaller event seconds later both fall inside each
+  other's window; CMT inverts the mainshock but often not the smaller one, whose
+  signal it swamps. With no mechanism of its own the smaller event then claimed
+  the mainshock's — **53 mechanisms were taken twice out of 21,125 matches**,
+  and `C032378C` sits 0.2 km from an M7.5 while also being claimed by an M5.9
+  **89.7 km** away. A mechanism now goes to its nearest claimant and the rest
+  come back unmatched, which is right for both cases behind those 53: it
+  withholds an orientation nobody measured, and it keeps out the 19 that are one
+  earthquake recorded twice under different sources (`usp000198f` and
+  `iscgem639614` are the same M5.5 — a cross-source duplicate the existing
+  dedupe does not catch). **Being unmatched is ordinary here**, at 9.6%.
+- **The join is a two-pointer sweep, not SQL.** The predicate is "within 60 s
+  **and** 100 km" and SQLite can index only the first half; both sides are small
+  (23,305 events against 70,044 mechanisms), so one pass over time-ordered
+  arrays does it in **34 ms**. Both inputs must be sorted, and that is asserted
+  rather than assumed — unsorted input would return a plausible partial join
+  with no error.
+- **Verified against the real database, and the check that counts is that two
+  independent implementations agree.** Per-era orientation coverage from the
+  shipped code reproduces the throwaway reconnaissance to within 0.3 points on
+  every era (84.2/90.5/94.9/91.7/93.7 against 84.3/90.6/95.1/91.8/94.0).
+  Match offsets: distance p50 0.53 km, p99 33.7 km; time p50 0.04 s, p99 4.5 s.
+- **No R-Tree on this table, deliberately.** The only spatial question is "which
+  mechanism belongs to this earthquake", and matching on origin time first
+  leaves a handful of global candidates, so distance filters almost nothing.
+  The index that matters is the plain one on `time_utc` — and a test asserts the
+  query plan uses it, which is the `findCandidateMatches` lesson applied before
+  it can bite rather than after.
+
+**Its controller, IPC and archive panel — shipped.** User-triggered from the
+archive panel like every other historical record here, and modelled on
+`goes-flares.ts`: no API key, no rate limiting, no poller, for the same three
+reasons. `gcmt:status` / `:start` / `:cancel`, progress pushed on
+`gcmt:progress`, and a `FocalMechanismArchive` panel beside the other four.
+
+- **The one thing GOES does not have: this record is not closed**, so there is a
+  current-year path — and it has a wrinkle worth knowing. **Global CMT publishes
+  on a three-to-four-month delay.** Probed live 2026-08-22: `jan26`/`feb26`/
+  `mar26` return 200, `apr26` onward 404. So **a completely successful download
+  always ends with pending months**, and that is the ordinary path.
+  - A 404 there is therefore **not a failure and must not be retried into one**
+    — `fetchGcmtMonth` returns null, the chunk is left unrecorded so a later run
+    picks it up, and the count is surfaced as `pendingMonths`. Without that
+    field a healthy download leaves the progress bar short of full and reads as
+    broken.
+- **`jan76_dec24.ndk.gz` is already 404 while `dec25` is served** — the combined
+  file is *replaced*, not accumulated. So the fallback candidates earn their
+  keep only in the window after New Year and before the new file lands, which is
+  exactly what they are for.
+- **The current month is excluded from the plan**, the same rule the earthquake
+  archive applies to its current year: recording an unfinished chunk complete is
+  how a resume silently stops resuming.
+- **The combined-file skip is on the `jan76_` prefix, not an exact name.** The
+  question is "do we have a combined catalogue at all", and an exact match would
+  refetch 8.8 MB every January to gain one year — which is defensible, but the
+  months already cover the current year, so it would be paying for nothing.
+- **No `onUpdated` counterpart, unlike every other ingest here.** Nothing on the
+  globe draws focal mechanisms, so a finished download changes no view; the rows
+  are read by the analysis path in main and never by the renderer. Worth saying
+  out loud, because the absence otherwise looks like an oversight.
 
 ## Phase 4 — Statistical Engine. Started.
 

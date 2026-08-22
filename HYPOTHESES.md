@@ -883,15 +883,112 @@ a family of implicit radius tests.
 | Field | Value |
 |---|---|
 | **Registered** | 2026-07-24 |
+| **Completed** | **2026-08-21** — the ★ fields below were implied but never stated. Filled in before any code ran, per rule 2. See "Why this is a completion" below. |
 | **Status** | Not yet run (Phase 5) |
-| **Statement** | M5.0+ earthquake occurrence is elevated at times of peak lunisolar tidal stress resolved onto the local fault geometry. |
-| **Ephemeris** | JPL DE440 via Skyfield |
-| **Stress computation** | Full lunisolar tidal stress tensor at hypocenter location and origin time, resolved onto mapped fault plane orientation where available; otherwise onto the focal mechanism nodal planes |
-| **Binning** | Tidal phase in 12 bins across the tidal cycle |
-| **Subsets** | All events; subduction-zone events only (registered as 2 subsets) |
+| **Statement** | Declustered M5.5+ earthquake occurrence is not uniformly distributed in lunisolar tidal phase, where phase is measured on the tidal shear stress resolved onto the event's own focal-mechanism fault plane. |
+| **Ephemeris** | JPL DE440 via Skyfield — kernel `de440s.bsp` (32.7 MB, covering 1849-2150) ★ |
+| **Orientation source** ★ | **Global CMT**, `jan76_dec25.ndk` plus `NEW_MONTHLY/`. Joined to each USGS event by origin time and hypocentre: the nearest CMT event within **±60 s and ≤100 km**. Events with no match are excluded, and the excluded fraction is reported per era. |
+| **Target set** ★ | Declustered **M5.5+** global (Gardner-Knopoff), restricted to events carrying a CMT orientation. See "Why M5.5+" below — this overrides the shared M4.5+ and the M5.0+ used by H1b/H2b/H3b/H4c/H5. |
+| **Effective span** ★ | **1976-01-01 onward.** The shared catalogue starts 1970, but Global CMT starts 1976 and it is the only orientation source. The engine truncates and reports the truncation rather than absorbing it. |
+| **Stress quantity** ★ | Tidal **shear stress** resolved onto nodal plane 1 in its slip direction. **Not Coulomb and not normal stress** — see "Why shear" below. |
+| **Stress computation** | Full lunisolar tidal stress tensor at hypocenter location and origin time, resolved onto the focal mechanism nodal plane |
+| **Tidal phase angle** ★ | 0° at each local **maximum** of the computed shear-stress time series at that hypocentre, ±180° at the minima, linear in time between successive extrema. Referenced to the event's own computed series, so no tidal constituent has to be named. |
+| **Binning** | Tidal phase in 12 bins across the tidal cycle — 30° windows, **for presentation and the sinusoidal fit only**. The test statistic below is unbinned. ★ |
+| **Test statistic** ★ | **Schuster's test.** Each event is a unit vector at its tidal phase angle; the statistic is the resultant length R over N events. |
+| **Null model** ★ | Origin instants redrawn uniformly without replacement from every hour in the analysis span, keeping the same count and the **same hypocentres and mechanisms**, with phase recomputed. 10,000 iterations. |
+| **Tail** ★ | One-sided upper — excess concentration at some phase. |
+| **Subsets** | All events; subduction-zone events only (2 subsets). ★ **"Subduction-zone" is defined as a hypocentre within 300 km of a Slab2 trench line**, using the 21 trench lines already vendored here. |
 | **Tests in family** | 2 |
 | **Mechanism plausibility** | **Highest of any hypothesis here.** Established physical mechanism, existing peer-reviewed literature finding weak but detectable tidal triggering. Starting references: Tanaka; Cochran, Vidale & Tanaka. |
 | **Result** | — |
+
+**Why this is a completion and not a fifth supersession.** The matrix section
+below warns that a fifth supersession would mean the "measure the source first"
+rule is being ignored. It is not being ignored here — **it is the reason these
+values exist.** Global CMT was fetched and measured in full before a line of H6
+code was written, and the results are in `SOURCES.md`.
+
+H1-H4 each named a *specific source* that turned out to be wrong, which is why
+each needed a new entry. H6 named no orientation source at all; it said "focal
+mechanism nodal planes" and left the rest implied. Naming one is filling a hole,
+not correcting a claim. The one substantive narrowing — M5.0+ → M5.5+ — is
+structurally identical to **H4c's "Effective span"**, which was also a narrowing
+of the usable data forced by measuring the source, and was also done in place.
+The condition both rest on is the same and is not weaker here: **H6 has never
+been run.** No p-value exists under it to protect.
+
+**Why M5.5+, when every other hypothesis here uses M5.0+.** The binding limit is
+not Global CMT's own completeness — it is **what fraction of the target set can
+be given an orientation at all**, which nobody had measured. Joined to this app's
+catalogue:
+
+| floor | 1977-89 | 2000-03 | 2013-25 | swing |
+|---|---|---|---|---|
+| M5.0+ | 39.5% | 74.6% | 80.6% | **2.0×** |
+| M5.5+ | 84.3% | 95.1% | 94.0% | 1.13× |
+| M6.0+ | 93.3% | 97.8% | 97.7% | 1.05× |
+
+At M5.0+ the *orientable* catalogue doubles across the record, so the target set
+would be "the subset that happened to get a CMT" rather than "M5.0+ events".
+M5.5 is where that stops moving — the same floor this project already uses for
+rate claims, reached here from an unrelated measurement. It is also the floor
+Tanaka, Ohtake & Sato (2002) used against this same catalogue.
+
+**The drift would probably not have invalidated M5.0+, and that is worth saying
+rather than leaning on a rule.** A secular drift sank the *rate* tests because
+they correlate a drifting catalogue against a driver that also varies over the
+record. A phase test is different: every era samples tidal phase uniformly, so an
+aperiodic drift reweights the eras without biasing the null. What *would* be
+fatal is a detection bias periodic at a tidal frequency — and there is exactly
+one candidate, **S2, the solar semidiurnal tide, whose 12.000 h period is locked
+to solar time and never averages out** (M2 at 12.42 h beats against the solar day
+every 14.77 days and does). Measured by Rayleigh on local solar time, the S2
+amplitude is **0.19% at M5.0+ and 0.17% at M5.5+, p > 0.95** — every resultant at
+its noise floor. So M5.5+ is chosen for the cleaner claim, not because M5.0+ was
+shown to be broken.
+
+**Why shear stress, and why the fault-plane ambiguity therefore does not exist.**
+A focal mechanism gives two nodal planes and neither is knowably the fault.
+That ambiguity is fatal to a **Coulomb** or **normal-stress** formulation —
+verified here, the two planes' normal stress differs on **98.5%** of the 70,044
+real GCMT mechanisms. Choosing a plane per event would be a free parameter with
+no evidence behind it, which non-negotiable #3 forbids.
+
+**Shear stress has no such problem, because it is identical on both planes.**
+For conjugate planes n₂ = u₁ and u₂ = n₁, so the resolved shear is n₁·σ·u₁
+against u₁·σ·n₁ — equal for any symmetric σ. Verified numerically against all
+70,044 published mechanisms: **worst difference 3.3 × 10⁻¹⁶**, machine precision.
+Tanaka et al. (2002) made the same choice for the same reason, and their positive
+result was on tidal shear stress.
+
+- **Read nodal plane 1 only; never consult plane 2.** It is redundant by the
+  identity above, and GCMT publishes both rounded to whole degrees, so the two
+  listed planes disagree in resolved shear by **1.3% at the median and 9.6% at
+  p90**. That disagreement is publication precision, not physics, and an
+  implementation that compares the planes will read it as a real difference and
+  be tempted to "pick the right one".
+
+**Why 300 km of a Slab2 trench, over the alternatives.** It is the literal
+reading of "subduction-zone events", it uses geometry already vendored here, and
+it has the best power of the options: **12,419 raw M5.5+ → roughly 5,900 after
+the join and declustering**, which lets Schuster resolve about a 2.6% modulation.
+It cross-checks well — PB2002's 71 `SUB` segments at the same radius select
+12,283 events, agreeing to 1%. The alternative considered and rejected was the
+literature's own subset (shallow thrust: rake 45-135°, depth ≤ 70 km, 6,392
+events), which needs no radius but is a *mechanism* filter rather than a zone
+filter and sweeps in continental collision thrusts.
+
+**The 300 km is a free parameter and is declared as one.** It is fixed here,
+before any result exists, which is what non-negotiable #3 requires — the hazard
+that rule guards against is a radius chosen *after* seeing the distribution,
+which is exactly what H5's own post-run note records. It must not be adjusted
+once a result is known.
+
+**Running H6 returns the FDR denominator to 19.** Its 2 tests are currently
+counted in the 19-test total but excluded from the 17 *unblocked*. No recorded
+result changes: the smallest raw p-value anywhere in this file is 0.0872, and
+0.0872 × 19 still exceeds 1, so every adjusted value stays 1.0000. Every
+already-run family was reported against 19 before H4b's withdrawal anyway.
 
 ---
 
@@ -971,6 +1068,16 @@ cheap and feels like rigour; it is only rigour if the parameters in it can
 survive the data. A fifth supersession means this rule is being ignored, not that
 the data was surprising again.
 
+**H6's completion on 2026-08-21 is not that fifth supersession, and the
+distinction is the rule itself.** Global CMT was measured in full *before* any H6
+code existed, and the parameters were written against those measurements rather
+than ahead of them. H1-H4 each named a specific source that failed on contact;
+H6 named no orientation source at all, so naming one fills a hole rather than
+correcting a claim. Its one substantive narrowing — M5.0+ → M5.5+ — matches
+**H4c's "Effective span"** precedent exactly: a narrowing of usable data forced
+by measuring the source, completed in place because the entry had never been run.
+Full reasoning is in H6's own entry.
+
 **H4b is the fifth entry that failed on contact with its source, and it is the
 first one the rule actually caught.** It was registered the same day as H1-H4,
 against a source nobody had queried, and when INTERMAGNET was finally measured
@@ -984,7 +1091,9 @@ more carefully."
 ## Progress against the matrix (2026-08-20)
 
 **All 17 unblocked tests have been run. None was rejected.** Nothing remains
-blocked; H6's 2 are deferred to Phase 5 by its own registration.
+blocked. H6's 2 were deferred to Phase 5 by its own registration when this was
+written; **that stopped being true on 2026-08-21** — see the note under the
+table.
 
 | Family | Tests | Run | Outcome |
 |---|---|---|---|
@@ -994,10 +1103,19 @@ blocked; H6's 2 are deferred to Phase 5 by its own registration.
 | H4c | 6 | 2026-08-18 | Not rejected — ratios 0.974-1.013 |
 | H5 | 1 | 2026-08-20 | Not rejected — KS D⁺ 0.0016, below the null mean |
 | ~~H4b~~ | 0 | — | **Withdrawn unrun 2026-08-20** — see its entry |
-| H6 | 2 | — | Deferred to Phase 5 |
+| H6 | 2 | — | **Registration completed 2026-08-21; unblocked, not yet run** |
 
 **H5 is no longer blocked on a magnitude-of-completeness map**, and that map is
 not merely deferred — the registered null makes it unnecessary. See H5's entry.
+
+**H6 is no longer deferred, as of 2026-08-21.** Global CMT was fetched and
+measured in full — 70,044 events, 1976-2025, every one carrying both nodal
+planes — and the parameters H6 left implied were completed in its entry against
+those measurements. Nothing about it is blocked any more; it is unbuilt.
+
+**When it runs, the unblocked denominator returns to 19** and the summary above
+becomes "17 of 19". No recorded value changes: 0.0872 × 19 still exceeds 1, and
+the five runs below were executed against a 19-test denominator to begin with.
 
 **Not one test in five families produced a deviation larger than 7%, and the
 smallest raw p-value anywhere is 0.0872.** After correction against the

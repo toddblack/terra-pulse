@@ -766,7 +766,7 @@ function TideKey({ tone }: { tone: BackdropTone }) {
       </div>
 
       <p className={styles.note}>
-        amber raised, teal drawn down · two highs, always opposite each other
+        red raised, violet drawn down · two highs, always opposite each other
       </p>
 
       <p className={styles.note}>

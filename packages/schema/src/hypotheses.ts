@@ -83,9 +83,16 @@ export const H4C_Q = 0.05;
 export const H4C_REQUESTED_START_UTC = '1963-01-01T00:00:00.000Z';
 
 /**
- * HYPOTHESES.md "Total Test Matrix": 17 unblocked registered tests
- * (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H5 1). H6's 2 are deferred to Phase 5,
- * which is why the document's own "Total" is 19 rather than 17.
+ * HYPOTHESES.md "Total Test Matrix": 17 registered tests that have actually
+ * been run (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H5 1). H6's 2 are the difference
+ * between this and the document's own "Total" of 19.
+ *
+ * **H6 stopped being *blocked* on 2026-08-21** — its registration was completed
+ * against measured Global CMT data — but it is still unbuilt, so its 2 tests
+ * are not yet in this denominator. **Raise this to 19 in the same change that
+ * ships `h6.py`**, not before and not after: the correction has to cover every
+ * test that has been run, and H6's own entry records that the move changes no
+ * recorded value (0.0872 x 19 still exceeds 1).
  *
  * **This was 19 until 2026-08-20, when H4b was withdrawn unrun** and its 2
  * tests left the denominator. That is the same accounting H1, H2, H3 and H4

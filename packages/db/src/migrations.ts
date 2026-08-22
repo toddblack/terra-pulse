@@ -498,4 +498,78 @@ export const migrations: Migration[] = [
       DELETE FROM donki_chunks WHERE year < 2010;
     `,
   },
+  {
+    id: 13,
+    name: 'focal_mechanisms',
+    // Global CMT focal mechanisms — the fault orientation H6 resolves tidal
+    // stress onto, and the one thing that hypothesis was blocked on. Nothing
+    // here stored an orientation before: `vendor-gem-faults.mjs` drops dip and
+    // rake, and USGS moment-tensor products were measured and rejected. See
+    // packages/ingest/src/gcmt-mechanisms.ts and SOURCES.md.
+    //
+    // ## Both nodal planes are stored, and only the first is ever read
+    //
+    // Non-negotiable #7: the table holds what the source published. H6 reads
+    // plane 1 only, and the reason it may — resolved shear stress is identical
+    // on both planes — is on `NODAL_PLANE_ROUNDING_NOTE` in the schema package,
+    // together with why plane 2 must not enter a stress calculation (GCMT
+    // rounds both to whole degrees, so the two disagree by ~1.3% in resolved
+    // shear from rounding alone).
+    //
+    // ## Why there is no R-Tree here, unlike `earthquakes`
+    //
+    // The only spatial question asked of this table is "which mechanism belongs
+    // to this earthquake", and that is answered by matching origin *time*
+    // first: within ±60 s the candidate set is a handful of events globally, so
+    // distance is a filter over almost nothing. The index that matters is
+    // therefore the plain one on `time_utc`.
+    //
+    // That is the `findCandidateMatches` lesson applied in advance — it planned
+    // as a full scan of a source because only `source` was bound, and adding
+    // the time bound the predicate already implied made it 6,431x faster. Any
+    // query joining this table must bind a time range.
+    //
+    // ## Bookkeeping
+    //
+    // `gcmt_chunks` plays the role `goes_flare_chunks` does for GOES, and is
+    // keyed by a chunk *name* rather than a year because the units differ: the
+    // whole 1976-onward record arrives as one file whose name carries its last
+    // complete year (`jan76_dec25`), and the current year arrives as monthly
+    // files. A quiet month and an unfetched one are indistinguishable from row
+    // presence alone, which is the same reason every other chunk table exists.
+    //
+    // Adds only, so the create-copy-drop-rename pattern at the top of this file
+    // doesn't apply.
+    sql: `
+      CREATE TABLE focal_mechanisms (
+        id TEXT PRIMARY KEY,
+        time_utc TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        depth_km REAL NOT NULL,
+        magnitude REAL NOT NULL,
+        scalar_moment_dyne_cm REAL NOT NULL,
+        np1_strike REAL NOT NULL,
+        np1_dip REAL NOT NULL,
+        np1_rake REAL NOT NULL,
+        np2_strike REAL NOT NULL,
+        np2_dip REAL NOT NULL,
+        np2_rake REAL NOT NULL,
+        centroid_latitude REAL NOT NULL,
+        centroid_longitude REAL NOT NULL,
+        centroid_depth_km REAL NOT NULL,
+        reference_catalog TEXT NOT NULL
+      );
+
+      CREATE INDEX idx_focal_mechanisms_time ON focal_mechanisms (time_utc);
+      CREATE INDEX idx_focal_mechanisms_magnitude_time
+        ON focal_mechanisms (magnitude, time_utc);
+
+      CREATE TABLE gcmt_chunks (
+        chunk TEXT PRIMARY KEY,
+        event_count INTEGER NOT NULL,
+        completed_at TEXT NOT NULL
+      );
+    `,
+  },
 ];

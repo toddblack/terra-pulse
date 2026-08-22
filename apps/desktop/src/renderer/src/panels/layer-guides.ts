@@ -73,8 +73,8 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
       'The solid-Earth tide raised by the Moon and the Sun — how much the ground beneath each point is being lifted or pressed down at the instant on the scrubber. Shown as the equilibrium tide in centimetres: the height the surface would take if it responded instantly and completely.',
     reading: [
       'There are always two highs, on opposite sides of the planet, and they are exactly equal. That is the whole shape of a tide: the Moon pulls the near side away from the centre and the centre away from the far side, so both ends bulge. It is why there are two high tides a day and not one.',
-      'Amber is raised, teal is drawn down, and the neutral band between them is where the pull is sideways rather than up or down. A trough can only ever be about half as deep as a bulge is tall, so the two ends of the scale carry different numbers — read the legend rather than assuming the colours are symmetric.',
-      'The trough depth barely changes: it sits near −29 cm whatever the Moon is doing. Almost all of the spring/neap swing is on the amber side, where the bulge runs from about 30 cm at the quarters to nearly 60 cm at new and full moon. If the map looks washed out, that is usually a neap tide rather than a display problem.',
+      'Red is raised, violet is drawn down, and the neutral band between them is where the pull is sideways rather than up or down. A trough can only ever be about half as deep as a bulge is tall, so the two ends of the scale carry different numbers — read the legend rather than assuming the colours are symmetric.',
+      'The trough depth barely changes: it sits near −29 cm whatever the Moon is doing. Almost all of the spring/neap swing is on the red side, where the bulge runs from about 30 cm at the quarters to nearly 60 cm at new and full moon. If the map looks softer than usual, that is usually a neap tide rather than a display problem.',
       'The pattern is fixed in space and the Earth turns underneath it, which is why it sweeps westward as you scrub. The Moon dominates: the Sun contributes about 46% as much at mean distance.',
       'Scrub across a month and watch the range grow and shrink. When the Sun and Moon line up at new and full moon their bulges add — spring tides, around 80 cm peak to trough. At the quarters they fight, and the range falls to about 50 cm. Lunar distance matters even more: the pull goes as the inverse cube, so the Moon at perigee raises a tide 25% larger than at apogee.',
     ],
@@ -242,6 +242,7 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
     ],
     limits: [
       'It is a street map. It shows little about terrain and nothing at all about the seafloor, which is where a large share of earthquakes happen — use Relief or Seafloor for that.',
+      'Nothing is mapped above 85° north or below 85° south. The Web Mercator projection these tiles use cannot reach the poles, so those two caps are filled with a flat colour matched to the imagery at their edge. It is a patch over an absence, not map data — the Seafloor basemap does cover the poles.',
       'Tiles come from OpenStreetMap’s own servers under a usage policy, so this is not a basemap to hammer. The app identifies itself as that policy requires.',
     ],
     source:
@@ -259,6 +260,7 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
     limits: [
       'It is a static composite, not current satellite imagery. There is no cloud, no season, and no date attached to it.',
       'Relief shading exaggerates vertical scale to make terrain readable. Slopes are not to scale.',
+      'GIBS serves this through a Web Mercator tile set, which stops at 85° north and south. Both polar caps are filled with a flat colour matched to the imagery at their edge — a patch over an absence rather than map data. The Seafloor basemap does cover the poles.',
       'The licence terms for this imagery have not been verified in this project — worth checking before publishing an exported image.',
     ],
     source: 'NASA GIBS, BlueMarble_ShadedRelief_Bathymetry.',

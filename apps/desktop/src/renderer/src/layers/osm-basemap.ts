@@ -1,9 +1,11 @@
 import * as Cesium from 'cesium';
 import type { GlobeLayer } from '@terra-pulse/schema';
+import { attachPolarCaps, POLAR_CAP_COLORS, type PolarCaps } from './polar-caps';
 
 export function createOsmBasemap(): GlobeLayer {
   let viewer: Cesium.Viewer | null = null;
   let imageryLayer: Cesium.ImageryLayer | null = null;
+  let polarCaps: PolarCaps | null = null;
 
   return {
     id: 'osm',
@@ -30,6 +32,10 @@ export function createOsmBasemap(): GlobeLayer {
       // basemap effect while leaving the overlay effect alone — the overlay
       // would still be attached, still marked visible, and completely hidden.
       viewer.imageryLayers.lowerToBottom(imageryLayer);
+      // OSM's tiles stop at ±85.05°, so the poles would otherwise show the
+      // globe's bare base colour. Attached after the lowering above, so the
+      // caps end up beneath the basemap. See `polar-caps.ts`.
+      polarCaps = attachPolarCaps(viewer, POLAR_CAP_COLORS.osm);
     },
     unmount() {
       // If the viewer itself has already been destroyed, everything on it
@@ -40,14 +46,19 @@ export function createOsmBasemap(): GlobeLayer {
       if (viewer && !viewer.isDestroyed() && imageryLayer) {
         viewer.imageryLayers.remove(imageryLayer, true);
       }
+      polarCaps?.detach();
       viewer = null;
       imageryLayer = null;
+      polarCaps = null;
     },
     setTimeWindow() {
       // Basemaps are not time-driven.
     },
     setVisible(visible) {
       if (imageryLayer) imageryLayer.show = visible;
+      // The caps stand in for this basemap's missing tiles, so they follow it
+      // rather than lingering as two discs over whatever replaces it.
+      polarCaps?.setVisible(visible);
     },
   };
 }

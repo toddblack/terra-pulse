@@ -18,37 +18,79 @@ import { rampAt, type Rgb } from './field-encoding';
  * punch a dark notch through zero and make the quietest band the loudest thing
  * on screen.
  *
- * ## Why teal and amber
+ * ## Why violet and red-orange
  *
- * Hue is how four rasters stay apart. Already claimed: **aurora green**,
- * **field viridis** with a **blue/red** diverging pair, **magnetopause and
- * magnetometers cyan**, **TEC magenta** with a **purple/orange** diverging
- * pair. This layer takes **teal (low) and amber (high)**.
+ * This ramp was **teal and amber** and it disappeared into the terrain. The
+ * user's report — that it "gets a little lost on the relief and seafloor globe
+ * settings" — was exact, and measuring it produced a stronger statement than
+ * the complaint: **the two poles sat in the two worst hue regions available.**
  *
- * The cool arm is where the separation actually lives. With a light midpoint
- * both poles must be dark, and every dark warm colour converges on brown — so
- * the three diverging ramps here are necessarily similar on their warm side and
- * are told apart by their cool side: blue, purple, teal.
+ * Both basemaps were fetched and decoded (1024x512, area-weighted by cos(lat)),
+ * then every hue was taken to the most chroma sRGB will hold for it, composited
+ * over every real pixel at this layer's own `TIDE_ALPHA`, and scored on how far
+ * it separates from the neutral midpoint **in units of the terrain's own
+ * variation along that same direction** — signal over noise, where the noise is
+ * the planet underneath. That curve has two troughs:
+ *
+ *     hue 160-250 (teal - cyan - blue)     ratio 3.5-4.6   <- old low arm, 187
+ *     hue  60-110 (amber - olive)          ratio 4.4-4.9   <- old high arm, 68
+ *     hue 270-330 (blue-violet - magenta)  ratio 7.6-8.4
+ *     hue   0- 30 (pink-red - red)         ratio 7.2-7.3
+ *
+ * **Teal was also at the sRGB gamut ceiling.** The most chroma hue 187 can hold
+ * at that lightness *is* 0.097, which is what it used. That arm could not be
+ * made more vibrant. It could only be moved.
+ *
+ * The underlying cause is worth keeping, because it applies to any raster drawn
+ * over imagery: **terrain varies almost entirely in lightness.** Its principal
+ * axis is 99.3% lightness on relief and 95.0% on seafloor, explaining 94% and
+ * 92% of all variance, while its chroma barely moves (sd 0.013-0.029 in OKLab).
+ * Chroma is a nearly empty channel — and a light-midpoint diverging ramp spends
+ * its signal in lightness by construction, head-on against the basemap's
+ * loudest dimension. The fix is chroma, and hue matters mostly through how much
+ * chroma sRGB allows there.
+ *
+ * Violet is the pick because **neither basemap contains it at any strength**
+ * and it holds **0.264 chroma, 2.7x the teal it replaces**. Worst-case ratio
+ * across both arms and both basemaps goes **5.01 -> 6.63**.
+ *
+ * ## What this costs
+ *
+ * Hue is how the rasters stay apart, and this lands near **TEC's purple/orange
+ * diverging pair**. Taken deliberately, with the user's sign-off: both layers
+ * are off by default and both are *global* rasters, so they were never legible
+ * simultaneously whatever their hues. The remaining budget is **aurora green**,
+ * **field viridis** with a blue/red pair, **magnetopause and magnetometers
+ * cyan**, and now **TEC magenta and this violet sharing a region**.
+ *
+ * A blue/orange-red pair was the alternative and was rejected on measurement,
+ * not taste: it scores **5.35**, barely above the ramp it replaces, because its
+ * cool arm still shares a region with ocean.
  *
  * **Validated, not eyeballed**, with the same tool and against the same two
- * backdrops as the field ramp. The poles separate at **CVD dE 11.8 (protan)**
- * and **23.5 (tritan)** against a floor of 8, with **20.7 normal-vision**
- * separation against a floor of 15, and both sit inside the lightness band on
- * the light *and* dark basemaps.
- *
- * One check does not pass and is recorded rather than hidden: the teal pole's
- * chroma is **0.097 against a 0.10 floor**. That check exists to stop a
- * *categorical* slot reading grey beside its neighbours; teal is intrinsically
- * low-chroma at this lightness, and as one pole of a diverging ramp against a
- * light neutral it is unambiguous. If a future revision can raise it without
- * losing the CVD separation above, it should.
+ * backdrops as the field ramp. All six checks pass in both modes — including
+ * the **chroma floor, which teal never passed**. The poles separate at **CVD
+ * dE 32.0 (protan) / 27.0 (tritan)** against a floor of 8, and **35.8
+ * normal-vision** against a floor of 15.
  */
 
-/** Low arm — the belt between the bulges, where the surface is drawn down. */
-const LOW_ARM = ['#cfe9e5', '#a3d6cf', '#71c1b8', '#3aa89e', '#12938a', '#00857c'] as const;
+/**
+ * Low arm — the belt between the bulges, where the surface is drawn down.
+ *
+ * **The stops are paced by equal perceptual distance, not by eye**, generated
+ * along a straight OKLab line from the midpoint to the pole. `rampAt`
+ * interpolates by *index*, so evenly-spaced stops are what makes position along
+ * the ramp mean the same amount of colour change everywhere.
+ *
+ * The old ramp was not: its steps ran 3.8, 7.5, 8.5, 9.0, 6.6, 4.1 dE — bunched
+ * at both ends, with the smallest step exactly where most of the globe's cells
+ * sit at neap tide. `tide-encoding.test.ts` pins the evenness, because a
+ * hand-edited stop would reintroduce it silently.
+ */
+const LOW_ARM = ['#dacfeb', '#cab4ef', '#b997f1', '#aa7af2', '#9c58f1', '#8e2af0'] as const;
 
-/** High arm — under the Moon, and directly opposite it. */
-const HIGH_ARM = ['#f9e6c8', '#f3cf96', '#e9b25f', '#db9531', '#c9810f', '#b8730c'] as const;
+/** High arm — under the Moon, and directly opposite it. Paced as above. */
+const HIGH_ARM = ['#f3d0c7', '#f7b7a9', '#f99c8b', '#f97f6c', '#f85f4b', '#f43523'] as const;
 
 /**
  * Neutral midpoint, light on both backdrops.
@@ -70,7 +112,7 @@ const MIDPOINT: Record<BackdropTone, string> = {
  * from **-0.5 to +1**, so a trough can only ever be half as deep as a bulge is
  * tall. With one symmetric domain of +/-60 cm the low arm was therefore capped
  * at **49% of its range for all time** — half the ramp unreachable by
- * construction, and teal never darker than a wash.
+ * construction, and the cool arm never darker than a wash.
  *
  * Measured over the globe, area-weighted, that was worse than it sounds because
  * the *high* arm collapses too at neap tide, when the Sun and Moon partly
@@ -98,8 +140,9 @@ const MIDPOINT: Record<BackdropTone, string> = {
  *
  * The spring/neap signal survives too, and stays on the arm that carries it:
  * the trough depth is nearly constant (-28 to -30 cm at every phase measured)
- * while the bulge swings 30 to 59 cm, so it is the **amber** that deepens at
- * spring. The legend prints both ends so the asymmetry is stated, not implied.
+ * while the bulge swings 30 to 59 cm, so it is the **red-orange** that deepens
+ * at spring. The legend prints both ends so the asymmetry is stated, not
+ * implied.
  */
 export const TIDE_LOW_DOMAIN_M = 0.31;
 export const TIDE_HIGH_DOMAIN_M = 0.62;
@@ -114,10 +157,37 @@ export const TIDE_UNIT = 'cm';
  */
 export const TIDE_CLAMPED = false;
 
+/**
+ * Position within an arm is `strength ** TIDE_STRENGTH_GAMMA`, not `strength`.
+ *
+ * The globe's cells are not spread evenly across an arm. Measured area-weighted
+ * at neap tide, the median cell sits at **strength 0.199** — so a linear mapping
+ * spends most of the ramp on values most of the planet never has, and half the
+ * month the map reads as a wash. A mild gamma moves ramp onto where the cells
+ * actually are: neap median colour distance from neutral goes **3.6 -> 7.5 dE**
+ * and the share of the globe within dE 5 of neutral falls **60% -> 33%**.
+ *
+ * **This is a display transform and it is legitimate *here* specifically.** The
+ * layer draws the potential and makes no statistical claim — nothing downstream
+ * reads a colour back as a number, and `tideLegendStops` is generated from this
+ * same function, so the non-linearity shows up as non-uniformly spaced value
+ * labels rather than being hidden. Do not carry it onto an Analyze surface.
+ *
+ * **0.8 and not lower, deliberately.** The honest target is that perceived
+ * spring/neap contrast tracks the physical one: the median strength ratio
+ * between those phases is **2.82**. Evenly-paced stops alone give 2.93 — nearly
+ * exact. Gamma trades that fidelity for legibility, and it goes one way only:
+ * 0.6 shows a 2.8x physical difference as 1.9x. 0.8 keeps it at ~2.5 while
+ * still doubling what the quiet half of the month shows. Going lower to "make
+ * it pop" is spending the spring/neap signal, which is the thing the layer
+ * exists to show.
+ */
+export const TIDE_STRENGTH_GAMMA = 0.8;
+
 /** Colour for one equilibrium tide height, in metres. */
 export function tideColor(heightM: number, tone: BackdropTone): Rgb {
   const domain = heightM < 0 ? TIDE_LOW_DOMAIN_M : TIDE_HIGH_DOMAIN_M;
-  const strength = Math.min(1, Math.abs(heightM) / domain);
+  const strength = Math.min(1, Math.abs(heightM) / domain) ** TIDE_STRENGTH_GAMMA;
   const arm = heightM < 0 ? LOW_ARM : HIGH_ARM;
   return rampAt([MIDPOINT[tone], ...arm], strength);
 }
