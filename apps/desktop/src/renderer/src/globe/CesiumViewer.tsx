@@ -187,6 +187,16 @@ export function CesiumViewer() {
       fullscreenButton: false,
       infoBox: false, // replaced by our own EarthquakeInspector panel
     });
+    // What shows wherever no imagery has been drawn — before tiles load, and
+    // anywhere a basemap has no coverage. Cesium's default is `Color(0,0,0.5)`,
+    // which the globe shader gamma-corrects to roughly `#0000ba`: a saturated
+    // navy that reads as a rendering fault rather than as absence. That default
+    // is what made the Mercator polar gap look like a hole punched in the
+    // planet. The caps in `polar-caps.ts` close that gap directly; this is the
+    // backstop for anywhere else it could surface, including a basemap added
+    // later that nobody has thought about coverage for.
+    viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#22221f');
+
     viewerRef.current = viewer;
     setViewerReadyToken((token) => token + 1);
 

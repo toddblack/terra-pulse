@@ -11,6 +11,7 @@ import type {
   CmeArrival,
   DonkiProgress,
   GoesFlareProgress,
+  GcmtProgress,
   EarthquakeEvent,
   EarthquakeQuery,
   EarthquakeSyncResult,
@@ -284,6 +285,29 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.on('goes-flares:progress', listener);
       return () => {
         ipcRenderer.removeListener('goes-flares:progress', listener);
+      };
+    },
+  },
+  /**
+   * Global CMT focal mechanisms — H6's fault orientations.
+   *
+   * No query channel and no `onUpdated`: nothing on the globe draws mechanisms,
+   * so a finished download changes no view. The rows are read by the analysis
+   * path in main, never by the renderer.
+   */
+  gcmt: {
+    status: (): Promise<GcmtProgress> => ipcRenderer.invoke('gcmt:status'),
+    // Resolves when the whole backfill settles. The UI follows `onProgress`.
+    start: (): Promise<GcmtProgress> => ipcRenderer.invoke('gcmt:start'),
+    cancel: (): Promise<GcmtProgress> => ipcRenderer.invoke('gcmt:cancel'),
+
+    onProgress: (callback: (progress: GcmtProgress) => void): (() => void) => {
+      const listener = (_event: unknown, progress: GcmtProgress) => {
+        callback(progress);
+      };
+      ipcRenderer.on('gcmt:progress', listener);
+      return () => {
+        ipcRenderer.removeListener('gcmt:progress', listener);
       };
     },
   },

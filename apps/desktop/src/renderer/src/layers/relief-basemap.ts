@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import type { GlobeLayer } from '@terra-pulse/schema';
+import { attachPolarCaps, POLAR_CAP_COLORS, type PolarCaps } from './polar-caps';
 
 /**
  * Blue Marble with shaded relief *and* ocean bathymetry.
@@ -25,6 +26,7 @@ const GIBS_URL_TEMPLATE =
 export function createReliefBasemap(): GlobeLayer {
   let viewer: Cesium.Viewer | null = null;
   let imageryLayer: Cesium.ImageryLayer | null = null;
+  let polarCaps: PolarCaps | null = null;
 
   return {
     id: 'relief',
@@ -52,6 +54,10 @@ export function createReliefBasemap(): GlobeLayer {
       // basemap effect while leaving the overlay effect alone — the overlay
       // would still be attached, still marked visible, and completely hidden.
       viewer.imageryLayers.lowerToBottom(imageryLayer);
+      // GIBS serves this composite through a Mercator tile matrix set, so like
+      // OSM it stops at ±85.05° and leaves the poles bare. See `polar-caps.ts`,
+      // which also records why the EPSG:4326 endpoint isn't the answer.
+      polarCaps = attachPolarCaps(viewer, POLAR_CAP_COLORS.relief);
     },
     unmount() {
       // See osm-basemap.ts: if the viewer's already destroyed, it already
@@ -59,14 +65,17 @@ export function createReliefBasemap(): GlobeLayer {
       if (viewer && !viewer.isDestroyed() && imageryLayer) {
         viewer.imageryLayers.remove(imageryLayer, true);
       }
+      polarCaps?.detach();
       viewer = null;
       imageryLayer = null;
+      polarCaps = null;
     },
     setTimeWindow() {
       // Basemaps are not time-driven.
     },
     setVisible(visible) {
       if (imageryLayer) imageryLayer.show = visible;
+      polarCaps?.setVisible(visible);
     },
   };
 }

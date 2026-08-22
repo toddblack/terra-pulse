@@ -13,6 +13,7 @@ import type {
   CmeArrival,
   DonkiProgress,
   GoesFlareProgress,
+  GcmtProgress,
   EarthquakeEvent,
   EarthquakeQuery,
   EarthquakeSyncResult,
@@ -125,6 +126,15 @@ declare global {
         cancel(): Promise<GoesFlareProgress>;
         /** Subscribe to backfill progress; returns an unsubscribe function. */
         onProgress(callback: (progress: GoesFlareProgress) => void): () => void;
+      };
+      /** Global CMT focal mechanisms — H6's fault orientations. */
+      gcmt: {
+        status(): Promise<GcmtProgress>;
+        /** Settles when the whole backfill finishes — follow onProgress instead. */
+        start(): Promise<GcmtProgress>;
+        cancel(): Promise<GcmtProgress>;
+        /** Subscribe to backfill progress; returns an unsubscribe function. */
+        onProgress(callback: (progress: GcmtProgress) => void): () => void;
       };
       shell: {
         /** Resolves false if main refused to open the URL. */

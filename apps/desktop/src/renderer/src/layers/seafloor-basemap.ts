@@ -24,9 +24,17 @@ import type { GlobeLayer } from '@terra-pulse/schema';
  * level 8. The cost is that requests are rendered, not served from a CDN, so
  * panning is slower.
  *
- * Cesium's WMS defaults (version 1.1.1, web-mercator tiling) were checked
- * against the live service before this was written: GEBCO advertises EPSG:3857
- * and answers 1.1.1 GetMap requests, so nothing needs overriding.
+ * Cesium's WMS defaults were checked against the live service before this was
+ * written, and GEBCO answers 1.1.1 GetMap requests, so nothing needs
+ * overriding.
+ *
+ * Those defaults are **geographic** tiling, not Mercator — an earlier version
+ * of this comment said Mercator, which matters because it is the reason this
+ * basemap alone needs no polar caps. Cesium requests EPSG:4326 bounding boxes
+ * running to ±90°, and GEBCO renders them: `#3e85b2` over the Arctic Ocean,
+ * `#ffffff` over the Antarctic ice, both real imagery. OSM and relief are
+ * Mercator pyramids that stop at ±85.05° and have to be filled — see
+ * `polar-caps.ts`. Do not add caps here; they would paint over map that exists.
  *
  * `GEBCO_LATEST` (shaded relief) is used rather than `GEBCO_LATEST_2`
  * (colour-shaded for elevation) — the former carries more visible topographic

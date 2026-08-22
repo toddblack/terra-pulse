@@ -1,13 +1,34 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type * as Cesium from 'cesium';
 import { createOsmBasemap } from './osm-basemap';
 
+/**
+ * The layer now also attaches two polar caps, which paint a solid fill to a
+ * canvas. Node environment has none — same stub the raster layer tests use.
+ */
+beforeAll(() => {
+  vi.stubGlobal('document', {
+    createElement: () => ({
+      width: 0,
+      height: 0,
+      getContext: () => ({ fillStyle: '', fillRect: vi.fn() }),
+      toDataURL: () => 'data:image/png;base64,stub',
+    }),
+  });
+});
+
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
+
+/** The basemap itself, plus one imagery layer per polar cap. */
+const IMAGERY_LAYERS = 3;
+
 function createFakeViewer(options?: { destroyed?: boolean }): Cesium.Viewer {
-  const fakeLayer = {} as Cesium.ImageryLayer;
   return {
     isDestroyed: vi.fn(() => options?.destroyed ?? false),
     imageryLayers: {
-      addImageryProvider: vi.fn(() => fakeLayer),
+      addImageryProvider: vi.fn(() => ({}) as Cesium.ImageryLayer),
       remove: vi.fn(() => true),
       lowerToBottom: vi.fn(),
     },
@@ -27,10 +48,10 @@ describe('osm basemap layer', () => {
     const viewer = createFakeViewer();
 
     layer.mount(viewer);
-    expect(viewer.imageryLayers.addImageryProvider).toHaveBeenCalledOnce();
+    expect(viewer.imageryLayers.addImageryProvider).toHaveBeenCalledTimes(IMAGERY_LAYERS);
 
     layer.unmount();
-    expect(viewer.imageryLayers.remove).toHaveBeenCalledOnce();
+    expect(viewer.imageryLayers.remove).toHaveBeenCalledTimes(IMAGERY_LAYERS);
   });
 
   it('does nothing on unmount if never mounted', () => {
@@ -60,5 +81,19 @@ it('keeps the basemap at the bottom of the imagery stack', () => {
 
   layer.mount(viewer);
 
-  expect(viewer.imageryLayers.lowerToBottom).toHaveBeenCalledOnce();
+  // Once for the basemap, then once per polar cap — the caps are lowered after
+  // it so they end up underneath, which is what makes their deliberate overlap
+  // with the basemap's last tile row invisible.
+  expect(viewer.imageryLayers.lowerToBottom).toHaveBeenCalledTimes(IMAGERY_LAYERS);
+});
+
+it('fills the poles OSM cannot tile', () => {
+  // OSM's pyramid stops at ±85.05°, and what showed through was the globe's
+  // bare base colour: a saturated navy disc at each pole. See polar-caps.ts.
+  const layer = createOsmBasemap();
+  const viewer = createFakeViewer();
+
+  layer.mount(viewer);
+
+  expect(viewer.imageryLayers.addImageryProvider).toHaveBeenCalledTimes(IMAGERY_LAYERS);
 });

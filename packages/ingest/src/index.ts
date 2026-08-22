@@ -34,3 +34,4 @@ export * from './usgs-magnetometer';
 export * from './swpc-tec';
 export * from './nasa-donki';
 export * from './goes-flares';
+export * from './gcmt-mechanisms';

@@ -1177,9 +1177,71 @@ server-side proxying of all third-party API calls.
   **35-70% of M5+ and the product mix inverts over the record** (moment-tensor
   0% in 1980, 70% in 2010, 49% in 2024) — the same time-varying-completeness
   trap that set `SOLAR_WIND_COMPLETE_SINCE_YEAR`. **Global CMT** is the source
-  the tidal-triggering literature actually uses: 1976-present, 23 MB, no
-  account. It starts 1976 rather than 1970 and its completeness floor moves,
-  both of which need measuring before H6 is registered against it.
+  the tidal-triggering literature actually uses.
+
+  **Reconnaissance done 2026-08-21 — full measurements in `SOURCES.md`.** Both
+  open questions are answered and neither blocks:
+
+  - **1976 start, confirmed**, 70,044 events to 2025-12-31, **every one carrying
+    both nodal planes**. Cheaper than assumed: **8.8 MB gzipped**, 1.7 s — the
+    23 MB above was the uncompressed size. No account, no key; citation
+    requested rather than a licence condition. 93.1% of records already carry a
+    **USGS PDE hypocentre**, so the join to this app's catalogue is mostly an
+    identity match (p99 offsets 7.9 s and 40 km).
+  - **The floor does move**, Mc 5.4 → 4.9 with a sharp step at the 2004 analysis
+    change. But CMT's own completeness is not the binding limit — **orientation
+    coverage of this app's USGS target set is**, and at M5.0+ it runs
+    **39.5% → 80.6% across the record, a 2.0× swing**. It flattens at M5.5+
+    (84 → 94%) and is near-constant at M6.0+. **M5.5 lands as the usable floor,
+    independently reaching the same value this project already uses for rate
+    claims.**
+  - **The drift is probably tolerable anyway, and that is a real distinction
+    worth not fumbling.** It sank the *rate* tests because those correlate a
+    drifting catalogue against a driver that also varies over the record. H6
+    bins by **tidal phase**, which every era samples uniformly, so an aperiodic
+    drift reweights eras without biasing the null. The bias that *would* be
+    fatal is one periodic at a tidal frequency — and there is exactly one
+    candidate, **S2 at 12.000 h, locked to solar time and never averaging out**.
+    Tested and absent: Rayleigh amplitude on local solar time is **0.19% at
+    M5.0+ and 0.17% at M5.5+, p > 0.95**, every resultant at its noise floor.
+  - **Mechanism mix is stable across eras** (thrust 34-38%, no trend), which is
+    the selection effect that would have mattered most since H6's second subset
+    is subduction-only. Depth mix does drift at M5.0+ (shallow 72 → 82%) and is
+    much flatter at M5.5+.
+
+  **H6's registration was completed the same day and it is no longer blocked —
+  only unbuilt.** Every implied parameter now has a value in `HYPOTHESES.md`,
+  written against the measurements above rather than ahead of them. The four
+  that took real work:
+
+  - **Target floor M5.5+**, overriding the shared M5.0+, on the coverage table
+    above. Effective span 1976, not 1970.
+  - **Shear stress, not Coulomb — which deletes the fault-plane ambiguity
+    rather than managing it.** For conjugate nodal planes n₂ = u₁ and u₂ = n₁,
+    so resolved shear is n₁·σ·u₁ against u₁·σ·n₁, equal for any symmetric σ.
+    Verified against all 70,044 published mechanisms: **worst difference
+    3.3 × 10⁻¹⁶**. Normal stress differs on **98.5%** of them, so a Coulomb
+    formulation would need a plane chosen per event with no evidence — a free
+    parameter non-negotiable #3 forbids. Tanaka et al. (2002) chose shear for
+    the same reason.
+    - Corollary for whoever implements it: **read nodal plane 1 and never
+      consult plane 2.** GCMT rounds both to whole degrees, so the two listed
+      planes disagree in resolved shear by 1.3% median / 9.6% p90 — publication
+      precision that will read as physics.
+  - **Schuster's test on tidal phase**, with 0° at each local maximum of the
+    event's own computed shear-stress series. Referenced to that series rather
+    than to a named constituent, so no tidal component has to be chosen. The
+    registered "12 bins" become 30° presentation windows; the statistic is
+    unbinned.
+  - **"Subduction-zone" = hypocentre within 300 km of a Slab2 trench**, using
+    the 21 trench lines already vendored here. 12,419 raw M5.5+ → ~5,900 usable,
+    resolving ~2.6% modulation. Cross-checks against PB2002's 71 `SUB` segments
+    at the same radius to within 1% (12,283).
+
+  **What remains is engineering:** Skyfield + `de440s.bsp`, a Global CMT ingest
+  and its join to the stored catalogue, the tidal stress tensor, and an
+  `h6.py` in the engine. Running it returns the unblocked FDR denominator to 19,
+  which changes no recorded value.
 - **Milestone:** tidal triggering analysis — the project's best shot at a
   real signal.
 

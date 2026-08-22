@@ -242,6 +242,7 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
     ],
     limits: [
       'It is a street map. It shows little about terrain and nothing at all about the seafloor, which is where a large share of earthquakes happen — use Relief or Seafloor for that.',
+      'Nothing is mapped above 85° north or below 85° south. The Web Mercator projection these tiles use cannot reach the poles, so those two caps are filled with a flat colour matched to the imagery at their edge. It is a patch over an absence, not map data — the Seafloor basemap does cover the poles.',
       'Tiles come from OpenStreetMap’s own servers under a usage policy, so this is not a basemap to hammer. The app identifies itself as that policy requires.',
     ],
     source:
@@ -259,6 +260,7 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
     limits: [
       'It is a static composite, not current satellite imagery. There is no cloud, no season, and no date attached to it.',
       'Relief shading exaggerates vertical scale to make terrain readable. Slopes are not to scale.',
+      'GIBS serves this through a Web Mercator tile set, which stops at 85° north and south. Both polar caps are filled with a flat colour matched to the imagery at their edge — a patch over an absence rather than map data. The Seafloor basemap does cover the poles.',
       'The licence terms for this imagery have not been verified in this project — worth checking before publishing an exported image.',
     ],
     source: 'NASA GIBS, BlueMarble_ShadedRelief_Bathymetry.',

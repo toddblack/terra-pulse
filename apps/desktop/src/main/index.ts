@@ -51,6 +51,7 @@ import {
   startDonkiPolling,
 } from './ipc/nasa-donki';
 import { createGoesFlareController, registerGoesFlareIpcHandlers } from './ipc/goes-flares';
+import { createGcmtController, registerGcmtIpcHandlers } from './ipc/gcmt-mechanisms';
 import { registerExternalLinkIpcHandlers } from './ipc/external-links';
 import { createEngineController, registerAnalysisIpcHandlers } from './ipc/analysis';
 import { applyTileIdentity } from './tile-identity';
@@ -416,6 +417,20 @@ app
     registerGoesFlareIpcHandlers(goesFlares, notifySolarEventsUpdated);
     app.on('will-quit', () => {
       goesFlares.cancel();
+    });
+
+    // Global CMT focal mechanisms — H6's fault orientations. User-triggered
+    // like every other historical record here, and with no `onUpdated`
+    // counterpart: nothing on the globe draws mechanisms, so a completed
+    // download changes no view. It is read by the analysis path only.
+    const gcmt = createGcmtController(db, (progress) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('gcmt:progress', progress);
+      }
+    });
+    registerGcmtIpcHandlers(gcmt);
+    app.on('will-quit', () => {
+      gcmt.cancel();
     });
 
     // A backfill mid-flight would keep issuing requests and writing to a
