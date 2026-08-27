@@ -83,32 +83,30 @@ export const H4C_Q = 0.05;
 export const H4C_REQUESTED_START_UTC = '1963-01-01T00:00:00.000Z';
 
 /**
- * HYPOTHESES.md "Total Test Matrix": 17 registered tests that have actually
- * been run (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H5 1). H6's 2 are the difference
- * between this and the document's own "Total" of 19.
+ * HYPOTHESES.md "Total Test Matrix": **19** registered tests, all of them now
+ * run (H1b 4 + H2b 2 + H3b 4 + H4c 6 + H5 1 + H6 2). The matrix is complete.
  *
- * **H6 stopped being *blocked* on 2026-08-21** — its registration was completed
- * against measured Global CMT data — but it is still unbuilt, so its 2 tests
- * are not yet in this denominator. **Raise this to 19 in the same change that
- * ships `h6.py`**, not before and not after: the correction has to cover every
- * test that has been run, and H6's own entry records that the move changes no
- * recorded value (0.0872 x 19 still exceeds 1).
+ * **Raised from 17 to 19 on 2026-08-26, in the change that shipped `h6.py`** —
+ * which is exactly what the previous version of this comment instructed,
+ * "not before and not after": the correction has to cover every test that has
+ * been run, and H6's 2 could not be in the denominator until they were.
  *
- * **This was 19 until 2026-08-20, when H4b was withdrawn unrun** and its 2
- * tests left the denominator. That is the same accounting H1, H2, H3 and H4
- * already got: rule 5 keeps a *run* family's tests in the correction forever,
- * but nothing was ever computed under H4b, so there is no result being
- * dropped. See its entry for the measured reasons.
+ * **It was 19 before that too**, and briefly 17 in between: H4b's withdrawal
+ * on 2026-08-20 took 2 out, and H6's arrival puts 2 different ones back. The
+ * coincidence of the totals is not a reversal — the members differ.
  *
- * No recorded result changes as a consequence. The smallest raw p-value
- * anywhere in the matrix is H1b's 0.0872, and 0.0872 x 17 still exceeds 1, so
- * every adjusted value stays 1.0000 under either denominator — the five
- * completed runs did not need re-running.
+ * No recorded result changes as a consequence, and that was checked rather
+ * than assumed. The smallest raw p-value anywhere in the matrix is H1b's
+ * 0.0872, and 0.0872 x 19 still exceeds 1, so every adjusted value stays
+ * 1.0000 — none of the six completed families needed re-running.
  *
- * This is the conservative denominator the full-matrix FDR correction uses
- * until the rest of the matrix is actually run.
+ * **Growing this denominator is the safe direction; shrinking it is the move
+ * to be suspicious of.** A smaller family makes every adjusted p-value
+ * smaller, so it has to happen before a result exists, or not at all. That is
+ * why H4b's removal is documented in its own entry with the measurements
+ * behind it.
  */
-export const REGISTERED_MATRIX_TESTS = 17;
+export const REGISTERED_MATRIX_TESTS = 19;
 
 /** Seeded so a run is reproducible; echoed back in every result. */
 export const H4C_SEED = 20260818;
@@ -363,3 +361,68 @@ export const H5_Q = 0.05;
 export const H5_REQUESTED_START_UTC = '1970-01-01T00:00:00.000Z';
 
 export const H5_SEED = 2026082001;
+
+// ---------------------------------------------------------------------------
+// H6 — lunisolar tidal stress (HYPOTHESES.md, registered 2026-07-24, completed
+// 2026-08-21). The last registered pair, and the only one whose statistic is a
+// concentration on a circle rather than a rate.
+// ---------------------------------------------------------------------------
+
+/** HYPOTHESES.md H6, "Target set": **M5.5+, not the M5.0+ every other
+ * hypothesis here uses.**
+ *
+ * The binding limit is not Global CMT's completeness but what fraction of the
+ * target set can be given an orientation at all: at M5.0+ the *orientable*
+ * catalogue doubles across the record (39.5% in 1977-89 against 80.6% in
+ * 2013-25), so the target set would be "the subset that happened to get a CMT"
+ * rather than "M5.0+ events". At M5.5+ that swing is 1.13x. It is also the
+ * floor Tanaka, Ohtake & Sato (2002) used against this same catalogue.
+ *
+ * Deliberately NOT `ARCHIVE_ANALYSIS_MIN_MAGNITUDE`, which happens to be the
+ * same number: that constant governs Explore's own rate claims and is free to
+ * move without touching a registration. */
+export const H6_TARGET_MIN_MAGNITUDE = 5.5;
+
+export const H6_DECLUSTERING = 'gardner-knopoff' as const;
+
+/** HYPOTHESES.md H6, "Null model": origin instants redrawn uniformly without
+ * replacement from every hour in the span, keeping the same count and the same
+ * hypocentres and mechanisms, with phase recomputed. */
+export const H6_NULL_MODEL = 'uniform-redraw' as const;
+
+/** One-sided upper — excess concentration at some phase. */
+export const H6_TAIL = 'upper' as const;
+
+/** HYPOTHESES.md H6, "Binning": 12 bins of 30 degrees, **for presentation and
+ * the sinusoidal fit only**. The registered statistic is unbinned, so nothing
+ * about a p-value depends on this. */
+export const H6_PHASE_BINS = 12;
+
+/** HYPOTHESES.md H6, "Subsets": a hypocentre within 300 km of a Slab2 trench
+ * line counts as a subduction-zone event.
+ *
+ * **A declared free parameter**, fixed before any result existed, which is what
+ * non-negotiable #3 requires. It must not be adjusted now that one does. It was
+ * chosen for power (12,419 raw M5.5+ in range) and cross-checks to within 1%
+ * against PB2002's 71 `SUB` segments at the same radius. */
+export const H6_SUBDUCTION_RADIUS_KM = 300;
+
+/** Grid step for the shear-stress series each event's phase is read from.
+ *
+ * **Not a registered parameter** — the phase is defined by the extrema of the
+ * event's own series, and this only controls how precisely they are located.
+ * Measured against a 5-minute reference across 40 real fault geometries: p50
+ * error 0.16 deg, p99 2.75 deg at 1 h, against p99 17.9 deg at 2 h. One hour
+ * is where accuracy stops being free and starts being expensive — the whole
+ * hypothesis is 14,000 events x 444,000 grid points. */
+export const H6_PHASE_GRID_HOURS = 1;
+
+export const H6_ITERATIONS = 10_000;
+export const H6_Q = 0.05;
+
+/** HYPOTHESES.md H6, "Effective span": Global CMT starts in 1976 and is the
+ * only orientation source, so the target set cannot begin before it — even
+ * though the shared catalogue reaches 1970. */
+export const H6_REQUESTED_START_UTC = '1976-01-01T00:00:00.000Z';
+
+export const H6_SEED = 2026082601;

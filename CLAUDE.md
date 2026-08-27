@@ -2604,12 +2604,211 @@ from 2011), and **gaps arrive as JSON `null`, which passes `Number.isFinite`
 once you subtract it** — validating the difference instead of the operands moved
 Paratunka's p99 from 7.36 to 21,675 nT/min with no error at all.
 
-**Next — Phase 4's science is finished.** What remains:
+**The registered matrix is complete as of 2026-08-26.** All 19 tests across six
+families have been run and none was rejected. What remained after Phase 4 —
+H6, and PyInstaller bundling — has both shipped; see the two entries below.
 
-1. **H6 (2 tests)** is deferred to Phase 5 by its own registration and needs the
-   Skyfield / JPL DE440 ephemeris work. It is the only registered test left.
-2. ~~**Engineering, not science:** PyInstaller bundling~~ — **shipped
-   2026-08-20**, see below.
+**H6 — lunisolar tidal stress — shipped and run 2026-08-26. The registered
+matrix is complete: 19 tests across six families, all run, none rejected.**
+Clean null on both tests. All events: n=14,021, Schuster R=111.14 against a null
+mean of 105.40, p=0.4176. Subduction-zone: n=8,422, R=75.59 against a null mean
+of 84.78 — *below* the null — p=0.5362.
+
+- **The physics is in `pipeline/tides.py` and the chain is documented there.**
+  Degree-2 tidal tensor from DE440 positions in the **Earth-fixed (ITRF)**
+  frame → rotate to local ENU → surface derivatives of the potential → strain
+  via Love numbers h₂/l₂ → plane stress at a free surface → resolve onto nodal
+  plane 1. Sun and Moon only; planetary tides are ~10⁻⁷ of the Moon's and
+  §5.7 already says they get drawn but never computed.
+- **Validated by things that are true independently of this code**, which is
+  the only way to check a spherical-harmonic stress field — a wrong one is
+  still smooth and plausible:
+  - **A 4-year spectrum of the computed shear recovers the tidal constituents
+    to 4-5 significant figures**: K1 at 23.9345 h (0.000% off), M2 at 12.4208
+    against 12.4206 (0.002%), O1 at 25.8203 against 25.8193 (0.004%). Those
+    periods come from orbital mechanics and only appear correctly if the
+    ephemeris, the Earth-fixed frame, the tensor and the site geometry are all
+    right at once.
+  - **Areal strain matches the classical (2h₂ − 6l₂)W/(ga)** — the check that
+    the Love-number convention is the standard one.
+  - **The surface Laplacian identity**, which is what catches the easiest
+    mistake here: the second derivatives of W *along the sphere* are
+    `T′₁₁ − T′₃₃`, not `T′₁₁`. Dropping the curvature term is what you get by
+    using flat Cartesian derivatives, and nothing else would notice.
+  - **Conjugate planes give identical resolved shear** — this is H6's whole
+    justification for reading plane 1 only, so it is pinned rather than
+    trusted.
+  - **Skyfield agrees with the app's own analytic ephemeris** (`layers/tides.ts`)
+    across 1976-2026 to 0.018° median on the Moon's sub-point. The analytic
+    series' residual **0.35% distance error** is precisely why H6 wants DE440:
+    the potential goes as 1/d³, so that is ~1% in amplitude.
+  - Amplitude sanity: shear on the Tohoku mechanism runs ±300 Pa over a month,
+    which is the kPa-scale the literature reports.
+- **The phase definition does most of the robustness work, and it is worth
+  knowing why.** H6 measures phase from the **extrema of the event's own shear
+  series** — 0° at a maximum, ±180° at a minimum, linear between. So *any*
+  uniform scaling of the stress cancels: every elastic modulus, both Love
+  numbers, the Earth radius. That is what makes nominal constants defensible.
+  It also means no tidal constituent has to be named, which would have been a
+  free parameter under non-negotiable #3.
+- **What it does NOT survive, and both are in the reported caveats rather than
+  in a comment:** **ocean tide loading is not included** (comparable to the body
+  tide near coasts, which is where subduction earthquakes are, and it shifts
+  *phase*, not just amplitude — this is the main respect in which it is weaker
+  than Tanaka, Ohtake & Sato 2002), and the free-surface plane-stress condition
+  is applied at the hypocentre, which is fine shallow and degrades with depth.
+- **A methodological finding that justifies the registered null after the
+  fact.** A Schuster test would ordinarily use the closed-form Rayleigh tail.
+  Measured: the Monte Carlo null mean for all events is **105.40 against
+  Rayleigh's √(πN)/2 = 104.96** — 0.4%. But the subduction subset's is **84.78
+  against 81.35, 4.2% high**, which is 7.7 standard errors and not noise.
+  **Tidal phase is linear in time between extrema and those intervals are
+  unequal**, so uniform sampling in *time* is not uniform in *phase* — every
+  event carries a small mean resultant of its own. Across the globe those point
+  everywhere and cancel; inside the subduction subset the geometries are alike
+  and they partly align. An analytic p-value would have been computed against a
+  null 4.2% too low, in exactly the subset where the hypothesis expects the
+  strongest effect. Nothing turns on it here, but that is the mechanism by
+  which this test can produce a false positive.
+- **Decluster first, then drop events with no orientation** — never the other
+  way round. A dependent event shadows its neighbours whether or not Global CMT
+  inverted a mechanism for it, so filtering first lets aftershocks survive as
+  "independent". The registration says so in that order.
+
+**Its cost is structural, not incidental, and it is the reason H6 has its own
+IPC timeout.** Every hypothesis before this one reduces a trigger to a scalar.
+H6 computes a *time series per event*: ~14,000 events against ~444,000 hourly
+grid points is 6.2 billion values. Measured **114 s** end to end against the
+real catalogue, against the shared 120 s budget — so `analysis.ts` gives H6
+**600 s** and everything else keeps 120. A timeout is an engineering constant,
+not a registered parameter; changing it cannot change a result, only whether
+one arrives.
+
+Three things make 114 s possible at all, and all three are load-bearing:
+
+1. **The whole chain from tidal tensor to resolved shear is linear**, so each
+   event collapses to a 3×3 coefficient form and its entire series is one
+   matrix product against a tensor grid shared by every event
+   (`shear_coefficients`). **This is why the ITRF frame matters** — in an
+   inertial frame the site rotation is time-dependent and no such collapse
+   exists.
+2. **The subduction subset is a subset**, so phases are computed once and both
+   tests read the same numbers.
+3. **Extrema are found in bulk, event-major, in float32** (`batch_extrema`).
+
+**The optimisation that was measured and then rejected is worth recording**,
+because it looks obviously right: only ~20,000 of each event's 67,534 extrema
+ever bracket a drawn hour, so refining just those should save two thirds of the
+work. Profiled, *finding* the extrema is cheap (7 s) and *materialising* them is
+what costs 47 s — but the partial version needs a `cumsum` per event that costs
+more than it saves, and it introduced a real off-by-one: the reference brackets
+on **interpolated** extremum times while sample-index bracketing disagrees
+whenever a draw lands within half a sample of an extremum. It measured *slower*
+and wrong. The shipped version materialises everything.
+
+- **Grid resolution was measured, not chosen.** Against a 5-minute reference
+  over 40 real fault geometries: hourly gives p50 0.16° / p99 2.75° phase
+  error; 2-hourly gives p99 **17.9°**. Hourly it is.
+- **The minimum extremum gap is 0.01 h, and that is real physics rather than a
+  defect.** The shear series has near-degenerate shoulders that barely turn
+  over, and whether they register as a max/min pair flips at *any* resolution —
+  even a 30-minute grid shows 132° worst-case error against a 5-minute one
+  while its median is 0.036°. It is a property of the registered
+  extrema-based definition. It affects a handful of events out of 14,021 and
+  Schuster's resultant is untroubled by it.
+- **`rng.choice(..., replace=False)` must keep `shuffle=True`.** With
+  `shuffle=False` it is 6× faster and returns the sample in ascending order —
+  so event 0 would draw an early hour every iteration and the pairing of
+  geometry to time would stop being random. The draw matrix is ~560 MB at real
+  scale and cannot be generated per batch, because "without replacement"
+  couples every event within an iteration.
+- **A one-event subset is a degenerate histogram and it is not the obvious
+  one.** An *empty* subset makes every null resultant exactly 0; a **one-event**
+  subset makes every one exactly 1, because the resultant of a single unit
+  vector is a unit vector whatever its phase. That range is not zero — it is
+  ~4e-16 wide from floating point — and it still collapses 60 bin edges onto
+  each other. Found by a test, not in production.
+- **Slab2 trench coordinates are flat `[lon, lat, …]` — longitude first**,
+  which is the opposite of every other coordinate pair here. Read lat-first it
+  does not throw; it selects a different set of events as "subduction-zone" and
+  changes the second test with nothing to show for it.
+- **`main/analysis/trench-points.ts` is the only place main imports out of
+  `renderer/`**, and the alternatives were worse: the dataset is **gitignored**
+  and vendor-generated, so moving it into `packages/schema` would make the
+  types package depend on an artifact absent from a fresh clone, and vendoring
+  a second copy would let two copies of one dataset drift.
+- **`REGISTERED_MATRIX_TESTS` moved 17 → 19 in this change**, which is exactly
+  what its own comment instructed — "in the same change that ships `h6.py`, not
+  before and not after". It was 19 before H4b's withdrawal too; the coincidence
+  of totals is not a reversal, the members differ. No recorded result changed:
+  the smallest raw p anywhere is 0.0872 and 0.0872 × 19 still exceeds 1.
+  **Growing this denominator is the safe direction; shrinking it is the move to
+  be suspicious of.**
+- **The kernel is downloaded, never bundled** — see the ephemeris entry below.
+  H6 **refuses to run without it** rather than falling back to the analytic
+  ephemeris the tide layer uses: H6 registers DE440 by name, and substituting a
+  different one would run a different test while returning a fine-looking
+  number.
+- `test_h6.py` is **skipped without a kernel** (`TERRA_PULSE_TEST_EPHEMERIS`),
+  because a fixture standing in for the ephemeris would be testing something
+  other than the hypothesis. Its planted-signal test is the one that matters:
+  it places each event at a known phase *at that event's own site* and checks
+  they are found there. A first draft put every event at one site and
+  declustering correctly collapsed 900 events to 3 — co-located M6 events fall
+  inside each other's Gardner-Knopoff windows.
+
+**Still open on H6:** `preferredPhaseDeg` and the registered 12-bin
+`phaseHistogram` travel in the result and are **not yet rendered** in Analyze.
+For a tidal test the phase distribution is the most informative descriptive
+output there is, so this is worth doing.
+
+
+**The JPL ephemeris kernel — downloaded on demand, never bundled.** H6's only
+external prerequisite, and the only download here that lives in Analyze rather
+than under Explore's "Historical data".
+
+- **It could legally be bundled and deliberately is not.** DE440 is public
+  domain, unlike INTERMAGNET or GEM — so standing rule 1 does not apply and the
+  argument is purely cost: 31.2 MB on a 119.5 MB installer, for a capability
+  most sessions never reach. Nothing outside H6 touches it; the `tides` layer
+  computes lunar and solar positions analytically on purpose.
+- **`de440s.bsp`, not `de440.bsp`** — the *short-span* kernel, same ephemeris,
+  1849-2150 against the full one's 119.8 MB for 1550-2650. Nothing here reaches
+  outside that: Global CMT starts 1976 and the deep archive starts 1900. The
+  registration says "JPL DE440" and this is DE440.
+- **The path travels renderer → engine in the H6 request body, not the engine's
+  environment.** In dev the engine is *adopted* rather than spawned (`pnpm
+  engine:dev` in a second terminal), so main never gets to set its environment.
+  A path in the request works for adopted and spawned engines identically.
+- **The prerequisite card lives in Analyze, on H6's tab.** The five archive
+  panels are *historical records* the globe draws; this is a precondition for
+  one test that Explore never reads. Filing it under a heading that does not
+  describe it, in a mode that never needs it, several clicks from the button it
+  gates, would have been worse. Once present the card collapses to one line
+  naming the ephemeris — a met prerequisite is not news, but removing it
+  entirely would leave no way to confirm what a result was computed from.
+- **Verification is exact size plus the `DAF/SPK ` magic header.** There is no
+  published checksum — probed, and NAIF serves no `.md5`, `.sha256` or label
+  file. Downloads to `<name>.part` and renames only after verifying, so the
+  final path either does not exist or holds a complete kernel; a downloader
+  writing straight to the destination leaves a truncated file that *looks*
+  present, and Skyfield's later failure on it points nowhere near the cause.
+- **Two failure modes a size check alone accepts, both covered:** a server that
+  ignores `Range` and re-sends the whole body (appending would give a
+  right-length file of duplicated bytes — it restarts from zero instead), and a
+  right-length body that is not an SPK at all.
+- **It streams chunk by chunk rather than through `pipeline`, and that was a
+  real defect found by tightening a test that promised more than it checked.**
+  `pipeline` **destroys** the write stream when the source errors, discarding
+  its buffer — so cancelling threw away bytes that had already arrived and the
+  resume point went backwards, to zero with a fast source. Ending the sink
+  explicitly in `finally` flushes instead, and the part-file is now always a
+  true prefix. **Anything that wants a resumable partial download needs this
+  shape**; `pipeline` is for transfers you either complete or discard.
+- Verified against the live service: **31.2 MB from JPL in ~2 s**, exact byte
+  count and header confirmed. Both hosts advertise `accept-ranges: bytes`, so
+  resume is a real range request rather than a chunk replay, and the part-file's
+  size on disk *is* the resume record — no database involvement at all.
 
 **PyInstaller bundling — shipped.** A packaged Terra Pulse carries its own
 frozen engine and needs no system Python. `pnpm engine:bundle` →

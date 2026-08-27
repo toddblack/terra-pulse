@@ -18,7 +18,26 @@
  */
 export const CONTRACT_VERSION = 1;
 
-export type HypothesisId = 'H4c' | 'H3b' | 'H2b' | 'H1b' | 'H5';
+export type HypothesisId = 'H4c' | 'H3b' | 'H2b' | 'H1b' | 'H5' | 'H6';
+
+/**
+ * Hypotheses that cannot run without the JPL ephemeris kernel on disk.
+ *
+ * Declared here rather than inferred in the UI, and deliberately **not** added
+ * to `HypothesisSummary`: whether H6 needs an ephemeris is a fact about the
+ * registration, fixed in `HYPOTHESES.md`, not something the engine should get
+ * to report differently from one build to the next. The renderer reads this to
+ * decide whether to show the prerequisite card and whether Run is available.
+ *
+ * A `Set` over a union member that does not exist fails to compile, so adding a
+ * future ephemeris-dependent hypothesis is caught here the same way
+ * `HYPOTHESIS_COPY` and `useAnalysisStore`'s record catch a new id.
+ */
+export const EPHEMERIS_DEPENDENT_HYPOTHESES: readonly HypothesisId[] = ['H6'];
+
+export function requiresEphemeris(id: HypothesisId): boolean {
+  return EPHEMERIS_DEPENDENT_HYPOTHESES.includes(id);
+}
 
 export interface HypothesisSummary {
   id: HypothesisId;
@@ -114,6 +133,23 @@ export interface AnalysisTestResult {
    * really is an observed/expected ratio and renders with the `×` suffix.
    */
   statisticLabel: string | null;
+  /**
+   * Circular descriptives, for a hypothesis whose statistic is a concentration
+   * on a circle rather than a rate. H6 is the only one so far; every other
+   * hypothesis leaves both null.
+   *
+   * `preferredPhaseDeg` is the direction of Schuster's resultant — the tidal
+   * phase events cluster toward, if any. Reported even when the resultant sits
+   * at its noise floor, because withholding it there would make a null look
+   * like a missing value instead of a null.
+   *
+   * `phaseHistogram` is the registered 12-bin presentation view, running from
+   * −180°. `HYPOTHESES.md` H6 is explicit that the binning is "for presentation
+   * and the sinusoidal fit only" — the statistic itself is unbinned, so nothing
+   * about the p-value depends on it.
+   */
+  preferredPhaseDeg: number | null;
+  phaseHistogram: number[] | null;
 }
 
 export interface CorrectionInfo {

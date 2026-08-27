@@ -23,9 +23,10 @@ const EMPTY_RUN_STATE: HypothesisRunState = { result: null, running: false, erro
  * `AnalyzeShell` can behave like real tabs: switching away from a
  * hypothesis does not clear its last result, and switching back to it
  * restores exactly what was there. Written out explicitly (not built from
- * an array) so that widening `HypothesisId` — the next candidate is H1b —
- * fails to compile here until this record grows too, the same forcing
- * function `HYPOTHESIS_COPY` in `AnalyzeShell.tsx` already relies on.
+ * an array) so that widening `HypothesisId` fails to compile here until this
+ * record grows too, the same forcing function `HYPOTHESIS_COPY` in
+ * `AnalyzeShell.tsx` already relies on. It has now caught H1b, H5 and H6 in
+ * turn, which is the whole point of writing it out longhand.
  */
 const INITIAL_STATE: Record<HypothesisId, HypothesisRunState> = {
   H4c: EMPTY_RUN_STATE,
@@ -33,6 +34,7 @@ const INITIAL_STATE: Record<HypothesisId, HypothesisRunState> = {
   H2b: EMPTY_RUN_STATE,
   H1b: EMPTY_RUN_STATE,
   H5: EMPTY_RUN_STATE,
+  H6: EMPTY_RUN_STATE,
 };
 
 interface AnalysisState {

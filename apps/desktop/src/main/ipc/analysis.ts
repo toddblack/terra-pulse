@@ -61,16 +61,34 @@ import {
   H5_TARGET_MIN_MAGNITUDE,
   H5_TRIGGER_MIN_MAGNITUDE,
   H5_WINDOW_HOURS,
+  H6_DECLUSTERING,
+  H6_ITERATIONS,
+  H6_NULL_MODEL,
+  H6_PHASE_BINS,
+  H6_PHASE_GRID_HOURS,
+  H6_Q,
+  H6_REQUESTED_START_UTC,
+  H6_SEED,
+  H6_SUBDUCTION_RADIUS_KM,
+  H6_TAIL,
+  H6_TARGET_MIN_MAGNITUDE,
   REGISTERED_MATRIX_TESTS,
   flareAtLeast,
   isDirectImpact,
+  requiresEphemeris,
   type AnalysisResult,
   type AnalysisRunOutcome,
   type EngineStatus,
   type HypothesisId,
   type HypothesisSummary,
 } from '@terra-pulse/schema';
-import { queryAnalysisCatalog, queryCmeArrivals, querySolarFlares } from '@terra-pulse/db';
+import {
+  queryAnalysisCatalog,
+  queryCmeArrivals,
+  queryOrientedAnalysisCatalog,
+  querySolarFlares,
+} from '@terra-pulse/db';
+import { trenchPoints } from '../analysis/trench-points';
 import { completedGoesFlareYears } from '@terra-pulse/db';
 import { goesFlareYears } from '@terra-pulse/ingest';
 import { querySpaceWeather } from '@terra-pulse/db';
@@ -691,20 +709,93 @@ function buildH5Request(db: DatabaseSync, nowUtc: string): unknown {
   };
 }
 
-const REQUEST_BUILDERS: Record<HypothesisId, (db: DatabaseSync, nowUtc: string) => unknown> = {
+/**
+ * H6 — lunisolar tidal stress. The only builder here that carries a *file
+ * path*: the engine reads the JPL kernel itself, because Skyfield needs a real
+ * file and 31 MB of binary cannot travel in a JSON body.
+ *
+ * The path comes from the ephemeris controller rather than being recomputed,
+ * so "where the kernel is" has one definition. `analysis:run` refuses before
+ * reaching here when it is absent — see the guard in the handler.
+ */
+function buildH6Request(db: DatabaseSync, nowUtc: string, ephemerisPath: string): unknown {
+  // Queried from 1970 like every other hypothesis, not from H6's own 1976
+  // start: declustering wants the full run-up, and a 1975 mainshock can
+  // legitimately claim a 1976 aftershock. The engine filters its *target* set
+  // to the registered start afterwards.
+  const catalog = queryOrientedAnalysisCatalog(db, {
+    minMagnitude: H6_TARGET_MIN_MAGNITUDE,
+    startUtc: CATALOG_QUERY_START_UTC,
+    endUtc: nowUtc,
+  });
+
+  return {
+    contractVersion: CONTRACT_VERSION,
+    hypothesisId: 'H6',
+    parameters: {
+      targetMinMagnitude: H6_TARGET_MIN_MAGNITUDE,
+      declustering: H6_DECLUSTERING,
+      nullModel: H6_NULL_MODEL,
+      tail: H6_TAIL,
+      ephemerisPath,
+      phaseGridHours: H6_PHASE_GRID_HOURS,
+      phaseBins: H6_PHASE_BINS,
+      subductionRadiusKm: H6_SUBDUCTION_RADIUS_KM,
+      iterations: H6_ITERATIONS,
+      seed: H6_SEED,
+      q: H6_Q,
+      requestedStartUtc: H6_REQUESTED_START_UTC,
+      registeredMatrixTests: REGISTERED_MATRIX_TESTS,
+    },
+    catalog,
+    trenches: trenchPoints(),
+  };
+}
+
+const REQUEST_BUILDERS: Record<
+  HypothesisId,
+  (db: DatabaseSync, nowUtc: string, ephemerisPath: string) => unknown
+> = {
   H4c: buildH4cRequest,
   H3b: buildH3bRequest,
   H2b: buildH2bRequest,
   H1b: buildH1bRequest,
   H5: buildH5Request,
+  H6: buildH6Request,
 };
 
-const SUPPORTED_HYPOTHESES: readonly HypothesisId[] = ['H4c', 'H3b', 'H2b', 'H1b', 'H5'];
+const SUPPORTED_HYPOTHESES: readonly HypothesisId[] = ['H4c', 'H3b', 'H2b', 'H1b', 'H5', 'H6'];
+
+/**
+ * H6 gets its own, longer budget, and it is the only one that needs one.
+ *
+ * Every other hypothesis reduces each trigger to a scalar. H6 computes a
+ * *time series* per event — ~14,000 events against ~444,000 hourly grid points
+ * — so it is structurally an order of magnitude more work than the rest, not
+ * merely a slower version of them. Measured against the real catalogue it runs
+ * in roughly a minute and a half; the shared 120 s budget leaves no headroom
+ * for a slower machine, and a timeout there reads as a crash rather than as
+ * "this one takes a while".
+ *
+ * A timeout is an engineering constant, not a registered parameter — changing
+ * it cannot change a result, only whether one arrives.
+ */
+const H6_RUN_TIMEOUT_MS = 600_000;
+
+function runTimeoutFor(hypothesisId: HypothesisId): number {
+  return hypothesisId === 'H6' ? H6_RUN_TIMEOUT_MS : RUN_TIMEOUT_MS;
+}
 
 export function registerAnalysisIpcHandlers(
   db: DatabaseSync,
   engine: EngineController,
   now: () => Date = () => new Date(),
+  /**
+   * Resolves the verified ephemeris kernel's path, or null when it is not
+   * downloaded. Only H6 uses it. Optional so every existing caller and test
+   * keeps working — a hypothesis that does not need a kernel never asks.
+   */
+  resolveEphemerisPath: () => Promise<string | null> = () => Promise.resolve(null),
 ): void {
   ipcMain.handle('analysis:status', (): EngineStatus => engine.status());
 
@@ -725,9 +816,32 @@ export function registerAnalysisIpcHandlers(
       return { ok: false, reason, detail };
     }
 
-    const buildRequest = REQUEST_BUILDERS[hypothesisId as HypothesisId];
-    const request = buildRequest(db, now().toISOString());
-    const result = await engine.postJson<AnalysisResult>('/v1/analysis/run', request);
+    const id = hypothesisId as HypothesisId;
+
+    // H6 refuses without the JPL kernel rather than falling back to the
+    // analytic ephemeris the tide layer uses. H6 registers DE440 by name, and
+    // substituting a different ephemeris would run a different test than the
+    // registered one while returning a number that looks entirely fine.
+    let ephemerisPath = '';
+    if (requiresEphemeris(id)) {
+      const resolved = await resolveEphemerisPath();
+      if (resolved === null) {
+        return {
+          ok: false,
+          reason: 'ephemeris-missing',
+          detail: `${id} needs the JPL DE440 kernel. Download it from the Analyze panel.`,
+        };
+      }
+      ephemerisPath = resolved;
+    }
+
+    const buildRequest = REQUEST_BUILDERS[id];
+    const request = buildRequest(db, now().toISOString(), ephemerisPath);
+    const result = await engine.postJson<AnalysisResult>(
+      '/v1/analysis/run',
+      request,
+      runTimeoutFor(id),
+    );
     return result.ok ? { ok: true, result: result.json } : { ok: false, reason: result.reason, detail: result.detail };
   });
 }

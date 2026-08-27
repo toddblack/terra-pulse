@@ -60,6 +60,31 @@ and the analysis contract tests respectively) — if a change here makes one of
 those fixtures stop matching, the corresponding TS test is the other half of
 that signal, not a false alarm to silence on this side alone.
 
+**Run pytest from `engine/`, not from the repo root.** `tests/test_api.py`
+imports from sibling test modules (`from tests.test_h4c import ...`), which
+needs `engine/` on `sys.path`; from the root it fails to collect with
+`ModuleNotFoundError: No module named 'tests'`.
+
+### H6's tests need a real ephemeris kernel
+
+`tests/test_h6.py` is **skipped** unless `TERRA_PULSE_TEST_EPHEMERIS` points at
+a `de440s.bsp`. That is deliberate: H6's whole subject is DE440 positions, so a
+fixture standing in for the ephemeris would test something other than the
+hypothesis.
+
+The app downloads one on demand — Analyze mode, H6's tab, "Download" — into
+`%APPDATA%/@terra-pulse/desktop/ephemeris/de440s.bsp` (`~/Library/Application
+Support/...` on macOS). Point the variable at that file, or fetch your own from
+`https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/planets/de440s.bsp`
+(31.2 MB).
+
+```
+set TERRA_PULSE_TEST_EPHEMERIS=%APPDATA%\@terra-pulse\desktop\ephemeris\de440s.bsp
+.venv\Scripts\python.exe -m pytest
+```
+
+Everything else in the suite runs without it.
+
 ## Package layout
 
 - `api/` — FastAPI app, request/response contracts (Pydantic, hand-written —

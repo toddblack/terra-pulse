@@ -11,3 +11,4 @@ export * from './solar-events';
 export * from './hypotheses';
 export * from './analysis';
 export * from './focal-mechanisms';
+export * from './ephemeris';

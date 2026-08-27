@@ -8,6 +8,11 @@ dependencies = [
   "uvicorn>=0.32",
   "numpy>=2.1",
   "scipy>=1.14",
+  # H6 only. Skyfield reads the JPL DE440 kernel the app downloads at runtime —
+  # the *code* is a small pure-Python package and ships in the PyInstaller
+  # bundle; the 31.2 MB kernel does not. See packages/schema/src/ephemeris.ts
+  # for why that split. `jplephem` and `sgp4` come along as its dependencies.
+  "skyfield>=1.49",
 ]
 
 [project.optional-dependencies]

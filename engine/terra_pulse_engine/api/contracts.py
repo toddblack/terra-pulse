@@ -268,8 +268,120 @@ class AntipodalRunRequest(ApiModel):
     catalog: CatalogPayload
 
 
+class TidalParameters(ApiModel):
+    """H6's shape.
+
+    No baseline window, no lag windows, no trigger list and no series: the
+    statistic is a concentration of *phase*, and phase is computed from the
+    ephemeris rather than read off anything main can send. What main does have
+    to send is the one thing the engine cannot compute — where the DE440 kernel
+    is on this machine.
+    """
+
+    target_min_magnitude: float
+    declustering: Literal["gardner-knopoff"]
+    null_model: Literal["uniform-redraw"]
+    tail: Literal["upper"]
+    # Absolute path to `de440s.bsp`. Travels in the request rather than the
+    # engine's environment because in dev the engine is *adopted*, not spawned,
+    # so main never gets to set its environment. See
+    # apps/desktop/src/main/ipc/ephemeris.ts.
+    ephemeris_path: str
+    # Grid step for the shear-stress series the phase is read from. Registered
+    # as an implementation resolution, not a free parameter: the phase is
+    # defined by the series' own extrema, and this only controls how precisely
+    # they are located. Measured error at 1 h is p50 0.16 deg, p99 2.75 deg.
+    phase_grid_hours: float
+    # "for presentation and the sinusoidal fit only" -- HYPOTHESES.md H6. The
+    # statistic itself is unbinned.
+    phase_bins: int
+    # A hypocentre within this distance of a Slab2 trench line counts as a
+    # subduction-zone event. Registered at 300 km, before any result existed.
+    subduction_radius_km: float
+    iterations: int
+    seed: int
+    q: float
+    requested_start_utc: str
+    registered_matrix_tests: int
+
+
+class OrientedCatalogPayload(ApiModel):
+    """The catalogue plus each event's fault orientation, where one exists.
+
+    `np1_*` is Global CMT's **first** nodal plane and there is deliberately no
+    field for the second. Resolved shear is identical on conjugate planes, so
+    the second carries no information — and GCMT rounds both to whole degrees,
+    so an implementation given both would find a ~1.3% median disagreement that
+    is publication precision wearing the appearance of physics. See
+    HYPOTHESES.md H6 and packages/schema/src/focal-mechanisms.ts.
+
+    Events with no matched mechanism carry `None` and are excluded from the
+    target set by `run_h6` — *after* declustering, never before, because a
+    dependent event still shadows its neighbours whether or not anyone
+    inverted a mechanism for it.
+    """
+
+    time_ms: list[int]
+    latitude: list[float]
+    longitude: list[float]
+    magnitude: list[float]
+    np1_strike: list[float | None]
+    np1_dip: list[float | None]
+    np1_rake: list[float | None]
+
+    @model_validator(mode="after")
+    def _check(self) -> "OrientedCatalogPayload":
+        n = len(self.time_ms)
+        for name in ("latitude", "longitude", "magnitude", "np1_strike", "np1_dip", "np1_rake"):
+            if len(getattr(self, name)) != n:
+                raise ValueError("catalog arrays must all be the same length")
+        _validate_epoch_ms(self.time_ms, field="catalog.timeMs")
+        _validate_lat_lon(self.latitude, self.longitude)
+        if any(not math.isfinite(m) for m in self.magnitude):
+            raise ValueError("catalog.magnitude must be finite")
+        # A partially-populated mechanism is a join bug, not a missing value:
+        # all three angles come from one NDK record or none do.
+        for strike, dip, rake in zip(self.np1_strike, self.np1_dip, self.np1_rake, strict=True):
+            present = [v is not None for v in (strike, dip, rake)]
+            if any(present) and not all(present):
+                raise ValueError("np1 strike/dip/rake must be present together or absent together")
+        return self
+
+
+class TrenchPayload(ApiModel):
+    """Slab2 trench vertices, for the subduction-zone subset.
+
+    Sent by main rather than vendored into the engine so there is one copy of
+    this dataset in the repo — the globe already draws it. Densification is
+    main's job; this is consumed as points.
+    """
+
+    latitude: list[float]
+    longitude: list[float]
+
+    @model_validator(mode="after")
+    def _check(self) -> "TrenchPayload":
+        if len(self.latitude) != len(self.longitude):
+            raise ValueError("trench arrays must be the same length")
+        _validate_lat_lon(self.latitude, self.longitude)
+        return self
+
+
+class TidalRunRequest(ApiModel):
+    """H6. One catalogue carrying orientations, plus the trench geometry."""
+
+    contract_version: int
+    hypothesis_id: Literal["H6"]
+    parameters: TidalParameters
+    catalog: OrientedCatalogPayload
+    trenches: TrenchPayload
+
 AnalysisRunRequest = (
-    LagWindowRunRequest | HemisphereRunRequest | DiscreteTriggerRunRequest | AntipodalRunRequest
+    LagWindowRunRequest
+    | HemisphereRunRequest
+    | DiscreteTriggerRunRequest
+    | AntipodalRunRequest
+    | TidalRunRequest
 )
 
 
@@ -342,6 +454,20 @@ class TestResult(ApiModel):
     # means it really is an observed/expected ratio and renders with the
     # existing 'x' suffix.
     statistic_label: str | None = None
+    # Circular descriptives, for a hypothesis whose statistic is a
+    # concentration on a circle rather than a rate. H6 is the only one so far.
+    #
+    # `preferred_phase_deg` is the direction of Schuster's resultant — the
+    # phase events cluster toward, if any. It is reported even when the
+    # resultant is at its noise floor, because withholding it would make a null
+    # look like a missing value rather than a null.
+    #
+    # `phase_histogram` is the registered 12-bin presentation view, running
+    # from -180. HYPOTHESES.md H6 is explicit that the binning is "for
+    # presentation and the sinusoidal fit only" — the statistic itself is
+    # unbinned, so nothing about the p-value depends on it.
+    preferred_phase_deg: float | None = None
+    phase_histogram: list[int] | None = None
 
 
 class CorrectionInfo(ApiModel):

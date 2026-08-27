@@ -283,3 +283,85 @@
   font-size: 0.75rem;
   line-height: 1.5;
 }
+
+/* H6's ephemeris prerequisite.
+
+   Styled like `.engineNotice` rather than like an archive panel, and that is
+   the point of putting it here: both describe something the app needs before
+   it can do the thing you asked for. An unmet prerequisite is not an error, so
+   this carries no red — it is the same neutral panel the "starting the
+   engine…" notice uses, with a control on it. */
+.ephemerisCard {
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.375rem;
+  background-color: rgb(30 41 59 / 60%);
+}
+
+.ephemerisCard .sectionHeading {
+  margin-top: 0;
+}
+
+.ephemerisBody {
+  margin: 0 0 0.5rem;
+  color: rgb(203 213 225);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.ephemerisBody strong {
+  color: rgb(226 232 240);
+  font-weight: 600;
+}
+
+.ephemerisStatus {
+  margin: 0.375rem 0 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Secondary to `.runButton` — this is the step before the one you came for,
+   so it should not compete with Run for the same attention. Outlined rather
+   than filled, which is the app's existing way of saying "available, not the
+   main action". */
+.ephemerisButton {
+  padding: 0.35rem 0.75rem;
+  margin-top: 0.625rem;
+  border: 1px solid rgb(56 189 248 / 45%);
+  border-radius: 0.375rem;
+  background: none;
+  color: rgb(125 211 252);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ephemerisButton:hover {
+  border-color: rgb(56 189 248 / 75%);
+  background-color: rgb(56 189 248 / 12%);
+}
+
+/* Once satisfied the card collapses to one quiet line. A met prerequisite is
+   not news, but removing it entirely would leave no way to confirm which
+   ephemeris a result was computed from. */
+.ephemerisSatisfied {
+  margin: 0 0 0.75rem;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+.track {
+  height: 0.25rem;
+  margin-top: 0.5rem;
+  border-radius: 0.125rem;
+  background-color: rgb(51 65 85);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  background-color: rgb(14 165 233);
+  transition: width 0.2s ease;
+}

@@ -14,6 +14,7 @@ import type {
   DonkiProgress,
   GoesFlareProgress,
   GcmtProgress,
+  EphemerisProgress,
   EarthquakeEvent,
   EarthquakeQuery,
   EarthquakeSyncResult,
@@ -135,6 +136,18 @@ declare global {
         cancel(): Promise<GcmtProgress>;
         /** Subscribe to backfill progress; returns an unsubscribe function. */
         onProgress(callback: (progress: GcmtProgress) => void): () => void;
+      };
+      /**
+       * The JPL DE440 kernel H6 resolves tidal stress with — a single 31.2 MB
+       * file rather than a chunked backfill, so this counts bytes.
+       */
+      ephemeris: {
+        status(): Promise<EphemerisProgress>;
+        /** Settles when the download finishes — follow onProgress instead. */
+        start(): Promise<EphemerisProgress>;
+        cancel(): Promise<EphemerisProgress>;
+        /** Subscribe to download progress; returns an unsubscribe function. */
+        onProgress(callback: (progress: EphemerisProgress) => void): () => void;
       };
       shell: {
         /** Resolves false if main refused to open the URL. */

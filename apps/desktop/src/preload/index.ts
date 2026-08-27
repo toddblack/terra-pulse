@@ -12,6 +12,7 @@ import type {
   DonkiProgress,
   GoesFlareProgress,
   GcmtProgress,
+  EphemerisProgress,
   EarthquakeEvent,
   EarthquakeQuery,
   EarthquakeSyncResult,
@@ -308,6 +309,32 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.on('gcmt:progress', listener);
       return () => {
         ipcRenderer.removeListener('gcmt:progress', listener);
+      };
+    },
+  },
+  /**
+   * The JPL DE440 kernel H6 needs. Same shape as the backfills above, with one
+   * difference worth knowing: `status().path` is a real filesystem path, and it
+   * is here so the renderer can pass it back to main in the H6 run request.
+   *
+   * The renderer never opens it — it has no filesystem access and should not.
+   * The path is a token it carries, and it exists as a token because in dev the
+   * engine is adopted rather than spawned, so there is no environment for main
+   * to put it in.
+   */
+  ephemeris: {
+    status: (): Promise<EphemerisProgress> => ipcRenderer.invoke('ephemeris:status'),
+    // Resolves when the download settles. The UI follows `onProgress`.
+    start: (): Promise<EphemerisProgress> => ipcRenderer.invoke('ephemeris:start'),
+    cancel: (): Promise<EphemerisProgress> => ipcRenderer.invoke('ephemeris:cancel'),
+
+    onProgress: (callback: (progress: EphemerisProgress) => void): (() => void) => {
+      const listener = (_event: unknown, progress: EphemerisProgress) => {
+        callback(progress);
+      };
+      ipcRenderer.on('ephemeris:progress', listener);
+      return () => {
+        ipcRenderer.removeListener('ephemeris:progress', listener);
       };
     },
   },
