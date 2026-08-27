@@ -1,4 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { MECHANISM_JOIN_WINDOW_MS, matchMechanisms } from '@terra-pulse/schema';
+import { queryFocalMechanisms } from './focal-mechanism-queries';
 
 /**
  * The earthquake catalogue in the shape the Phase 4 engine actually wants:
@@ -59,5 +61,93 @@ export function queryAnalysisCatalog(
     latitude: rows.map((row) => row.latitude),
     longitude: rows.map((row) => row.longitude),
     magnitude: rows.map((row) => row.magnitude),
+  };
+}
+
+/**
+ * `AnalysisCatalog` plus each event's fault orientation, for H6.
+ *
+ * The three orientation arrays are parallel to the others and carry `null`
+ * where Global CMT has no mechanism for that event — about 11.5% of M5.5+
+ * events since 1976, measured. That is ordinary rather than exceptional, and
+ * the engine excludes those events *after* declustering, never before.
+ */
+export interface OrientedAnalysisCatalog extends AnalysisCatalog {
+  np1Strike: (number | null)[];
+  np1Dip: (number | null)[];
+  np1Rake: (number | null)[];
+}
+
+interface OrientedRow {
+  time_utc: string;
+  time_ms: number;
+  latitude: number;
+  longitude: number;
+  magnitude: number;
+}
+
+/**
+ * The catalogue with Global CMT orientations joined on, in time order.
+ *
+ * The join lives here rather than in main so there is one definition of it,
+ * and it is `matchMechanisms` — the same sweep the ingest verification used,
+ * with its one-mechanism-to-one-event rule. Reimplementing "nearest mechanism"
+ * at the call site would drop that rule, and the failure is quiet: a smaller
+ * event seconds after a mainshock silently inherits the mainshock's fault
+ * orientation. See `matchMechanisms` for the 53 real cases behind it.
+ *
+ * Mechanisms are read over the same time range as the events, widened by the
+ * join window so an event at either edge can still match one just outside it.
+ * Without that widening the first and last events of the span would be
+ * systematically unoriented — a small effect, and exactly the kind that is
+ * invisible until someone asks why coverage dips at the ends.
+ */
+export function queryOrientedAnalysisCatalog(
+  db: DatabaseSync,
+  options: { minMagnitude: number; startUtc: string; endUtc: string },
+): OrientedAnalysisCatalog {
+  const rows = db
+    .prepare(
+      `SELECT time_utc,
+              CAST(strftime('%s', time_utc) AS INTEGER) * 1000 AS time_ms,
+              latitude, longitude, magnitude
+         FROM earthquakes
+        WHERE magnitude >= ? AND time_utc >= ? AND time_utc < ?
+        ORDER BY time_utc`,
+    )
+    .all(options.minMagnitude, options.startUtc, options.endUtc) as unknown as OrientedRow[];
+
+  const padMs = MECHANISM_JOIN_WINDOW_MS;
+  const mechanisms = queryFocalMechanisms(db, {
+    startUtc: new Date(Date.parse(options.startUtc) - padMs).toISOString(),
+    endUtc: new Date(Date.parse(options.endUtc) + padMs).toISOString(),
+  });
+
+  const events = rows.map((row, index) => ({
+    index,
+    timeUtc: row.time_utc,
+    latitude: row.latitude,
+    longitude: row.longitude,
+  }));
+
+  const np1Strike: (number | null)[] = rows.map(() => null);
+  const np1Dip: (number | null)[] = rows.map(() => null);
+  const np1Rake: (number | null)[] = rows.map(() => null);
+
+  for (const match of matchMechanisms(events, mechanisms).matched) {
+    const { index } = match.event;
+    np1Strike[index] = match.mechanism.nodalPlane1.strike;
+    np1Dip[index] = match.mechanism.nodalPlane1.dip;
+    np1Rake[index] = match.mechanism.nodalPlane1.rake;
+  }
+
+  return {
+    timeMs: rows.map((row) => row.time_ms),
+    latitude: rows.map((row) => row.latitude),
+    longitude: rows.map((row) => row.longitude),
+    magnitude: rows.map((row) => row.magnitude),
+    np1Strike,
+    np1Dip,
+    np1Rake,
   };
 }

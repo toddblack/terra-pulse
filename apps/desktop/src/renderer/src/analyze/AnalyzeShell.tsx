@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import type { AnalysisTestResult, HypothesisId } from '@terra-pulse/schema';
+import { requiresEphemeris, type AnalysisTestResult, type HypothesisId } from '@terra-pulse/schema';
 import { useAnalysisStore } from './useAnalysisStore';
 import { useEngineStatus } from './useEngineStatus';
 import { useEngineHypotheses } from './useEngineHypotheses';
+import { useEphemerisStatus } from './useEphemerisStatus';
+import { EphemerisRequirement } from './EphemerisRequirement';
 import { layoutNullHistogram, observedFraction } from './null-histogram';
 import { formatCount, formatPValue, formatStatistic } from './result-format';
 import styles from './AnalyzeShell.module.css';
@@ -44,6 +46,12 @@ const HYPOTHESIS_COPY: Record<HypothesisId, { title: string; statement: string; 
       "M6.0+ earthquakes are followed by an excess of M5.0+ events at short distances from the mainshock's antipode.",
     registeredDate: '2026-07-24',
   },
+  H6: {
+    title: 'H6 — Lunisolar tidal stress',
+    statement:
+      "Declustered M5.5+ earthquake occurrence is not uniformly distributed in lunisolar tidal phase, where phase is measured on the tidal shear stress resolved onto the event's own focal-mechanism fault plane.",
+    registeredDate: '2026-07-24',
+  },
 };
 
 /**
@@ -76,6 +84,13 @@ export function AnalyzeShell() {
   // subscribe to here; this is a plain derived value).
   const [explicitHypothesisId, setExplicitHypothesisId] = useState<HypothesisId | null>(null);
   const selectedHypothesisId = explicitHypothesisId ?? implementedHypotheses[0]?.id ?? null;
+
+  // H6 is the only hypothesis with a data prerequisite the app does not ship.
+  // Read here as well as in the card so the Run button and the card cannot
+  // disagree about whether the kernel is on disk — see `useEphemerisStatus`.
+  const ephemeris = useEphemerisStatus();
+  const needsEphemeris = selectedHypothesisId !== null && requiresEphemeris(selectedHypothesisId);
+  const ephemerisBlocking = needsEphemeris && !ephemeris.present;
 
   // Each tab keeps its own last result live underneath it (`useAnalysisStore`
   // is keyed by hypothesis) — switching tabs never clears a result and never
@@ -161,10 +176,21 @@ export function AnalyzeShell() {
         </div>
       )}
 
+      {needsEphemeris && <EphemerisRequirement progress={ephemeris} />}
+
       <button
         type="button"
         className={styles.runButton}
-        disabled={engineStatus.state !== 'ready' || running || selectedHypothesisId === null}
+        disabled={
+          engineStatus.state !== 'ready' ||
+          running ||
+          selectedHypothesisId === null ||
+          // Refuses rather than falling back to the analytic ephemeris the tide
+          // layer uses. H6 registers DE440 by name, and quietly substituting a
+          // different ephemeris would run a different test than the registered
+          // one while returning a number that looks entirely fine.
+          ephemerisBlocking
+        }
         onClick={() => {
           if (selectedHypothesisId) void run(selectedHypothesisId);
         }}

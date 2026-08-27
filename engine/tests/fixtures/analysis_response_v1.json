@@ -183,7 +183,9 @@
       },
       "statisticLabel": null,
       "observedLabel": null,
-      "expectedLabel": null
+      "expectedLabel": null,
+      "preferredPhaseDeg": null,
+      "phaseHistogram": null
     },
     {
       "id": "H4c/kp>=6/24-48h",
@@ -338,7 +340,9 @@
       },
       "statisticLabel": null,
       "observedLabel": null,
-      "expectedLabel": null
+      "expectedLabel": null,
+      "preferredPhaseDeg": null,
+      "phaseHistogram": null
     },
     {
       "id": "H4c/kp>=6/48-72h",
@@ -493,7 +497,9 @@
       },
       "statisticLabel": null,
       "observedLabel": null,
-      "expectedLabel": null
+      "expectedLabel": null,
+      "preferredPhaseDeg": null,
+      "phaseHistogram": null
     },
     {
       "id": "H4c/dst<=-100/0-24h",
@@ -648,7 +654,9 @@
       },
       "statisticLabel": null,
       "observedLabel": null,
-      "expectedLabel": null
+      "expectedLabel": null,
+      "preferredPhaseDeg": null,
+      "phaseHistogram": null
     },
     {
       "id": "H4c/dst<=-100/24-48h",
@@ -803,7 +811,9 @@
       },
       "statisticLabel": null,
       "observedLabel": null,
-      "expectedLabel": null
+      "expectedLabel": null,
+      "preferredPhaseDeg": null,
+      "phaseHistogram": null
     },
     {
       "id": "H4c/dst<=-100/48-72h",
@@ -958,7 +968,9 @@
       },
       "statisticLabel": null,
       "observedLabel": null,
-      "expectedLabel": null
+      "expectedLabel": null,
+      "preferredPhaseDeg": null,
+      "phaseHistogram": null
     }
   ],
   "correction": {

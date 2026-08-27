@@ -1157,10 +1157,13 @@ server-side proxying of all third-party API calls.
   of six families run.
 
 ### Phase 5 — Astronomical Extension
-- Skyfield + DE440 integration — **`de440s.bsp` is the one to take: 32.7 MB and
-  covering 1849-2150**, which spans the whole archive. Full `de440.bsp` is
-  119.8 MB and buys only 1550-1849 and 2150-2650, which nothing here touches.
-  Same ephemeris, short-span kernel, so the registration is honoured.
+- ~~Skyfield + DE440 integration~~ — **shipped 2026-08-26.** `de440s.bsp` is
+  the short-span kernel: 31.2 MB covering 1849-2150, against the full
+  `de440.bsp`'s 119.8 MB for 1550-2650, which nothing here reaches. Same
+  ephemeris, so the registration is honoured. **Downloaded on demand into
+  userData, not bundled** — it is public domain so it legally could be, but it
+  is 31 MB for one test and nothing outside H6 reads it. The prerequisite card
+  lives in Analyze on H6's tab, not with the archive panels.
 - Planetary and lunar position layer (labeled decorative)
 - **Lunisolar tidal stress tensors**, resolved onto fault geometry
 - ~~Tidal stress globe surface~~ — **the potential half shipped 2026-08-20** as
@@ -1169,7 +1172,10 @@ server-side proxying of all third-party API calls.
   *potential*, not stress — stress is a tensor and needs a fault plane to become
   a number, which is H6's problem and not a global scalar. Timeline track still
   open.
-- H6 testing — **blocked on orientations, not on the ephemeris.** H6 registers
+- ~~H6 testing~~ — **shipped and run 2026-08-26; clean null on both tests, and
+  the registered matrix is now complete at 19 of 19.** Kept below for the
+  reconnaissance that shaped it. It was blocked on orientations, not on the
+  ephemeris: H6 registers
   stress resolved onto mapped fault planes "where available; otherwise onto the
   focal mechanism nodal planes", and this app stores neither:
   `vendor-gem-faults.mjs` explicitly drops dip and rake, and no focal mechanisms
@@ -1242,8 +1248,24 @@ server-side proxying of all third-party API calls.
   and its join to the stored catalogue, the tidal stress tensor, and an
   `h6.py` in the engine. Running it returns the unblocked FDR denominator to 19,
   which changes no recorded value.
-- **Milestone:** tidal triggering analysis — the project's best shot at a
-  real signal.
+- **Milestone: reached 2026-08-26.** Tidal triggering analysis — the project's
+  best shot at a real signal — was run and came back null. All events:
+  n=14,021, Schuster R=111.14 against a null mean of 105.40, p=0.4176.
+  Subduction-zone: n=8,422, R=75.59 against a null mean of 84.78, p=0.5362.
+  Nothing rejected at q=0.05, before or after correction.
+
+  **That is the whole registered matrix answered: 19 tests, six families, no
+  rejections.** The hypothesis with the highest registered mechanism
+  plausibility and an existing peer-reviewed literature behind it returned the
+  same clean null as the five before it. `HYPOTHESES.md` rule 5 — null results
+  are results — is now the finding rather than a policy, and reporting it with
+  the same weight a rejection would get is the point of the whole exercise.
+
+  Two honest limits on that null, both in the reported caveats: **ocean tide
+  loading is not modelled** (comparable to the body tide near coasts, and it
+  shifts phase — the main respect in which this is weaker than Tanaka, Ohtake &
+  Sato 2002, whose positive result corrected for it), and the free-surface
+  stress condition degrades with hypocentre depth.
 
 ### Phase 6 — Optimization & Polish
 - Profile the engine, identify hot paths

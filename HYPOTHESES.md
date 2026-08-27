@@ -884,7 +884,7 @@ a family of implicit radius tests.
 |---|---|
 | **Registered** | 2026-07-24 |
 | **Completed** | **2026-08-21** — the ★ fields below were implied but never stated. Filled in before any code ran, per rule 2. See "Why this is a completion" below. |
-| **Status** | Not yet run (Phase 5) |
+| **Status** | **Run 2026-08-26.** Not rejected. |
 | **Statement** | Declustered M5.5+ earthquake occurrence is not uniformly distributed in lunisolar tidal phase, where phase is measured on the tidal shear stress resolved onto the event's own focal-mechanism fault plane. |
 | **Ephemeris** | JPL DE440 via Skyfield — kernel `de440s.bsp` (32.7 MB, covering 1849-2150) ★ |
 | **Orientation source** ★ | **Global CMT**, `jan76_dec25.ndk` plus `NEW_MONTHLY/`. Joined to each USGS event by origin time and hypocentre: the nearest CMT event within **±60 s and ≤100 km**. Events with no match are excluded, and the excluded fraction is reported per era. |
@@ -900,7 +900,7 @@ a family of implicit radius tests.
 | **Subsets** | All events; subduction-zone events only (2 subsets). ★ **"Subduction-zone" is defined as a hypocentre within 300 km of a Slab2 trench line**, using the 21 trench lines already vendored here. |
 | **Tests in family** | 2 |
 | **Mechanism plausibility** | **Highest of any hypothesis here.** Established physical mechanism, existing peer-reviewed literature finding weak but detectable tidal triggering. Starting references: Tanaka; Cochran, Vidale & Tanaka. |
-| **Result** | — |
+| **Result** | **Clean null, both tests.** All events: n=14,021, Schuster R=111.14 against a null mean of 105.40 (sd 55.74), p=0.4176 raw, 1.0000 adjusted. Subduction-zone: n=8,422, R=75.59 against a null mean of 84.78 (sd 44.56) — *below* the null — p=0.5362 raw, 1.0000 adjusted. Seed 2026082601. |
 
 **Why this is a completion and not a fifth supersession.** The matrix section
 below warns that a fifth supersession would mean the "measure the source first"
@@ -984,11 +984,37 @@ that rule guards against is a radius chosen *after* seeing the distribution,
 which is exactly what H5's own post-run note records. It must not be adjusted
 once a result is known.
 
-**Running H6 returns the FDR denominator to 19.** Its 2 tests are currently
-counted in the 19-test total but excluded from the 17 *unblocked*. No recorded
-result changes: the smallest raw p-value anywhere in this file is 0.0872, and
-0.0872 × 19 still exceeds 1, so every adjusted value stays 1.0000. Every
-already-run family was reported against 19 before H4b's withdrawal anyway.
+**H6 ran on 2026-08-26 and the FDR denominator returned to 19**, as this entry
+said it would. `REGISTERED_MATRIX_TESTS` moved 17 → 19 in the same change that
+shipped `h6.py` — not before it and not after, because the correction has to
+cover every test that has been run and H6's 2 could not be in the denominator
+until they were. No recorded result changed: the smallest raw p-value anywhere
+in this file is 0.0872, and 0.0872 × 19 still exceeds 1, so every adjusted
+value stays 1.0000 and no completed family needed re-running.
+
+**The matrix is now complete: 19 registered tests, all 19 run, none rejected.**
+
+**One methodological finding from the run, worth recording because it justifies
+a registered choice after the fact rather than undermining one.** The registered
+null is a 10,000-iteration Monte Carlo, where a Schuster test would ordinarily
+use the closed-form Rayleigh tail `P(R ≥ r) = exp(−r²/N)`. Measured here, the
+Monte Carlo null mean for the all-events test is **105.40 against Rayleigh's
+√(πN)/2 = 104.96** — agreement to 0.4%. But the subduction-zone subset's null
+mean is **84.78 against Rayleigh's 81.35, 4.2% high**, which is 7.7 standard
+errors of the Monte Carlo mean and not sampling noise.
+
+The cause is real and specific: tidal phase is *linear in time between
+successive extrema*, and those intervals are unequal, so uniform sampling in
+time does **not** give uniform phase for an individual event. Each event
+therefore carries a small mean resultant vector of its own. Across the whole
+catalogue those vectors point in every direction and cancel; inside the
+subduction subset, where the geometries are alike (shallow thrust on trench
+strike), they partly align and inflate the null. An analytic Rayleigh p-value
+would have been computed against a null that is 4.2% too low for exactly the
+subset where the hypothesis expects the strongest effect. Both p-values here
+are well away from any threshold, so nothing turns on it — but this is the
+mechanism by which a Schuster test on tidal phase can produce a false positive,
+and the registered Monte Carlo null is what prevents it.
 
 ---
 
@@ -1088,12 +1114,12 @@ to withdraw rather than to write H4d. That is the rule working — the outcome i
 is supposed to produce is sometimes "don't run this", not "register it again
 more carefully."
 
-## Progress against the matrix (2026-08-20)
+## Progress against the matrix (2026-08-26)
 
-**All 17 unblocked tests have been run. None was rejected.** Nothing remains
-blocked. H6's 2 were deferred to Phase 5 by its own registration when this was
-written; **that stopped being true on 2026-08-21** — see the note under the
-table.
+**All 19 registered tests have been run. None was rejected.** Nothing is
+blocked, deferred, or outstanding: H6 — the last of them, and the one with the
+highest registered mechanism plausibility — ran on 2026-08-26 and returned a
+clean null on both of its tests.
 
 | Family | Tests | Run | Outcome |
 |---|---|---|---|
@@ -1103,15 +1129,22 @@ table.
 | H4c | 6 | 2026-08-18 | Not rejected — ratios 0.974-1.013 |
 | H5 | 1 | 2026-08-20 | Not rejected — KS D⁺ 0.0016, below the null mean |
 | ~~H4b~~ | 0 | — | **Withdrawn unrun 2026-08-20** — see its entry |
-| H6 | 2 | — | **Registration completed 2026-08-21; unblocked, not yet run** |
+| H6 | 2 | 2026-08-26 | Not rejected — R/N 0.0079 and 0.0090, one below its null mean |
 
 **H5 is no longer blocked on a magnitude-of-completeness map**, and that map is
 not merely deferred — the registered null makes it unnecessary. See H5's entry.
 
-**H6 is no longer deferred, as of 2026-08-21.** Global CMT was fetched and
-measured in full — 70,044 events, 1976-2025, every one carrying both nodal
+**H6 ran on 2026-08-26 and the matrix is complete.** Global CMT was fetched and
+measured in full first — 70,044 events, 1976-2025, every one carrying both nodal
 planes — and the parameters H6 left implied were completed in its entry against
-those measurements. Nothing about it is blocked any more; it is unbuilt.
+those measurements before any code ran. **All 19 registered tests across six
+families have now been run, and none was rejected.**
+
+The joined target set came out at **14,021 declustered, oriented M5.5+ events
+since 1976**, from 26,808 raw. Per-era orientation coverage measured by the
+shipped join reproduces the reconnaissance table in H6's own entry to within
+0.3 points on every era (84.2/94.9/93.7 against 84.3/95.1/94.0), which is an
+independent confirmation of the join rather than a restatement of it.
 
 **When it runs, the unblocked denominator returns to 19** and the summary above
 becomes "17 of 19". No recorded value changes: 0.0872 × 19 still exceeds 1, and

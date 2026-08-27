@@ -43,7 +43,11 @@ engine/build/
 # every dev/build start, so committing them would just duplicate a dependency.
 apps/desktop/src/renderer/public/cesium/
 
-# Ephemeris kernel — JPL DE440 is a ~114MB download, not something to commit
+# Ephemeris kernel — H6 downloads `de440s.bsp` (31.2 MB, the short-span DE440
+# covering 1849-2150) into userData, not the repo, so this rule should never
+# actually fire. Kept as a backstop against a stray copy made while debugging.
+# The comment here used to say ~114 MB, which was the full `de440.bsp` before
+# the short-span kernel was chosen.
 *.bsp
 
 # Python (engine/)
@@ -77,3 +81,6 @@ desktop.ini
 
 # Coverage
 coverage/
+
+# Commit messages written for the user to review, not part of the project.
+COMMIT_MSG.txt

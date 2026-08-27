@@ -52,6 +52,7 @@ import {
 } from './ipc/nasa-donki';
 import { createGoesFlareController, registerGoesFlareIpcHandlers } from './ipc/goes-flares';
 import { createGcmtController, registerGcmtIpcHandlers } from './ipc/gcmt-mechanisms';
+import { createEphemerisController, registerEphemerisIpcHandlers } from './ipc/ephemeris';
 import { registerExternalLinkIpcHandlers } from './ipc/external-links';
 import { createEngineController, registerAnalysisIpcHandlers } from './ipc/analysis';
 import { applyTileIdentity } from './tile-identity';
@@ -433,6 +434,27 @@ app
       gcmt.cancel();
     });
 
+    // The JPL DE440 kernel H6 resolves tidal stress with. Downloaded on demand
+    // like the records above, but to a file rather than the database — Skyfield
+    // reads it in the engine process, so it needs a real path.
+    //
+    // Kept beside the database in userData rather than in the install
+    // directory: a packaged app's resources are read-only on a normal install,
+    // and this is user data by every meaning of the word — fetched by them,
+    // deletable by them, and not part of the shipped product.
+    const ephemeris = createEphemerisController(
+      join(app.getPath('userData'), 'ephemeris'),
+      (progress) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('ephemeris:progress', progress);
+        }
+      },
+    );
+    registerEphemerisIpcHandlers(ephemeris);
+    app.on('will-quit', () => {
+      ephemeris.cancel();
+    });
+
     // A backfill mid-flight would keep issuing requests and writing to a
     // database that's about to close.
     app.on('will-quit', () => {
@@ -459,7 +481,10 @@ app
         }
       },
     });
-    registerAnalysisIpcHandlers(db, engine);
+    // The ephemeris resolver is passed rather than imported so `analysis.ts`
+    // stays testable without a filesystem, and so "where the kernel is" has
+    // exactly one definition — the controller's. Only H6 ever calls it.
+    registerAnalysisIpcHandlers(db, engine, undefined, () => ephemeris.resolvedPath());
     app.on('will-quit', () => {
       engine.dispose();
     });

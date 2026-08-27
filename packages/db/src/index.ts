@@ -50,7 +50,8 @@ export {
   goesFlareChunkSummary,
 } from './solar-events-queries';
 export type { DonkiSource, QuerySolarFlaresOptions } from './solar-events-queries';
-export { queryAnalysisCatalog } from './analysis-queries';
+export { queryAnalysisCatalog, queryOrientedAnalysisCatalog } from './analysis-queries';
+export type { OrientedAnalysisCatalog } from './analysis-queries';
 export type { AnalysisCatalog } from './analysis-queries';
 export {
   insertFocalMechanisms,
