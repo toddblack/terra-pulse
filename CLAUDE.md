@@ -1700,9 +1700,9 @@ layer id, surfaced by the `?` in the layer panel and the legend.
 This is enforced by `layer-guides.test.ts`, not by convention: adding a layer to
 the registry **fails the suite** until someone either writes its guide or puts it
 on `GUIDES_STILL_NEEDED` deliberately. A rule in a document gets forgotten; a red
-test does not. **That list is currently empty** — all twelve layers are written
-up — and it is worth keeping that way; it is a deliberate "not yet", not an
-escape hatch.
+test does not. **That list is currently empty** — all thirteen layers are
+written up — and it is worth keeping that way; it is a deliberate "not yet",
+not an escape hatch.
 
 The shape is fixed at four sections — what it shows, how to read it, **what it
 can't tell you**, where it came from. The third is why the feature exists. Nearly
@@ -1937,6 +1937,127 @@ touched anything near it. Worth remembering as a case where the thing that
   which a cap is attached but empty, and no swap ordering to get wrong. The
   constructor is not deprecated in 1.143; it just needs `tileWidth`/`tileHeight`
   given explicitly, which `fromUrl` otherwise reads off the decoded image.
+
+**Planetary positions layer — shipped 2026-09-08.** The Sun, Moon and seven
+planets marked at their sub-points, following the scrubber. `PROJECT_PLAN.md`
+§5.7 asks for exactly this in one sentence — "render planets and moons in the
+visualization because they are beautiful and wanted — but label them explicitly
+as decorative, not causal" — and that sentence was the entire specification.
+
+- **Decorative is enforced in the label, the guide and the code comments**, the
+  same move `magnetopause` makes with `(model)`. The registry label reads
+  "Planetary positions (decorative)". Nothing it draws feeds any computation:
+  H6 and the tide layer use Sun and Moon only, because Jupiter at closest
+  approach is ~1/10,000,000 of the Moon's tidal influence.
+- **Analytic, not DE440.** Same reasoning as `subsolarPoint` and the tide
+  layer, plus one more: the kernel is an Analyze-only prerequisite the renderer
+  never opens (non-negotiable #6). Schlyter publishes low-precision elements for
+  the other planets too, so extending the reference already cited for the Moon
+  beat adding a dependency.
+- **Sun and Moon are not recomputed** — `celestialBodies` calls `tides.ts`'s
+  existing `solarBody`/`lunarBody`, so the two hardest bodies (the Moon carries
+  a dozen perturbation terms) stay single-sourced. `daysFromEpoch` turned out to
+  be Schlyter's own epoch already, so the planetary elements share it rather
+  than defining a second offset that could drift by a transcription error.
+- **A real bug, caught by cross-checking rather than by testing:** the first
+  draft had Earth's own heliocentric position **180° out**. Schlyter's Earth
+  elements describe *the Sun as seen from Earth* — the negative of Earth's
+  position — and feeding them in unnegated put every inner planet at its
+  inferior-conjunction distance when the date called for superior. Found by
+  checking against the DE440 kernel already on this machine from H6: Mercury
+  came out at 0.60 AU where Skyfield said 1.42. **The tell was that the error
+  scaled with proximity** — ~8% on Uranus, ~100% on Mercury — which is the
+  signature of a wrong Earth term rather than a wrong planet term. After the
+  fix it agrees with DE440 to a fraction of a degree near 2000, drifting to
+  ~0.6° by the 2040s, which is expected with no perturbation corrections and
+  irrelevant for a dot.
+- **Nine categorical colours cannot all be told apart by hue, and the palette
+  validator says so.** Its own reference palette caps at three slots under
+  `--pairs all` — which is this layer's real situation, nine dots free to land
+  anywhere — and "no ordering of the full eight can pass". So the eight planets
+  take the validated eight-hue set *in its documented order* (the order is the
+  CVD-safety mechanism, not cosmetics) and identity is carried by the legend and
+  the hover tooltip, which is the secondary encoding the validator sanctions.
+  Realistic colour associations were sacrificed to keep that order intact —
+  the Sun is not yellow here.
+- **The Moon is a deliberate ninth, outside the hue system**, plain neutral
+  grey, which the validator correctly flags as "reads as gray". That is the
+  point: an achromatic colour cannot collide with a saturated one.
+- **Two bugs the user found by using it, both invisible to tests:**
+  - **Hover and click did nothing.** The layer set Cesium's `name`/`description`,
+    but `infoBox: false` is set app-wide and a custom pick resolver replaced it
+    — one that recognises marks by entity-id prefix, and this layer was never
+    wired into it. Fixed by joining that system properly. **Any new pickable
+    layer needs the same**; setting Cesium's own entity fields looks right and
+    reaches nothing.
+  - **The Moon's marker was invisible on the light basemap.** `#cbd5e1` measured
+    11-12:1 against the dark UI panel and **1.3-1.5:1** against real OSM tile
+    colours. Marker fills get no basemap-tone adaptation, so one hex has to
+    survive a light basemap, two dark ones and the dark legend at once — and
+    only a genuine *mid*-tone does. `#6b7280`: ~4.2-4.8:1 light, ~3.5-3.7:1
+    dark. Same shape as `UNKNOWN_DEPTH_COLOR`, and the same lesson the tide ramp
+    and the declination scale already record: **validate against the surface the
+    mark is actually drawn on**, not the panel that is easy to test against.
+
+**Tidal shear stress on a mapped fault — shipped 2026-09-08/09.** In the fault
+inspector and the location panel: the current lunisolar shear resolved onto the
+fault's own plane. The Phase 5 roadmap listed this as "paint tidal stress onto
+the GEM fault traces — needs dip/rake re-vendored"; research found the one-line
+version hid three separate problems, and the shipped feature is deliberately
+smaller than the item as written.
+
+- **The globe-painting version was measured and rejected before it was built.**
+  `active-faults.ts` is one `PolylineCollection` where all 13,696 faults share a
+  single material, and that sharing is what keeps its ~124 ms build affordable;
+  there is no per-vertex colour on that primitive, and a per-fault colour that
+  changes continuously with the tide has no precedent here at that count. The
+  per-click readout costs one evaluation instead of 13,696 on a timer.
+- **And it would have had almost nothing to draw.** GEM publishes dip and rake
+  for **21.7%** of its 13,696 faults (2,976, measured at vendor time). This is
+  the same sparsity that made H6 itself resolve onto Global CMT mechanisms
+  rather than GEM geometry — `PROJECT_PLAN.md`'s H6 entry already recorded it,
+  measured from a different angle.
+- **The physics is a port of `pipeline/tides.py`, not a re-derivation** — the
+  same call `decluster.py` and `subsolar.py` already make in the other
+  direction. Tensor → ENU rotation → Love-number strain → plane stress →
+  resolve onto strike/dip/rake, same constants. **Cross-checked against the
+  Python module directly**, running both over synthetic geometries: identical
+  to 10 decimal places. `shear_coefficients` is not ported — it exists to
+  amortise millions of Monte Carlo draws, and there is nothing here to amortise.
+- **Strike is derived from the trace, not vendored.** GEM has no strike column;
+  a mapped trace *is* a directional geometry, so `faultStrikeDeg` reads the
+  bearing of the segment nearest the clicked point — the same move
+  `subduction-encoding.ts` already makes for Slab2. Kept out of `nearestFault`'s
+  hot loop deliberately: that one sweeps all 13,696 faults and is measured, this
+  runs once on the one fault already found.
+- **The number is a magnitude, and the sign is deliberately withheld.** A
+  trace's digitised vertex order is arbitrary, so nothing pins whether the
+  derived strike is read in the Aki & Richards sense (dip 90° clockwise) that
+  GEM's own dip and rake were measured against. The magnitude is free of that
+  ambiguity; the sign is not, and "encouraging or resisting slip" is exactly the
+  claim that would be wrong half the time. **GEM's `dip_dir` column could
+  resolve it** — it exists, mixes compass points and numeric bearings in one
+  column, and covers ~27%. That is the follow-up if a signed value is ever
+  wanted, not a thing to guess.
+- **It is not H6 and the guide says so**, same as the tide layer's own entry:
+  H6 resolves onto focal mechanisms and is a registered test; this is an
+  informational readout on one mapped trace.
+- **It shipped reaching only two of the three fault paths, and the user caught
+  it.** The inspector and probe mode both render `NearestFaultBody`; clicking a
+  trace directly renders `LocationPanel`'s own `FaultDetail`, which never got
+  the field. Fixed by extracting **one** `TidalShearField` rather than copying
+  it — `LocationPanel`'s own header comment records these two panels having
+  shipped separately once before and "repeated each other" until they were
+  merged, and a second copy of the wording and its caveat is that same drift
+  restarting. Clicking a trace is now the *cleanest* of the three cases: the
+  distance is zero by construction, so none of the "nearest trace, 42 km away"
+  hedging sits between the reader and the number.
+  - **A CSS-module trap worth knowing:** both panels space rows with
+    `.field + .field`, which cannot match across module boundaries — the
+    preceding row carries the parent's hashed class and the shared component's
+    carries its own, so the gap silently collapses. `:not(:first-child)` is
+    positional rather than class-based and gives the right spacing in both
+    parents, including none when it is the only row.
 
 **Global CMT focal mechanisms — ingest shipped** (migration 13). The orientation
 H6 was blocked on, and the cheapest historical ingest here by a distance: the
@@ -2757,10 +2878,37 @@ and wrong. The shipped version materialises everything.
   declustering correctly collapsed 900 events to 3 — co-located M6 events fall
   inside each other's Gardner-Knopoff windows.
 
-**Still open on H6:** `preferredPhaseDeg` and the registered 12-bin
-`phaseHistogram` travel in the result and are **not yet rendered** in Analyze.
-For a tidal test the phase distribution is the most informative descriptive
-output there is, so this is worth doing.
+**H6's phase output is rendered — shipped 2026-09-08.** `preferredPhaseDeg` and
+the registered 12-bin `phaseHistogram` had been travelling in the result and
+reaching nothing; the data path was complete end to end (Python → Pydantic
+camelCase → IPC pass-through → a typed `AnalysisTestResult`) and only the UI was
+missing. A "Tidal phase distribution" section on H6's tab now draws it.
+
+- **A rose diagram, not a bar chart, and the second version was the user's
+  call.** It shipped first as a linear 12-bar chart reusing `null-histogram.ts`'s
+  geometry unchanged, which was the low-risk option and consistent with every
+  other chart in the panel. The problem with it is real: phase *wraps*, so
+  −180° and +180° are the same point, and a linear axis has to split that one
+  point across its two ends. The rose puts them back together, which is the
+  whole reason to pay for new geometry.
+- **`phase-rose.ts` is a new pure module** rather than an extension of
+  `null-histogram.ts`, because polar layout genuinely differs — the linear
+  version really was the same maths and correctly reused it. Wedge arcs are
+  sampled every 5° into a `<polygon>` rather than drawn with an SVG arc
+  command: with equal start/end radii two different circles satisfy an arc's
+  flags, and the wrong flag combination silently draws the *other* one.
+- **Near-uniform bins read as an undifferentiated blob**, found by the user from
+  a screenshot of a real run. With every petal near full length and no border
+  between them, twelve wedges merge into one disc — correct output, unreadable.
+  Fixed with a per-wedge stroke in the panel's own background colour plus
+  reference rings at 25/50/75/100%, so bin-to-bin variation is visible even when
+  the result is the flat one a clean null produces.
+- **Every hypothesis's null-distribution chart gained a caption at the same
+  time**, prompted by the user asking what the dashed white line meant. It was
+  explained nowhere in the UI — the bars are the resampled null and the line is
+  where the observed value falls among them, which is the entire reading of the
+  chart. This is the layer-guide lesson applied to Analyze: the app was careful
+  not to draw anything untrue and left the reader to infer what it meant.
 
 
 **The JPL ephemeris kernel — downloaded on demand, never bundled.** H6's only
