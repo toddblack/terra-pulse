@@ -197,6 +197,7 @@ async function main() {
   let skipped = 0;
   let named = 0;
   let withRate = 0;
+  let withOrientation = 0;
 
   for (const feature of features) {
     if (feature.geometry?.type !== 'LineString') {
@@ -223,6 +224,11 @@ async function main() {
 
     const properties = feature.properties ?? {};
     const slipRate = parseMeasurement(properties.net_slip_rate);
+    // Same `"(preferred,min,max)"` encoding as net_slip_rate — confirmed
+    // against the live source, not assumed. Only the preferred value is kept;
+    // the bounds on dip/rake aren't used by anything that reads them.
+    const dip = parseMeasurement(properties.average_dip);
+    const rake = parseMeasurement(properties.average_rake);
     // `fs_name` is the fault-section name and is populated where `name` isn't;
     // together they cover 6,105 of 13,696 faults against `name`'s 4,703.
     const name = properties.name || properties.fs_name || null;
@@ -244,21 +250,33 @@ async function main() {
     }
     if (properties.slip_type) fault.t = properties.slip_type;
     if (properties.catalog_name) fault.c = properties.catalog_name;
+    if (dip) fault.d = Number(dip.preferred.toFixed(1));
+    if (rake) fault.r = Number(rake.preferred.toFixed(1));
 
     faults.push(fault);
     if (name) named += 1;
     if (slipRate) withRate += 1;
+    if (dip && rake) withOrientation += 1;
   }
 
-  // Geometry, a zoom tier, and the four attribute columns something actually
-  // reads: name, net slip rate (with its bounds), slip type, and the source
-  // catalogue. The other ~16 columns (dip, rake, seismogenic depths, exposure
-  // quality, references) stay dropped — nothing displays them, and they are
-  // what would genuinely bloat the file.
+  // Geometry, a zoom tier, and the six attribute columns something actually
+  // reads: name, net slip rate (with its bounds), slip type, the source
+  // catalogue, and — since the tidal-shear-on-a-fault readout needs them —
+  // average dip and average rake. The other ~17 columns (seismogenic depths,
+  // exposure quality, references, dip_dir) stay dropped — nothing displays
+  // them, and they are what would genuinely bloat the file. `dip_dir` in
+  // particular is tempting (it could disambiguate which of a trace's two
+  // possible strike readings is correct, letting the readout report a signed
+  // value instead of a magnitude) but it mixes compass points ("NE") and
+  // numeric bearings ("135") in the same column, and only ~27% of faults
+  // carry it — not worth the parsing complexity for this round. A future pass
+  // could revisit it.
   //
   // An earlier note here said carrying attributes would "quadruple" it. That
-  // was about carrying *all* of them; these four measure at +59 bytes per
-  // feature, ~792 KB on a 2.5 MB file (+32%). Measured, not estimated.
+  // was about carrying *all* of them; the first four measured at +59 bytes
+  // per feature, ~792 KB on a 2.5 MB file (+32%). Dip and rake are two more
+  // small numeric fields, not a new order of magnitude. Measured, not
+  // estimated — see the size line this script prints.
   //
   // They ride in the same file as the geometry rather than a side-car, because
   // the only consumer — nearest-fault association — needs both together, and a
@@ -278,7 +296,8 @@ async function main() {
   // written against the well-populated examples would look broken in the field.
   console.log(
     `attrs  : ${named.toLocaleString()} named (${((named / faults.length) * 100).toFixed(1)}%) · ` +
-      `${withRate.toLocaleString()} with slip rate (${((withRate / faults.length) * 100).toFixed(1)}%)`,
+      `${withRate.toLocaleString()} with slip rate (${((withRate / faults.length) * 100).toFixed(1)}%) · ` +
+      `${withOrientation.toLocaleString()} with dip+rake (${((withOrientation / faults.length) * 100).toFixed(1)}%)`,
   );
   // Guards the densifier: if this ever exceeds the cap, chords are sagging
   // below the globe again and the fix silently stopped working.

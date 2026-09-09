@@ -65,18 +65,42 @@ const ASTRONOMICAL_UNIT = 1.495_978_707e11;
 
 const DEG = Math.PI / 180;
 
-/** Days from the 1999-12-31.0 epoch the lunar series is referenced to. */
-function daysFromEpoch(at: Date): number {
+/**
+ * Days from the 1999-12-31.0 epoch (JD 2451543.5) the lunar series is
+ * referenced to.
+ *
+ * This is Schlyter's own epoch convention generally, not just for the Moon —
+ * exported so `planetary-positions.ts`'s orbital elements (same reference
+ * family, same published epoch) can use the identical day count rather than
+ * recompute an equivalent offset that could drift from this one by a
+ * transcription error.
+ */
+export function daysFromEpoch(at: Date): number {
   return at.getTime() / 86_400_000 - 10_956;
 }
 
-/** Days from J2000.0 — what the solar series and GMST use. */
-function daysFromJ2000(at: Date): number {
+/**
+ * Days from J2000.0 — what the solar series, GMST and obliquity use.
+ *
+ * Exported for `planetary-positions.ts`'s obliquity/GMST calls. Its own
+ * planetary orbital elements are referenced to a **different** epoch
+ * (Schlyter's JD − 2451543.5, 1.5 days off J2000.0) and compute that
+ * separately — this export exists only for the two functions above, which
+ * are genuinely J2000.0-referenced.
+ */
+export function daysFromJ2000(at: Date): number {
   return at.getTime() / 86_400_000 - 10_957.5;
 }
 
-/** Greenwich mean sidereal time, degrees. */
-function gmstDeg(at: Date): number {
+/**
+ * Greenwich mean sidereal time, degrees.
+ *
+ * Exported for `planetary-positions.ts`, which needs the same Earth-rotation
+ * angle to turn a planet's right ascension into a sub-longitude — this is the
+ * one piece of this module worth sharing rather than recomputing a second
+ * definition of sidereal time.
+ */
+export function gmstDeg(at: Date): number {
   return (280.460_618_37 + 360.985_647_366_29 * daysFromJ2000(at)) % 360;
 }
 
@@ -132,8 +156,12 @@ function bodyFromEquatorial(
   };
 }
 
-/** Obliquity of the ecliptic, degrees. */
-function obliquityDeg(d: number): number {
+/**
+ * Obliquity of the ecliptic, degrees, from days since J2000.0.
+ *
+ * Exported for `planetary-positions.ts` — same reasoning as `gmstDeg`.
+ */
+export function obliquityDeg(d: number): number {
   return 23.4393 - 3.563e-7 * d;
 }
 

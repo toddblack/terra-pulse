@@ -25,6 +25,8 @@ import { MAGNETOPAUSE_LAYER_ID } from '../layers/magnetopause-layer';
 import { TEC_LAYER_ID } from '../layers/tec-layer';
 import { TIDE_LAYER_ID } from '../layers/tide-layer';
 import { TIDE_UNIT, tideLegendStops } from '../layers/tide-encoding';
+import { PLANETARY_POSITIONS_LAYER_ID } from '../layers/planetary-positions-layer';
+import { CELESTIAL_BODY_COLORS, CELESTIAL_BODY_NAMES, CELESTIAL_BODY_ORDER } from '../layers/planetary-positions-encoding';
 import { tidalBodies } from '../layers/tides';
 import { LayerGuideButton } from './LayerGuideModal';
 import { TEC_SCALES, tecLegendStops } from '../layers/tec-encoding';
@@ -103,6 +105,7 @@ export function DepthLegend() {
   const magnetopauseVisible = isLayerOn(MAGNETOPAUSE_LAYER_ID);
   const tecVisible = isLayerOn(TEC_LAYER_ID);
   const tideVisible = isLayerOn(TIDE_LAYER_ID);
+  const planetaryPositionsVisible = isLayerOn(PLANETARY_POSITIONS_LAYER_ID);
 
   if (collapsed) {
     return (
@@ -301,6 +304,8 @@ export function DepthLegend() {
       {tideVisible && <TideKey tone={backdropTone} />}
 
       {magnetopauseVisible && <MagnetopauseKey />}
+
+      {planetaryPositionsVisible && <PlanetaryPositionsKey />}
 
       <p className={styles.footnote}>
         {status === 'loading'
@@ -581,6 +586,41 @@ function MagnetopauseKey() {
       <p className={styles.note}>
         modelled boundary (Shue et al. 1998), not an observation
       </p>
+    </div>
+  );
+}
+
+/**
+ * The planetary positions key — one swatch and name per body, in the same
+ * fixed order the layer draws them.
+ *
+ * This is the secondary-encoding channel the layer's own doc comment
+ * promises: nine categorical hues cannot all be told apart by colour alone
+ * (this app's colour validator confirms no ordering of even eight clears its
+ * strictest pairwise check), so the name written out beside every swatch is
+ * what actually carries identity when two markers happen to land near each
+ * other on the globe.
+ */
+function PlanetaryPositionsKey() {
+  return (
+    <div className={styles.section}>
+      <h2 className={styles.heading}>
+        Planetary positions
+        <LayerGuideButton layerId={PLANETARY_POSITIONS_LAYER_ID} />
+      </h2>
+      <ul className={styles.binList}>
+        {CELESTIAL_BODY_ORDER.map((id) => (
+          <li key={id} className={styles.binRow}>
+            <span
+              className={styles.swatch}
+              style={{ backgroundColor: CELESTIAL_BODY_COLORS[id] }}
+              aria-hidden="true"
+            />
+            <span className={styles.binLabel}>{CELESTIAL_BODY_NAMES[id]}</span>
+          </li>
+        ))}
+      </ul>
+      <p className={styles.note}>decorative — not used by any analysis in this app</p>
     </div>
   );
 }
