@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  faultStrikeDeg,
   formatSlipRate,
   formatSlipType,
   nearestFault,
@@ -142,5 +143,33 @@ describe('formatSlipRate', () => {
   it('does not mistake a zero slip rate for a missing one', () => {
     // GEM records genuine zeroes; `if (!fault.s)` would drop them.
     expect(formatSlipRate({ z: 0, p: [], s: 0 })).toBe('0 mm/yr');
+  });
+});
+
+describe('faultStrikeDeg', () => {
+  it('reads a north-heading meridian trace as bearing 0', () => {
+    const fault = meridianFault(1, -5, 5); // low latitude to high — heading north
+    expect(faultStrikeDeg(fault, { latitude: 0, longitude: 1 })).toBeCloseTo(0, 0);
+  });
+
+  it('reads a south-heading meridian trace as bearing 180 — vertex order, not the line, decides it', () => {
+    const fault = meridianFault(1, 5, -5); // high latitude to low — heading south
+    expect(faultStrikeDeg(fault, { latitude: 0, longitude: 1 })).toBeCloseTo(180, 0);
+  });
+
+  it('reads an east-heading trace along the equator as bearing 90', () => {
+    const fault: FaultRecord = { z: 0, p: [-5, 0, 5, 0] };
+    expect(faultStrikeDeg(fault, { latitude: 0, longitude: 0 })).toBeCloseTo(90, 0);
+  });
+
+  it('returns null for a trace with no segment (a single vertex)', () => {
+    expect(faultStrikeDeg({ z: 0, p: [1, 1] }, { latitude: 0, longitude: 0 })).toBeNull();
+  });
+
+  it('picks the segment nearest the query point on a bent trace, not the first one', () => {
+    // A trace that runs east then turns north — near the northward leg, the
+    // strike should read as the northward bearing, not the eastward one.
+    const fault: FaultRecord = { z: 0, p: [-5, 0, 0, 0, 0, 5] };
+    expect(faultStrikeDeg(fault, { latitude: 3, longitude: 0.01 })).toBeCloseTo(0, 0);
   });
 });

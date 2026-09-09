@@ -1,13 +1,27 @@
 import { useState } from 'react';
-import { requiresEphemeris, type AnalysisTestResult, type HypothesisId } from '@terra-pulse/schema';
+import {
+  H6_PHASE_BINS,
+  requiresEphemeris,
+  type AnalysisTestResult,
+  type HypothesisId,
+} from '@terra-pulse/schema';
 import { useAnalysisStore } from './useAnalysisStore';
 import { useEngineStatus } from './useEngineStatus';
 import { useEngineHypotheses } from './useEngineHypotheses';
 import { useEphemerisStatus } from './useEphemerisStatus';
 import { EphemerisRequirement } from './EphemerisRequirement';
 import { layoutNullHistogram, observedFraction } from './null-histogram';
+import { layoutPhaseRose, phasePoint } from './phase-rose';
 import { formatCount, formatPValue, formatStatistic } from './result-format';
 import styles from './AnalyzeShell.module.css';
+
+/**
+ * Synthetic bin edges for `phaseHistogram` — H6's only, 12 bins of 30° each
+ * running −180°→+180° (see `packages/schema/src/analysis.ts`'s doc comment
+ * on `AnalysisTestResult.phaseHistogram` for why that range). Built from
+ * `H6_PHASE_BINS` rather than hardcoding 12.
+ */
+const PHASE_HISTOGRAM_EDGES = Array.from({ length: H6_PHASE_BINS + 1 }, (_, i) => -180 + (360 * i) / H6_PHASE_BINS);
 
 /**
  * UI-only copy — the human-readable statement and registration date, not a
@@ -303,6 +317,31 @@ export function AnalyzeShell() {
                 {selectedTest.lagHours[1]}h
               </h3>
               <NullHistogramChart test={selectedTest} />
+              <p className={styles.meta}>
+                Bars: {formatCount(result.method.iterations)} resampled draws under the registered
+                null model — what the statistic looks like if the trigger times carried no real
+                effect. Dashed line: where the actual observed value (the {statisticHeading} column
+                above, for this row) falls among them. Far into a tail is a small p-value; buried in
+                the middle is a null result.
+              </p>
+            </section>
+          )}
+
+          {selectedTest && selectedTest.phaseHistogram !== null && (
+            <section>
+              <h3 className={styles.sectionHeading}>
+                Tidal phase distribution — {selectedTest.triggerId}
+              </h3>
+              <PhaseHistogramChart test={selectedTest} />
+              <p className={styles.meta}>
+                Petal length: how many declustered events peaked in that 30° phase bin, normalized
+                to the tallest. Dashed needle:{' '}
+                {selectedTest.preferredPhaseDeg !== null
+                  ? `the preferred phase, ${selectedTest.preferredPhaseDeg.toFixed(1)}°.`
+                  : 'omitted — the resultant is not finite for this test.'}{' '}
+                Presentation only: this histogram and the preferred-phase direction do not affect
+                the p-values above, which are computed from the unbinned Schuster statistic.
+              </p>
             </section>
           )}
 
@@ -379,6 +418,86 @@ function NullHistogramChart({ test }: { test: AnalysisTestResult }) {
           className={styles.histogramGuide}
         />
       )}
+    </svg>
+  );
+}
+
+/**
+ * H6's 12-bin presentation view of tidal phase (−180°→+180°), as a rose
+ * (petal) diagram rather than a bar chart. Phase wraps — −180° and +180°
+ * are the same point — and a linear axis has to split that point onto its
+ * two ends; a circle shows it as one point, which is the whole reason to
+ * draw it this way instead of reusing `NullHistogramChart`'s layout as-is.
+ * Bin length is the count, normalized to the tallest bin, exactly like the
+ * bar chart's height; only the geometry that carries it is polar instead of
+ * Cartesian (`layoutPhaseRose`, `phasePoint` — see `phase-rose.ts`). The
+ * needle marks the reported preferred phase (Schuster's resultant
+ * direction), reusing the same dashed-guide styling as the null-distribution
+ * charts for the same reason: it is the one value on the chart worth being
+ * able to find at a glance.
+ */
+function PhaseHistogramChart({ test }: { test: AnalysisTestResult }) {
+  const size = 160;
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = size / 2 - 22; // leaves room for the axis labels ringing the circle
+  const counts = test.phaseHistogram;
+  if (counts === null) return null;
+
+  const wedges = layoutPhaseRose({ edges: PHASE_HISTOGRAM_EDGES, counts });
+  const needle = test.preferredPhaseDeg !== null ? phasePoint(test.preferredPhaseDeg, radius) : null;
+  const axisLabels = [
+    { angle: 0, text: '0°' },
+    { angle: 90, text: '90°' },
+    { angle: 180, text: '±180°' },
+    { angle: -90, text: '−90°' },
+  ];
+
+  return (
+    <svg
+      className={styles.phaseRose}
+      viewBox={`0 0 ${String(size)} ${String(size)}`}
+      role="img"
+      aria-label={`Tidal phase distribution for ${test.id}`}
+    >
+      {/* Reference rings only — no tick meaning attaches to any one of them,
+          they exist purely so a reader can judge how close two similar-length
+          petals actually are near a near-uniform result, which a bare
+          outline can't show. */}
+      {[0.25, 0.5, 0.75, 1].map((f) => (
+        <circle key={f} cx={cx} cy={cy} r={f * radius} className={styles.roseGrid} />
+      ))}
+      {wedges.map((wedge, index) => (
+        <polygon
+          key={String(index)}
+          points={wedge.points.map((p) => `${String(cx + p.x * radius)},${String(cy + p.y * radius)}`).join(' ')}
+          className={styles.roseWedge}
+        />
+      ))}
+      {needle !== null && (
+        <line
+          x1={cx}
+          y1={cy}
+          x2={cx + needle.x}
+          y2={cy + needle.y}
+          className={styles.histogramGuide}
+        />
+      )}
+      {axisLabels.map(({ angle, text }) => {
+        const p = phasePoint(angle, radius + 12);
+        return (
+          <text
+            key={text}
+            x={cx + p.x}
+            y={cy + p.y}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            className={styles.roseAxisLabel}
+          >
+            {text}
+          </text>
+        );
+      })}
     </svg>
   );
 }

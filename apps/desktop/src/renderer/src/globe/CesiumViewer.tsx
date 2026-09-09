@@ -12,6 +12,7 @@ import {
   describeFault,
   describeFlare,
   describeMagnetometer,
+  describePlanetaryPosition,
   type HoverTarget,
 } from './hover-target';
 import type {
@@ -25,6 +26,8 @@ import type { FaultRecord } from '../layers/fault-association';
 import { stationCodeFromEntityId } from '../layers/magnetometer-layer';
 import { flareIdFromEntityId } from '../layers/solar-flares-layer';
 import { cmeSimulationIdFromEntityId } from '../layers/cme-arrivals-layer';
+import { celestialBodyIdFromEntityId } from '../layers/planetary-positions-layer';
+import { celestialBodies, type CelestialBodyId } from '../layers/planetary-positions';
 import { createLocationHighlight } from '../layers/location-highlight';
 import { watchSelection } from './selection-sync';
 import { useGlobeLayers } from './useGlobeLayers';
@@ -270,6 +273,17 @@ export function CesiumViewer() {
     cmeArrivalsRef.current = cmeArrivals;
   }, [cmeArrivals]);
 
+  // Planetary positions carry no pushed array to read — a body's position is
+  // a pure function of time, recomputed on the fly in the pick handler
+  // itself (see `classifyPicked`) rather than cached. What *does* need a ref
+  // is the instant to compute it at, for the same staleness reason as the
+  // three above: the pick handler is set up once and must not go stale as
+  // the scrubber moves.
+  const timeWindowRef = useRef(timeWindow);
+  useEffect(() => {
+    timeWindowRef.current = timeWindow;
+  }, [timeWindow]);
+
   // Globe click → store.
   //
   // Explicit picking rather than Cesium's `selectedEntityChanged`, which fires
@@ -318,7 +332,8 @@ export function CesiumViewer() {
       | { kind: 'earthquake'; event: EarthquakeEvent }
       | { kind: 'magnetometer'; reading: MagnetometerReading }
       | { kind: 'flare'; flare: SolarFlare }
-      | { kind: 'cme-arrival'; arrival: CmeArrival };
+      | { kind: 'cme-arrival'; arrival: CmeArrival }
+      | { kind: 'planetary-position'; id: CelestialBodyId };
 
     function classifyPicked(picked: unknown): PickCandidate | null {
       if (picked === null || typeof picked !== 'object') return null;
@@ -373,6 +388,11 @@ export function CesiumViewer() {
         return arrival ? { kind: 'cme-arrival', arrival } : null;
       }
 
+      const celestialBodyId = celestialBodyIdFromEntityId(entityId);
+      if (celestialBodyId !== null) {
+        return { kind: 'planetary-position', id: celestialBodyId };
+      }
+
       // Otherwise an earthquake. The dot and its emphasis ring share an event
       // id, so both resolve to the same event.
       const eventId = eventIdFromEntityId(entityId);
@@ -406,6 +426,7 @@ export function CesiumViewer() {
         'magnetometer',
         'flare',
         'cme-arrival',
+        'planetary-position',
       ] as const) {
         const found = candidates.find((candidate) => candidate.kind === kind);
         if (found) return found;
@@ -480,6 +501,22 @@ export function CesiumViewer() {
             eventId: null,
             solarEvent: { kind: 'cme-arrival', arrival: chosen.arrival },
           };
+        case 'planetary-position': {
+          // No pushed array to look up — the body's position (and the
+          // distance the tooltip shows) is a pure function of time, so it is
+          // recomputed here at the same clamped instant the layer itself
+          // draws, rather than cached anywhere.
+          const instant = new Date(
+            instantOnScreen(timeWindowRef.current.endMs, Date.now()),
+          );
+          const body = celestialBodies(instant)[chosen.id];
+          return {
+            target: describePlanetaryPosition(chosen.id, body),
+            feature: null,
+            eventId: null,
+            solarEvent: null,
+          };
+        }
       }
     };
 

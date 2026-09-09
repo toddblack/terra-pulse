@@ -17,6 +17,8 @@ import {
 import { depthClass } from '../layers/earthquake-encoding';
 import { formatSlipRate, formatSlipType, type FaultRecord } from '../layers/fault-association';
 import { plateBoundaryLabel, plateClassLabel } from '../layers/plate-association';
+import { CELESTIAL_BODY_NAMES } from '../layers/planetary-positions-encoding';
+import { formatCelestialDistance, type CelestialBody, type CelestialBodyId } from '../layers/planetary-positions';
 
 export type HoverKind =
   | 'earthquake'
@@ -24,7 +26,8 @@ export type HoverKind =
   | 'boundary'
   | 'magnetometer'
   | 'flare'
-  | 'cme-arrival';
+  | 'cme-arrival'
+  | 'planetary-position';
 
 export interface HoverTarget {
   kind: HoverKind;
@@ -168,6 +171,21 @@ export function describeCmeArrival(arrival: CmeArrival): HoverTarget {
     // predicted zero — so it is omitted rather than shown as "Kp 0".
     detail: arrival.predictedKp === null ? null : `predicted Kp ${String(arrival.predictedKp)}`,
     timeUtc: arrival.arrivalTimeUtc,
+  };
+}
+
+/**
+ * A planetary-position marker: the body's name and its current distance
+ * from Earth. Decorative — see `planetary-positions.ts`'s own doc comment —
+ * so there is no "ago" and no detail beyond the one number that makes the
+ * dot's position meaningful.
+ */
+export function describePlanetaryPosition(id: CelestialBodyId, body: CelestialBody): HoverTarget {
+  return {
+    kind: 'planetary-position',
+    title: CELESTIAL_BODY_NAMES[id],
+    detail: `${formatCelestialDistance(body.distanceM)} away`,
+    timeUtc: null,
   };
 }
 

@@ -267,6 +267,32 @@
   stroke-dasharray: 3 2;
 }
 
+.phaseRose {
+  width: 100%;
+  max-width: 12rem;
+  height: auto;
+}
+
+.roseWedge {
+  fill: rgb(56 189 248 / 70%);
+  /* Matches .panel's own background — without a stroke, two adjacent
+     similar-length petals have no visible edge between them and the whole
+     rose reads as one undifferentiated blob on a near-uniform result. */
+  stroke: rgb(15 23 42);
+  stroke-width: 1;
+}
+
+.roseGrid {
+  fill: none;
+  stroke: rgb(148 163 184 / 25%);
+  stroke-width: 0.5;
+}
+
+.roseAxisLabel {
+  fill: rgb(148 163 184);
+  font-size: 7px;
+}
+
 .denominator {
   margin-top: 1.25rem;
   padding: 0.6rem 0.75rem;

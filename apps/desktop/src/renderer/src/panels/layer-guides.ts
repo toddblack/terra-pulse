@@ -89,6 +89,25 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
       'Computed on this machine from the degree-2 lunisolar tidal potential. No network, no key, no stored data — the ephemeris is a series, not a download.',
   },
 
+  'planetary-positions': {
+    title: 'Planetary positions',
+    shows:
+      'Where the Sun, Moon and the seven other planets are directly overhead right now, or at the scrubber’s position. Nine markers, computed rather than fetched, on the same low-precision analytic ephemeris the tide layer uses for the Sun and Moon.',
+    reading: [
+      'Colour identifies the body — the legend names each one, and clicking or hovering a marker shows its current distance from Earth.',
+      'Every marker sweeps westward through the day as the Earth turns beneath it, the same way the Sun’s and Moon’s sub-points do on the tide layer. That motion is almost entirely Earth’s own rotation, not the body’s orbit — scrub across weeks or months to see the slower drift that actually reflects each body moving around the Sun.',
+      'The outer planets barely move day to day; Mercury and Venus move fastest, because they orbit closest and fastest.',
+    ],
+    limits: [
+      'This layer is decorative, and the project plan says so by name: “render planets and moons… because they are beautiful and wanted — but label them explicitly as decorative, not causal.” Nothing it draws feeds any computation anywhere in this app.',
+      'No planetary alignment has ever been shown to correlate with seismicity, and there is no mechanism by which one could. Jupiter, the largest contributor of the seven, pulls on the Earth-Moon system with roughly a ten-millionth of the Moon’s own tidal influence at closest approach. H6 and the tide layer use the Sun and Moon only, for exactly this reason.',
+      'Positions are low-precision — a two-body ellipse per planet with no perturbation corrections, good to a fraction of a degree near the year 2000 and drifting to a few tenths of a degree by the 2040s (checked against the JPL DE440 kernel H6 downloads). That is nothing on a globe, and not remotely enough for anything else.',
+      'Nine identities on nine colours cannot all be told apart by hue alone at a glance — this app’s own colour validator confirms that no ordering of even eight categorical hues clears its strictest pairwise check. The name on hover and in the legend is the reliable way to tell two markers apart, not the colour alone.',
+    ],
+    source:
+      'Computed on this machine from Paul Schlyter’s published low-precision planetary orbital elements — the Sun and Moon from the same series the tide layer already uses. No network, no key, no stored data.',
+  },
+
   magnetopause: {
     title: 'Magnetopause',
     shows:
@@ -186,12 +205,14 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
     reading: [
       'Hovering names the fault where a name exists, with its kinematics and slip rate. Clicking opens the location panel.',
       'The inspector reports the nearest mapped trace to a selected earthquake along with the distance, so you can judge the association yourself rather than being told there is one.',
+      'Where GEM also measured a fault’s dip and rake, the inspector adds the current lunisolar tidal shear stress resolved onto that plane — how hard the tide is pulling on it right now.',
     ],
     limits: [
       '“No useful association” is the normal case, not a failure. The median M6+ event is 42.9 km from any mapped trace, only 20% are within 10 km, and only 21% of nearest traces are even named. Deep events are further still — a median of 78.1 km — because subduction puts the surface trace far inboard of the rupture.',
       'A trace is where a fault meets the surface. Ruptures happen at depth on a plane that dips, so an epicentre is not expected to sit on the line.',
       'Slip rate is shown and recurrence is deliberately not derived from it. Turning millimetres per year into an interval between earthquakes needs an assumed slip per event — model output with assumptions attached, which does not belong beside an observation.',
       'Mapping coverage is uneven between countries. An area with no drawn faults may be unmapped rather than unfaulted.',
+      'The tidal shear stress reading is informational, not H6. H6 is the registered hypothesis test, and it resolves stress onto Global CMT earthquake focal mechanisms, never onto a GEM trace. This reading is unavailable on most faults — only 21.7% of GEM’s 13,696 carry both a dip and a rake — and where it is available, it reports a magnitude only. A trace’s digitised direction doesn’t say which way is which, so the reading can’t reliably say whether the tide is encouraging or resisting slip, only how hard it is pulling.',
     ],
     source:
       'GEM Global Active Faults. CC-BY-SA 4.0 — attribution required, and derivatives of the dataset inherit share-alike.',

@@ -261,6 +261,16 @@ function createWindow(db: DatabaseSync): BrowserWindow {
 app
   .whenReady()
   .then(() => {
+    // Each independent subsystem below (earthquakes, aurora, magnetometers,
+    // Kp/Dst, DONKI, GOES flares, GCMT, the ephemeris downloader, the
+    // archive backfill, the analysis engine) registers its own `will-quit`
+    // cleanup, on purpose — see the comment above each one for why it isn't
+    // shared with its neighbours. That is now past Node's default cap of 10
+    // listeners per event, which logs a false-positive leak warning on every
+    // launch. Nothing here is actually leaking: every listener below is
+    // registered exactly once, at startup.
+    app.setMaxListeners(20);
+
     const db = openDatabase(join(app.getPath('userData'), 'terra-pulse.sqlite'));
     registerExternalLinkIpcHandlers();
 

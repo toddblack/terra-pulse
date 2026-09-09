@@ -38,6 +38,16 @@ export interface FaultRecord {
   t?: string;
   /** Source catalogue the record came from, e.g. UCERF3. */
   c?: string;
+  /**
+   * Average dip, degrees, GEM's preferred value. Present on 21.7% of faults
+   * (2,976 of 13,696, measured at vendor time) — the sparse case is the norm,
+   * not the exception. Strike is deliberately not vendored alongside it; see
+   * `faultStrikeDeg`.
+   */
+  d?: number;
+  /** Average rake, degrees, GEM's preferred value. Same coverage as `d` — the
+   * two are vendored together and every fault that has one has the other. */
+  r?: number;
 }
 
 export interface FaultMatch {
@@ -149,6 +159,81 @@ export function nearestFault(
   }
 
   return best === null ? null : { fault: best, distanceKm: Math.sqrt(bestSq) };
+}
+
+/** Initial great-circle bearing from (lat1,lon1) to (lat2,lon2), 0-360,
+ * clockwise from north. The exact spherical formula, not the flat-frame
+ * approximation `segmentDistanceSqKm` uses — this runs once per click on one
+ * fault's own vertices, not 144,000 times, so there is nothing to save by
+ * cutting the corner distance needed. */
+function initialBearingDeg(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRad = Math.PI / 180;
+  const phi1 = lat1 * toRad;
+  const phi2 = lat2 * toRad;
+  const deltaLambda = (lon2 - lon1) * toRad;
+  const y = Math.sin(deltaLambda) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+  const bearingDeg = Math.atan2(y, x) / toRad;
+  return (bearingDeg + 360) % 360;
+}
+
+/**
+ * The local strike of `fault`'s own trace near `point`, degrees clockwise
+ * from north — what resolving tidal stress onto this fault needs.
+ *
+ * Finds the vertex-pair (segment) of *this one fault* nearest `point` and
+ * returns its initial bearing. A second, separate walk over just this
+ * fault's own vertices rather than folded into `nearestFault`'s hot loop:
+ * that function sweeps all 13,696 faults and its cost is already measured,
+ * while this runs once, on the single fault `nearestFault` already found —
+ * a plain re-walk of one trace's handful of vertices costs nothing a click
+ * would notice.
+ *
+ * **The 180-degree ambiguity is real and unresolved here, deliberately.** A
+ * trace's digitised vertex order is arbitrary, so the bearing returned could
+ * run either direction along the fault — this is *a* valid reading of the
+ * strike, not necessarily the one Aki & Richards' convention (dip 90 degrees
+ * clockwise of strike) would assign relative to GEM's own dip/rake
+ * measurement. GEM publishes a `dip_dir` column that could disambiguate this,
+ * but it isn't vendored (see `vendor-gem-faults.mjs` for why) — which is
+ * exactly why the tidal-stress readout built on this reports a magnitude,
+ * never a signed value.
+ */
+export function faultStrikeDeg(
+  fault: FaultRecord,
+  point: { latitude: number; longitude: number },
+): number | null {
+  const coords = fault.p;
+  if (coords.length < 4) return null; // fewer than two vertices — no segment has a strike
+
+  const cosLat = Math.cos((point.latitude * Math.PI) / 180);
+  let bestSq = Number.POSITIVE_INFINITY;
+  let bestBearingDeg: number | null = null;
+
+  let previousX = deltaLon(coords[0] as number, point.longitude) * KM_PER_DEGREE * cosLat;
+  let previousY = ((coords[1] as number) - point.latitude) * KM_PER_DEGREE;
+  let previousLon = coords[0] as number;
+  let previousLat = coords[1] as number;
+
+  for (let i = 2; i < coords.length; i += 2) {
+    const lon = coords[i] as number;
+    const lat = coords[i + 1] as number;
+    const x = deltaLon(lon, point.longitude) * KM_PER_DEGREE * cosLat;
+    const y = (lat - point.latitude) * KM_PER_DEGREE;
+
+    const sq = segmentDistanceSqKm(previousX, previousY, x, y);
+    if (sq < bestSq) {
+      bestSq = sq;
+      bestBearingDeg = initialBearingDeg(previousLat, previousLon, lat, lon);
+    }
+
+    previousX = x;
+    previousY = y;
+    previousLon = lon;
+    previousLat = lat;
+  }
+
+  return bestBearingDeg;
 }
 
 /** GEM's slip-type codes are machine-shaped; this is the human reading. */

@@ -19,6 +19,7 @@ import { createMagnetometerLayer } from './magnetometer-layer';
 import { createTecLayer } from './tec-layer';
 import { createSolarFlaresLayer } from './solar-flares-layer';
 import { createCmeArrivalsLayer } from './cme-arrivals-layer';
+import { createPlanetaryPositionsLayer } from './planetary-positions-layer';
 
 /**
  * The single source of truth for which layers exist.
@@ -222,6 +223,21 @@ export const OVERLAY_REGISTRATIONS: readonly OverlayRegistration[] = [
     // Fed the solar wind through `setSolarWind`, on the same push-don't-rebuild
     // channel as the field quantity and the aurora grid.
     create: () => createMagnetopauseLayer(),
+  },
+  {
+    id: 'planetary-positions',
+    label: 'Planetary positions (decorative)',
+    // `analysis`, same bucket as tides/magnetopause: computed output, nothing
+    // measured. The label says "(decorative)" for the same reason
+    // magnetopause's says "(model)" — `PROJECT_PLAN.md` §5.7 asks for exactly
+    // this ("beautiful and wanted... labeled explicitly as decorative, not
+    // causal"), and the distinction has to survive someone reading only the
+    // toggle.
+    category: 'analysis',
+    defaultVisible: false,
+    // Position is a pure function of time, like the tide layer — nothing
+    // pushes into it, `setTimeWindow` is the only input.
+    create: () => createPlanetaryPositionsLayer(),
   },
 ];
 
