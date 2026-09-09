@@ -1,0 +1,45 @@
+/* Matches `NearestFault.module.css` and `LocationPanel.module.css`, which
+   already carry byte-identical copies of these — this component is rendered
+   inside both panels' field lists and has to sit in them invisibly. */
+
+.field {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+/* The parents space their own rows with `.field + .field`, which cannot match
+   across CSS-module boundaries: the preceding row carries the parent's hashed
+   class and this one carries ours, so that rule never fires and the gap would
+   silently collapse. `:not(:first-child)` is positional rather than
+   class-based, so it gives the same 0.4375rem after any sibling — and no stray
+   gap when this is the only field, which happens on a fault carrying no
+   kinematics, slip rate or catalogue. */
+.field:not(:first-child) {
+  margin-top: 0.4375rem;
+}
+
+.term {
+  flex: none;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+.value {
+  margin: 0;
+  text-align: right;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.sub {
+  display: block;
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  font-style: normal;
+}
+
+.absent {
+  color: rgb(148 163 184);
+  font-style: italic;
+}

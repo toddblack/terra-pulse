@@ -29,7 +29,9 @@ describe('phasePoint', () => {
   });
 
   it('scales by the given radius', () => {
-    expect(phasePoint(90, 0.5)).toMatchObject({ x: expect.closeTo(0.5), y: expect.closeTo(0) });
+    const point = phasePoint(90, 0.5);
+    expect(point.x).toBeCloseTo(0.5);
+    expect(point.y).toBeCloseTo(0);
   });
 });
 
@@ -50,10 +52,10 @@ describe('layoutPhaseRose', () => {
     expect(tallest).toBeDefined();
     expect(half).toBeDefined();
     // Both start at angle -180 / -90 respectively at radius 1 and 0.5.
-    const expectedTallest = { x: expect.closeTo(0), y: expect.closeTo(1) };
-    const expectedHalf = { x: expect.closeTo(-0.5), y: expect.closeTo(0) };
-    expect(tallest).toMatchObject(expectedTallest);
-    expect(half).toMatchObject(expectedHalf);
+    expect(tallest?.x).toBeCloseTo(0);
+    expect(tallest?.y).toBeCloseTo(1);
+    expect(half?.x).toBeCloseTo(-0.5);
+    expect(half?.y).toBeCloseTo(0);
   });
 
   it('collapses every wedge to the centre point when every bin is empty', () => {
@@ -75,7 +77,8 @@ describe('layoutPhaseRose', () => {
     const wedge = wedges[0];
     expect(wedge).toBeDefined();
     const arc = wedge?.points.slice(1) ?? [];
-    expect(arc[0]).toMatchObject({ x: expect.closeTo(0), y: expect.closeTo(-1) });
+    expect(arc[0]?.x).toBeCloseTo(0);
+    expect(arc[0]?.y).toBeCloseTo(-1);
     const last = arc[arc.length - 1];
     expect(last?.x).toBeCloseTo(Math.sin((30 * Math.PI) / 180));
     expect(last?.y).toBeCloseTo(-Math.cos((30 * Math.PI) / 180));
