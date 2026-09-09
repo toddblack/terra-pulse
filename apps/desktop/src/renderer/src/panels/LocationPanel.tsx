@@ -1,9 +1,10 @@
 import { useGlobeStore } from '../state/useGlobeStore';
 import { formatLatLon } from '../layers/antipode';
-import { formatSlipRate, formatSlipType } from '../layers/fault-association';
+import { formatSlipRate, formatSlipType, type FaultRecord } from '../layers/fault-association';
 import { plateBoundaryLabel, plateClassLabel } from '../layers/plate-association';
 import { NearestFaultSection } from './NearestFault';
 import { RegionalRecurrenceSection } from './RegionalRecurrence';
+import { TidalShearField } from './TidalShear';
 import styles from './LocationPanel.module.css';
 
 /**
@@ -64,7 +65,7 @@ export function LocationPanel() {
       </header>
 
       <div className={styles.body}>
-        {location.kind === 'fault' && <FaultDetail fault={location.fault} />}
+        {location.kind === 'fault' && <FaultDetail fault={location.fault} point={location} />}
         {location.kind === 'boundary' && (
           <BoundaryDetail pair={location.pair} boundaryClass={location.boundaryClass} />
         )}
@@ -81,11 +82,21 @@ export function LocationPanel() {
 
 function FaultDetail({
   fault,
+  point,
 }: {
-  fault: { n?: string; t?: string; c?: string; s?: number; sl?: number; sh?: number };
+  /** The whole vendored record, not a display-shaped subset of it: the tidal
+   * field below reads `d`/`r` for orientation and `p` to derive strike from
+   * the trace itself. The store has always carried the full `FaultRecord`
+   * here — the narrower type was just describing what this panel happened to
+   * render at the time. */
+  fault: FaultRecord;
+  /** Where the reader clicked, which is what strike is read against. Never
+   * the trace's centroid — a 500 km trace's midpoint answers for somewhere
+   * nobody pointed at, the same rule the recurrence section follows. */
+  point: { latitude: number; longitude: number };
 }) {
   const kinematics = formatSlipType(fault.t);
-  const slipRate = formatSlipRate(fault as Parameters<typeof formatSlipRate>[0]);
+  const slipRate = formatSlipRate(fault);
 
   return (
     <section className={styles.section}>
@@ -114,6 +125,12 @@ function FaultDetail({
             </dd>
           </div>
         )}
+        {/* The same field the inspector and the probe show, from one
+            definition — and this is its cleanest case of the three: the fault
+            under the pointer *is* the fault the number describes, with none of
+            the "nearest trace, 42 km away" distance caveats in between. */}
+        <TidalShearField fault={fault} point={point} />
+
         {fault.c && (
           <div className={styles.field}>
             <dt className={styles.term}>Source</dt>

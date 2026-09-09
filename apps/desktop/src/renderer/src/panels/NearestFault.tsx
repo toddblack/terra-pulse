@@ -1,11 +1,7 @@
 import { useMemo } from 'react';
 import { ACTIVE_FAULTS } from '../layers/fault-data';
-import { faultStrikeDeg, formatSlipRate, formatSlipType, nearestFault } from '../layers/fault-association';
-import { resolvedShearPa } from '../layers/tidal-stress';
-import { tidalBodies } from '../layers/tides';
-import { useEarthquakeStore } from '../state/useEarthquakeStore';
-import { useNow } from '../globe/useNow';
-import { displayWindow, instantOnScreen } from '../globe/display-window';
+import { formatSlipRate, formatSlipType, nearestFault } from '../layers/fault-association';
+import { TidalShearField } from './TidalShear';
 import styles from './NearestFault.module.css';
 
 /**
@@ -100,18 +96,6 @@ export function NearestFaultBody({
     [latitude, longitude],
   );
 
-  // For the tidal-shear readout below. Same display-window-plus-clamp shape
-  // every other "state of the world right now" reading in this app uses
-  // (`magnetopause-layer.ts`, `tide-layer.ts`) — the raw window end can sit
-  // an hour into the future in live mode, and this asks what the tide is
-  // doing *now*, not what it will be doing.
-  const windowHours = useEarthquakeStore((state) => state.windowHours);
-  const playheadMs = useEarthquakeStore((state) => state.playheadMs);
-  const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
-  const nowMs = useNow();
-  const { endMs } = displayWindow(windowHours, playheadMs, trailingWindow, nowMs);
-  const instant = new Date(instantOnScreen(endMs, nowMs));
-
   if (match === null || match.distanceKm > MAX_MEANINGFUL_KM) {
     return (
       <p className={styles.none}>
@@ -128,23 +112,6 @@ export function NearestFaultBody({
   const slipType = formatSlipType(fault.t);
   const plausible = distanceKm <= PLAUSIBLE_KM;
   const deep = depthKm !== null && depthKm !== undefined && depthKm >= DEEP_KM;
-
-  // Present on 21.7% of GEM faults (measured at vendor time) — absence is
-  // the common case, not a bug, so it gets the same explicit "not reported"
-  // treatment `unnamed fault` above gets rather than silently vanishing the
-  // way `slipType`/`slipRate` do. Magnitude only: `resolvedShearPa`'s sign
-  // depends on strike being read in the same sense GEM's dip/rake were
-  // measured against, and `faultStrikeDeg` derives it from the trace's
-  // arbitrary digitisation order instead — see both functions' own doc
-  // comments for why that's a deliberate, not an accidental, gap.
-  const hasOrientation = fault.d !== undefined && fault.r !== undefined;
-  const strikeDeg = hasOrientation ? faultStrikeDeg(fault, { latitude, longitude }) : null;
-  const shearKPa =
-    strikeDeg !== null && fault.d !== undefined && fault.r !== undefined
-      ? Math.abs(
-          resolvedShearPa(tidalBodies(instant), latitude, longitude, strikeDeg, fault.d, fault.r),
-        ) / 1000
-      : null;
 
   return (
     <>
@@ -186,23 +153,9 @@ export function NearestFaultBody({
           </div>
         )}
 
-        {/* Decorative-adjacent, not H6: H6 resolves stress onto Global CMT
-            earthquake mechanisms, never onto a GEM trace. This answers a
-            different, smaller question — how hard is the tide pulling on
-            *this* mapped fault, right now. */}
-        <div className={styles.field}>
-          <dt className={styles.term}>Tidal shear stress</dt>
-          <dd className={styles.value}>
-            {shearKPa !== null ? (
-              <>
-                {shearKPa < 0.01 ? '<0.01' : shearKPa.toFixed(2)} kPa
-                <span className={styles.sub}>magnitude only — direction not resolved</span>
-              </>
-            ) : (
-              <span className={styles.unnamed}>dip not reported for this fault</span>
-            )}
-          </dd>
-        </div>
+        {/* Shared with the location panel's clicked-trace view, so the wording
+            and its caveat have one definition — see `TidalShear.tsx`. */}
+        <TidalShearField fault={fault} point={{ latitude, longitude }} />
 
         {fault.c && (
           <div className={styles.field}>
