@@ -245,6 +245,39 @@ Note that several stations it serves belong to other institutes (GSC, JMA, BGS,
 SANSA) and are also INTERMAGNET members — if their data is ever republished
 rather than merely displayed, the INTERMAGNET conditions below apply to them.
 
+**It is also a historical source, which this file previously assumed it was
+not.** Measured 2026-09-09 against the live service, Boulder, `elements=H`,
+`sampling_period=60`:
+
+| `type` | returns real values |
+|---|---|
+| `definitive` | **1987–2013.** Empty at 1986 and from 2014 on. |
+| `variation` | ~2010 onward — but empty at 2015, 2003 and 1995. |
+| `adjusted` | roughly the last year, and 2018 — empty at 2022. |
+| `quasi-definitive` | 2018 yes, 2022 no. It is what covers 2015. |
+
+Three findings, all of which shaped the timeline row:
+
+- **An era a product does not cover answers HTTP 200 with an array of nulls.**
+  Not a 404, not an error, and the `times` array comes back the right length.
+  Code that requests one product and trusts the status would render "station
+  offline" across the whole of 2015–2024 and look completely healthy. So a
+  series is fetched by trying products in order and keeping the first that
+  returns actual numbers, and it records which one answered.
+- **Coverage is not monotonic in either direction**, so no date rule is reliable
+  — 2015 is served by neither of the two obvious candidates. The date only
+  decides what to try *first*; a wrong guess costs one extra request, never a
+  wrong answer.
+- **Only minute cadence is usable.** `sampling_period=3600` returns nulls rather
+  than hourly means, and 90-day requests at that cadence time out. So a long
+  window cannot be thinned at the source and has to be refused by the caller:
+  30 days is 43,200 samples, measured at 1.9 s; a year would be 525,600.
+
+Verified end to end: the **March 1989 Quebec storm** reads 1,078 nT peak-to-peak
+at Boulder and 1,070 at Fredericksburg (both `definitive`); the **2003
+Halloween storm** reaches 2,046 nT in a single bucket at College, Alaska; a
+quiet 2010 day sits at 3.7 nT median. Nothing is served before 1987.
+
 | | |
 |---|---|
 | **INTERMAGNET** | `imag-data.bgs.ac.uk/GIN_V1/` |

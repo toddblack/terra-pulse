@@ -1,15 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { TRACK_GUIDES, trackGuideFor } from './track-guides';
+import { TRACK_ROWS, trackGuideIdFor } from './track-rows';
 
-const TRACK_ROW_IDS = ['track-geomagnetic', 'track-solar-wind', 'track-xray-flux', 'track-earthquakes'];
+const TRACK_ROW_IDS = TRACK_ROWS.map((row) => trackGuideIdFor(row.id));
 
 describe('track guides', () => {
   it('covers every row on the multi-track timeline', () => {
-    // Same discipline layer-guides.test.ts enforces via the registry — here
-    // there is no registry to check against, so the row ids are just listed,
-    // but the failure mode is identical: a row shipped with no explanation.
+    // Read from the row registry, exactly as layer-guides.test.ts reads the
+    // layer registry. This list used to be hardcoded here, which meant adding
+    // a row could not fail this test — the check passed while describing a
+    // timeline that no longer existed.
     for (const id of TRACK_ROW_IDS) {
       expect(trackGuideFor(id), id).toBeDefined();
+    }
+  });
+
+  it('has no guide for a row that is not registered', () => {
+    // The other half of the same discipline: a guide left behind for a row
+    // someone deleted.
+    for (const id of Object.keys(TRACK_GUIDES)) {
+      expect(TRACK_ROW_IDS, id).toContain(id);
     }
   });
 
@@ -53,5 +63,30 @@ describe('track guides', () => {
 
   it('states plainly that a lined-up spike is not evidence — Explore mode, non-negotiable #1', () => {
     expect(TRACK_GUIDES['track-earthquakes']?.limits.join(' ')).toMatch(/no significance claim/i);
+  });
+
+  it('says the tidal row’s sign is unresolved while its shape is not', () => {
+    // The one claim that stops this row being read as "the tide is currently
+    // encouraging slip here" — a statement it cannot make, because strike
+    // comes from a trace's arbitrary digitisation order. See
+    // tidal-stress-track.ts and TidalShear.tsx, which both carry the long form.
+    const limits = TRACK_GUIDES['track-tidal-stress']?.limits.join(' ') ?? '';
+    expect(limits).toMatch(/sign is not resolved/i);
+    expect(limits).toMatch(/shape/i);
+  });
+
+  it('keeps the tidal row apart from H6, and reports H6’s actual result', () => {
+    // The row draws the same physics a registered hypothesis test uses, which
+    // is exactly the situation non-negotiable #1 exists for. Naming the null
+    // rather than staying silent is the honest version — H6 ran and found
+    // nothing, and a reader watching a quake land on a tidal peak deserves
+    // that fact in the same place.
+    const limits = TRACK_GUIDES['track-tidal-stress']?.limits.join(' ') ?? '';
+    expect(limits).toMatch(/not H6/i);
+    expect(limits).toMatch(/clean null/i);
+  });
+
+  it('says the tidal row needs a dip and rake most faults do not have', () => {
+    expect(TRACK_GUIDES['track-tidal-stress']?.limits.join(' ')).toMatch(/21\.7%/);
   });
 });

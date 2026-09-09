@@ -43,41 +43,25 @@
 
      The arithmetic, because it is not guessable: the panel is centred
      (`top: 50%` + `translateY(-50%)`), so its bottom edge sits at
-     `(100vh - height) / 2` and every rem taken off the height buys only half a
-     rem of clearance. The scrubber is ~5.7rem tall at `bottom: 1rem`, so its
-     top edge is ~6.7rem up; 8rem of clearance leaves a visible gap. The
-     geomagnetic track now sits inside that same panel and adds ~2.7rem, so the
-     clearance is ~10.7rem and the total height `100vh - 21.4rem`, less this
-     panel's own 1.875rem of padding.
+     `(100vh - height) / 2` and **every rem taken off the height buys only half
+     a rem of clearance** — the clearance is paid at the top too, where nothing
+     is in the way. So the scrubber's height is subtracted twice. The remaining
+     2rem is the scrubber's own `bottom: 1rem`, doubled for the same reason.
 
-     The solar wind row added a second plot (1.5rem) plus its header (~0.9rem)
-     plus a gap, ~2.5rem — which costs 5rem here, because of the doubling. Both
-     plots dropped from 1.85rem to 1.5rem to give 0.7rem of that back, so the
-     net is ~4.3rem and this became 27rem. Any further row costs the same way;
-     the cheap alternative is a row the reader can collapse, not a shorter one.
+     `--scrubber-height` is published by `TimeScrubber` from its own measured
+     box; see the long note there. It replaced a hand-maintained constant that
+     had grown 21.4rem → 27 → 31 → 37 as track rows were added, whose last two
+     increases were never checked against the running app, and which could not
+     work at all once §5.5's per-row toggles let that height change while the
+     app is running. Switching two rows off now genuinely gives this panel the
+     room back rather than leaving a gap.
 
-     A third row — earthquake markers, §5.5 — followed that advice instead of
-     re-shrinking the first two: `.markerPlot` is 0.75rem, about half `.plot`,
-     because a marker's size already carries its magnitude and never needed the
-     full amplitude. Raw addition is header (~0.9rem) + row gap (0.1rem) +
-     plot (0.75rem) + track gap (0.3rem) ≈ 2.05rem, doubled to ~4.1rem here —
-     27rem → 31rem.
-
-     A fourth — GOES X-ray flux, also §5.5 — is a full bar/cap row like Kp and
-     wind, not a compact marker strip like the earthquake row, because typical
-     and peak are both real, distinct statistics here (median vs. max of
-     hourly flux peaks — see space-weather.ts). Same ~2.5rem raw cost the
-     solar wind row paid the first time: header (~0.9rem) + row gap (0.1rem) +
-     plot (1.5rem) + track gap (0.3rem) ≈ 2.8rem, doubled to ~5.6rem —
-     31rem → 37rem. Unlike the 27rem number above, neither of the last two
-     increases has been checked against the running app; revisit both once
-     someone has actually looked at the panel with all four rows and
-     something is off.
-
-     Being centred is what makes this expensive — the clearance has to be paid
-     at the top as well, where nothing is in the way. If the panel ever stops
-     pointing at the centred event, revisit this along with it. */
-  max-height: calc(100vh - 37rem);
+     The fallback matters: it is what applies on the first paint before the
+     observer has reported, and while Analyze mode has the scrubber unmounted
+     entirely. 22.25rem is the height **measured in the running app** with all
+     five rows and the toggle line shown (356px at a 16px root), so the
+     un-measured frame errs toward too little room rather than an overlap. */
+  max-height: calc(100vh - 2 * var(--scrubber-height, 22.25rem) - 2rem);
   overflow-y: auto;
 }
 

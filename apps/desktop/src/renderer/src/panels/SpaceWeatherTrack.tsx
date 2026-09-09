@@ -9,6 +9,7 @@ import {
   XRAY_EMPHASIS_FLUX,
   XRAY_FLUX_MAX,
   XRAY_FLUX_MIN,
+  STATION_DISTURBED_NT,
   type SpaceWeatherSample,
 } from '@terra-pulse/schema';
 import { useEarthquakeStore, selectEventById } from '../state/useEarthquakeStore';
@@ -38,6 +39,26 @@ import {
   peakEarthquake,
   type EarthquakeBar,
 } from './earthquake-track';
+import {
+  nearestPointIndex,
+  polylinePoints,
+  sampleTidalStress,
+  TIDAL_PERIOD_HOURS,
+  TIDAL_TRACK_MAX_WINDOW_HOURS,
+  type TidalStressSeries,
+} from './tidal-stress-track';
+import { useTidalStressPlane, type TidalPlaneState } from './useTidalStressPlane';
+import {
+  layoutMagnetometerTrack,
+  MAGNETOMETER_MAX_WINDOW_HOURS,
+  MAGNETOMETER_RANGE_MAX_NT,
+  MAGNETOMETER_RANGE_MIN_NT,
+  peakMagnetometer,
+  type MagnetometerBar,
+} from './magnetometer-track';
+import { useMagnetometerRow, type MagnetometerRowState } from './useMagnetometerSeries';
+import { isTrackVisible, TRACK_ROWS, trackGuideIdFor } from './track-rows';
+import { useGlobeStore } from '../state/useGlobeStore';
 import { LayerGuideButton } from './LayerGuideModal';
 import styles from './SpaceWeatherTrack.module.css';
 
@@ -104,6 +125,17 @@ function describeEarthquakeBar(bar: EarthquakeBar): string {
   return `M${bar.magnitude.toFixed(1)} · ${events}`;
 }
 
+/**
+ * The tidal row's readout and caption use **kPa, matching `TidalShear.tsx`** —
+ * the same quantity printed two places in this app must not carry two units.
+ * A magnitude, again matching that panel: the curve is what carries the sign,
+ * and a single number cannot (see `tidal-stress-track.ts`).
+ */
+function formatShear(shearPa: number): string {
+  const kPa = Math.abs(shearPa) / 1000;
+  return `${kPa < 0.01 ? '<0.01' : kPa.toFixed(2)} kPa`;
+}
+
 /** 3px at nothing recorded up to 9px at the fixed magnitude ceiling. */
 const MIN_DOT_PX = 3;
 const MAX_DOT_PX = 9;
@@ -162,6 +194,14 @@ export function SpaceWeatherTrack() {
   const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
   const nowMs = useNow();
 
+  const visibleTracks = useGlobeStore((state) => state.visibleTracks);
+  const showGeomagnetic = isTrackVisible('geomagnetic', visibleTracks);
+  const showSolarWind = isTrackVisible('solar-wind', visibleTracks);
+  const showXray = isTrackVisible('xray-flux', visibleTracks);
+  const showEarthquakes = isTrackVisible('earthquakes', visibleTracks);
+  const showTidalStress = isTrackVisible('tidal-stress', visibleTracks);
+  const showMagnetometer = isTrackVisible('magnetometer', visibleTracks);
+
   const { startMs, endMs } = useMemo(
     () => displayWindow(windowHours, playheadMs, trailingWindow, nowMs),
     [windowHours, playheadMs, trailingWindow, nowMs],
@@ -206,6 +246,52 @@ export function SpaceWeatherTrack() {
 
   const peak = useMemo(() => peakOf(samples), [samples]);
   const earthquakePeak = useMemo(() => peakEarthquake(earthquakes), [earthquakes]);
+
+  // The tidal row resolves stress onto whichever fault the current selection
+  // points at — see `useTidalStressPlane`. Both this and the sampling below are
+  // gated on the row's visibility, so a switched-off row costs nothing: the
+  // fault sweep is ~1.1 ms and the series is up to 1,200 ephemeris evaluations.
+  const tidalPlane = useTidalStressPlane(showTidalStress);
+  const tidalSeries = useMemo<TidalStressSeries | null>(() => {
+    if (!showTidalStress || tidalPlane.kind !== 'ready') return null;
+    return sampleTidalStress(tidalPlane.plane, startMs, endMs);
+  }, [showTidalStress, tidalPlane, startMs, endMs]);
+
+  // Same shape as the tidal row: gated on visibility, so a switched-off row
+  // never reaches the network. Its bars share the earthquake row's bucketing
+  // rather than `downsampleSpaceWeather`'s, because a magnetometer trace has
+  // real gaps and index slicing would stop being equal-time.
+  const magnetometerRow = useMagnetometerRow(showMagnetometer, startMs, endMs);
+  const magnetometerBars = useMemo<MagnetometerBar[]>(
+    () =>
+      magnetometerRow.kind === 'ready'
+        ? layoutMagnetometerTrack(
+            magnetometerRow.series.samples,
+            startMs,
+            endMs,
+            bucketCount,
+            STATION_DISTURBED_NT,
+          )
+        : [],
+    [magnetometerRow, startMs, endMs, bucketCount],
+  );
+  const magnetometerPeak = useMemo(
+    () => peakMagnetometer(magnetometerBars),
+    [magnetometerBars],
+  );
+  const magnetometerHovered = useMemo(
+    () =>
+      hoveredFraction === null ? NO_BAR : nearestBarIndex(magnetometerBars, hoveredFraction),
+    [magnetometerBars, hoveredFraction],
+  );
+
+  const tidalHovered = useMemo(
+    () =>
+      hoveredFraction === null || tidalSeries === null
+        ? NO_BAR
+        : nearestPointIndex(tidalSeries.points, hoveredFraction),
+    [tidalSeries, hoveredFraction],
+  );
 
   // Each row resolves the shared fraction against its *own* bars — see the
   // note on `hoveredFraction` above for why this can't be one shared index.
@@ -255,14 +341,21 @@ export function SpaceWeatherTrack() {
   }, []);
 
   /**
-   * Measures the first row and keeps the reference the hover lookup needs.
+   * Measures the track and keeps the reference the hover lookup needs.
    *
-   * Only one row is measured because both are the same width, and bound with a
-   * ref callback rather than an effect: an effect keyed on a conditionally
+   * **Bound to the container, not to the first row.** It used to be the
+   * geomagnetic row's plot, on the reasoning that every row is the same width —
+   * which was true and became a trap the moment rows could be switched off: with
+   * that row hidden the observer never binds, the width stays at the 480px
+   * fallback forever, and bucket and tick counts silently stop adapting. The
+   * container is always mounted, and it is the same width and left edge as every
+   * plot inside it, so it serves the hover lookup identically.
+   *
+   * A ref callback rather than an effect: an effect keyed on a conditionally
    * rendered element leaves the observer watching a detached node, which is a
    * bug this project has already shipped once.
    */
-  const registerPlot = useCallback((node: HTMLDivElement | null) => {
+  const registerTrack = useCallback((node: HTMLDivElement | null) => {
     plotRef.current = node;
     if (!node) return;
 
@@ -322,7 +415,10 @@ export function SpaceWeatherTrack() {
   };
 
   return (
-    <div className={styles.track} id="space-weather-track">
+    <div className={styles.track} id="space-weather-track" ref={registerTrack}>
+      <TrackToggles />
+
+      {showGeomagnetic && (
       <Row
         label="Geomagnetic"
         guideId="track-geomagnetic"
@@ -330,7 +426,6 @@ export function SpaceWeatherTrack() {
         hovered={geoHovered}
         ticks={ticks}
         thresholdFraction={KP_STORM_THRESHOLD / KP_MAX}
-        plotRef={registerPlot}
         handlers={plotHandlers}
         selectedFraction={selectedFraction}
         ariaLabel="Geomagnetic activity over the visible window"
@@ -368,7 +463,9 @@ export function SpaceWeatherTrack() {
           )
         }
       />
+      )}
 
+      {showSolarWind && (
       <Row
         label="Solar wind"
         guideId="track-solar-wind"
@@ -408,7 +505,9 @@ export function SpaceWeatherTrack() {
           )
         }
       />
+      )}
 
+      {showXray && (
       <Row
         label="X-ray flux"
         guideId="track-xray-flux"
@@ -445,7 +544,9 @@ export function SpaceWeatherTrack() {
           )
         }
       />
+      )}
 
+      {showEarthquakes && (
       <EarthquakeRow
         bars={earthquakes}
         hovered={quakeHovered}
@@ -468,6 +569,30 @@ export function SpaceWeatherTrack() {
           )
         }
       />
+      )}
+
+      {showTidalStress && (
+        <TidalStressRow
+          plane={tidalPlane}
+          series={tidalSeries}
+          hovered={tidalHovered}
+          ticks={ticks}
+          handlers={plotHandlers}
+          selectedFraction={selectedFraction}
+        />
+      )}
+
+      {showMagnetometer && (
+        <MagnetometerRow
+          state={magnetometerRow}
+          bars={magnetometerBars}
+          peak={magnetometerPeak}
+          hovered={magnetometerHovered}
+          ticks={ticks}
+          handlers={plotHandlers}
+          selectedFraction={selectedFraction}
+        />
+      )}
 
       <div className={styles.axis} aria-hidden="true">
         {ticks.map((tick) => (
@@ -494,6 +619,353 @@ export function SpaceWeatherTrack() {
   );
 }
 
+/**
+ * §5.5's "each independently toggleable", finally built.
+ *
+ * ## Why the chips are here and not in `LayerPanel`
+ *
+ * That panel is driven entirely off the layer registry — its own doc comment
+ * says adding a layer needs no edit there — and a track row is not a layer. It
+ * has no `GlobeLayer`, nothing to mount, nothing to destroy. Putting timeline
+ * rows in the layer list would mean hand-written entries in a component whose
+ * whole point is that it has none, and would file a control for the panel at
+ * the bottom of the screen inside the panel at the top left.
+ *
+ * ## What the line costs, and why it still pays
+ *
+ * About 1.3rem — and because the inspector is centred, roughly 2.6rem of its
+ * clearance. It buys back far more than that: switching off two rows reclaims
+ * ~5.6rem, and the clearance is measured now rather than a hardcoded constant
+ * (see `TimeScrubber.tsx`), so turning a row off genuinely gives the inspector
+ * the room back instead of merely leaving a gap.
+ */
+function TrackToggles() {
+  const visibleTracks = useGlobeStore((state) => state.visibleTracks);
+  const toggleTrack = useGlobeStore((state) => state.toggleTrack);
+
+  return (
+    <div className={styles.toggles} role="group" aria-label="Timeline rows">
+      {TRACK_ROWS.map((row) => {
+        const visible = isTrackVisible(row.id, visibleTracks);
+        return (
+          <button
+            key={row.id}
+            type="button"
+            id={`track-toggle-${row.id}`}
+            className={visible ? `${styles.chip} ${styles.chipOn}` : styles.chip}
+            aria-pressed={visible}
+            onClick={() => {
+              toggleTrack(row.id);
+            }}
+          >
+            {row.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+interface TidalStressRowProps {
+  plane: TidalPlaneState;
+  series: TidalStressSeries | null;
+  hovered: number;
+  ticks: { x: number; timeUtc: string }[];
+  handlers: Record<string, unknown>;
+  selectedFraction: number | null;
+}
+
+/**
+ * §5.5's fifth row: lunisolar tidal shear on one mapped fault, as a curve.
+ *
+ * **Deliberately neither a `Row` nor an `EarthquakeRow`.** Those draw a bucketed
+ * measurement and a binned point series respectively; this is a continuous
+ * analytic function with no median/peak pair, no missing-data state, and no
+ * reason for its fidelity to depend on the pixel width. See
+ * `tidal-stress-track.ts`.
+ *
+ * The curve is **signed**, with zero at the midline, while the readout beside it
+ * is a **magnitude** — matching `TidalShear.tsx`, so one quantity does not carry
+ * two meanings in two panels. That split is the honest one: the waveform's shape
+ * survives the strike-sign ambiguity because the ambiguity is one constant flip
+ * per fault, whereas a single signed number does not survive it at all.
+ */
+function TidalStressRow({
+  plane,
+  series,
+  hovered,
+  ticks,
+  handlers,
+  selectedFraction,
+}: TidalStressRowProps) {
+  const hoveredPoint = series && hovered >= 0 ? series.points[hovered] : undefined;
+
+  /** The header's right-hand text: the hovered value, else what the row can say. */
+  const caption = (() => {
+    if (plane.kind === 'none') {
+      // An invitation, not an error. The row is off by default precisely so
+      // this state is something you opted into rather than met unannounced.
+      return 'select an earthquake or fault';
+    }
+    if (plane.kind === 'too-far') {
+      return `nearest mapped fault is ${Math.round(plane.distanceKm)} km away`;
+    }
+    if (plane.kind === 'no-plane') {
+      // The common case, at 78.3% of GEM traces — said plainly rather than
+      // drawn as a flat line, which would read as "no tidal stress here".
+      return `${plane.fault.n ?? 'unnamed fault'} — dip not reported`;
+    }
+    if (series?.tooLong === true) {
+      // Names both the limit and the reason for it: a reader who has just
+      // scrubbed to the 130-year archive should be able to tell this from a
+      // fault that simply has no data.
+      return `over ${String(TIDAL_TRACK_MAX_WINDOW_HOURS / 24)} days — the ${String(
+        TIDAL_PERIOD_HOURS,
+      )} h tide cannot be drawn`;
+    }
+    const name = plane.fault.n ?? 'unnamed fault';
+    return series ? `${name} · peak ${formatShear(series.peakPa)}` : name;
+  })();
+
+  return (
+    <div className={styles.row}>
+      <div className={styles.header}>
+        <span className={styles.titleGroup}>
+          <span className={styles.title}>Tidal stress</span>
+          <LayerGuideButton layerId={trackGuideIdFor('tidal-stress')} />
+        </span>
+        {hoveredPoint ? (
+          <span className={styles.readout}>
+            {formatBarTime(new Date(hoveredPoint.timeMs).toISOString())} ·{' '}
+            {formatShear(hoveredPoint.shearPa)}
+          </span>
+        ) : (
+          <span className={styles.peak}>{caption}</span>
+        )}
+      </div>
+
+      <div
+        className={styles.plot}
+        role="group"
+        aria-label="Lunisolar tidal shear stress on the selected fault"
+        {...handlers}
+      >
+        {/* Zero, not a threshold: this row is signed and its midline is a real
+            value rather than an annotation to measure against. Solid and
+            centred so the curve is read as swinging about it. */}
+        <span className={styles.zeroLine} aria-hidden="true" />
+
+        {ticks.map((tick) => (
+          <span
+            key={tick.timeUtc}
+            className={styles.tickLine}
+            style={{ left: `${String(tick.x * 100)}%` }}
+            aria-hidden="true"
+          />
+        ))}
+
+        {hoveredPoint && (
+          <span
+            className={styles.guide}
+            style={{ left: `${String(hoveredPoint.x * 100)}%` }}
+            aria-hidden="true"
+          />
+        )}
+
+        {selectedFraction !== null && (
+          <span
+            className={styles.selectionGuide}
+            style={{ left: `${String(selectedFraction * 100)}%` }}
+            aria-hidden="true"
+          />
+        )}
+
+        {series && series.points.length > 0 && (
+          /* `preserveAspectRatio="none"` stretches a square viewBox to the
+             row's real shape, which is what lets the curve use the same 0-1
+             coordinate space every other row's CSS percentages use. It also
+             stretches the stroke, hence `vectorEffect` — without it the line
+             is drawn several times thicker horizontally than vertically. */
+          <svg
+            className={styles.curve}
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <polyline points={polylinePoints(series.points)} vectorEffect="non-scaling-stroke" />
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+}
+
+interface MagnetometerRowProps {
+  state: MagnetometerRowState;
+  bars: MagnetometerBar[];
+  peak: { rangeNt: number | null; measuredFraction: number };
+  hovered: number;
+  ticks: { x: number; timeUtc: string }[];
+  handlers: Record<string, unknown>;
+  selectedFraction: number | null;
+}
+
+/**
+ * §5.5's sixth row: the ground field's disturbance at the station nearest the
+ * selection.
+ *
+ * A bar row like Kp and X-ray rather than a curve like the tide, because this
+ * *is* a bucketed statistic of a sampled measurement — each bar is that
+ * interval's peak-to-peak range, the same quantity the globe marker shows. Log
+ * scaled, for the reason `magnetometer-track.ts` measures out: quiet buckets
+ * are single-digit nT and storm buckets reach two thousand.
+ *
+ * **The distance to the station is always printed**, and that is the honest
+ * part. The USGS network is thin and heavily northern — 10 of 31 stations below
+ * 45 degrees — so "nearest" is often over a thousand kilometres from the
+ * selected event, and a disturbance measured that far away says much less about
+ * the ground under the epicentre than the row's mere presence implies.
+ */
+function MagnetometerRow({
+  state,
+  bars,
+  peak,
+  hovered,
+  ticks,
+  handlers,
+  selectedFraction,
+}: MagnetometerRowProps) {
+  const hoveredBar = hovered >= 0 ? bars[hovered] : undefined;
+
+  const caption = (() => {
+    switch (state.kind) {
+      case 'no-selection':
+        return 'select an earthquake or place';
+      case 'no-stations':
+        // Before the first poll, or with no network — distinct from a station
+        // list that exists and simply has nothing nearby.
+        return 'no station list yet';
+      case 'window-too-long':
+        return `over ${String(MAGNETOMETER_MAX_WINDOW_HOURS / 24)} days — only minute data is served`;
+      case 'loading':
+        return `${state.nearest.station.name} · loading`;
+      case 'no-coverage':
+        // The common case before 1987 and in the holes between USGS's four
+        // products — said plainly, never drawn as a quiet station.
+        return `${state.nearest.station.name} · no data for this window`;
+      case 'ready': {
+        const km = Math.round(state.nearest.distanceKm).toLocaleString();
+        const level = peak.rangeNt === null ? '—' : `${Math.round(peak.rangeNt).toString()} nT`;
+        return `${state.nearest.station.code} ${km} km · peak ${level}`;
+      }
+    }
+  })();
+
+  return (
+    <div className={styles.row}>
+      <div className={styles.header}>
+        <span className={styles.titleGroup}>
+          <span className={styles.title}>Magnetometer</span>
+          <LayerGuideButton layerId={trackGuideIdFor('magnetometer')} />
+        </span>
+        {hoveredBar ? (
+          <span className={styles.readout}>
+            {formatBarTime(hoveredBar.timeUtc)} ·{' '}
+            {hoveredBar.rangeNt === null
+              ? 'not measured'
+              : `${hoveredBar.rangeNt.toFixed(1)} nT range`}
+          </span>
+        ) : (
+          <span className={styles.peak}>{caption}</span>
+        )}
+      </div>
+
+      <div
+        className={styles.plot}
+        role="group"
+        aria-label="Ground magnetometer disturbance over the visible window"
+        {...handlers}
+      >
+        {/* The app's existing station-disturbance emphasis level. Display only
+            — H4b, which registered a per-station trigger, was withdrawn unrun,
+            so there is no registered constant for this to be confused with. */}
+        <span
+          className={styles.stormLine}
+          style={{
+            bottom: `${String(
+              heightOf(STATION_DISTURBED_NT, MAGNETOMETER_RANGE_MAX_NT, MAGNETOMETER_RANGE_MIN_NT) *
+                100,
+            )}%`,
+          }}
+          aria-hidden="true"
+        />
+
+        {ticks.map((tick) => (
+          <span
+            key={tick.timeUtc}
+            className={styles.tickLine}
+            style={{ left: `${String(tick.x * 100)}%` }}
+            aria-hidden="true"
+          />
+        ))}
+
+        {hoveredBar && (
+          <span
+            className={styles.guide}
+            style={{ left: `${String((hoveredBar.x + hoveredBar.width / 2) * 100)}%` }}
+            aria-hidden="true"
+          />
+        )}
+
+        {selectedFraction !== null && (
+          <span
+            className={styles.selectionGuide}
+            style={{ left: `${String(selectedFraction * 100)}%` }}
+            aria-hidden="true"
+          />
+        )}
+
+        {bars.map((bar, index) => {
+          const left = `${String(bar.x * 100)}%`;
+          const barWidth = `${String(Math.max(bar.width * 100, 0.15))}%`;
+          const isHovered = index === hovered;
+
+          if (bar.rangeNt === null) {
+            // An absence, drawn — a station dropping out mid-storm is exactly
+            // the bucket a reader must not mistake for a calm one.
+            return (
+              <span
+                key={bar.timeUtc}
+                className={isHovered ? `${styles.absent} ${styles.absentHovered}` : styles.absent}
+                style={{ left, width: barWidth }}
+              />
+            );
+          }
+
+          const height = heightOf(
+            bar.rangeNt,
+            MAGNETOMETER_RANGE_MAX_NT,
+            MAGNETOMETER_RANGE_MIN_NT,
+          );
+          return (
+            <span
+              key={bar.timeUtc}
+              className={[
+                styles.bar,
+                bar.disturbed ? styles.barStormy : '',
+                isHovered ? styles.barHovered : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              style={{ left, width: barWidth, height: `${String(Math.max(height * 100, 2))}%` }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface RowProps {
   label: string;
   /** Looked up in track-guides.ts for the row's `?` button. */
@@ -503,8 +975,6 @@ interface RowProps {
   ticks: { x: number; timeUtc: string }[];
   /** Where the reference line sits, 0-1 up the row. */
   thresholdFraction: number;
-  /** Only the first row is measured; both are the same width. */
-  plotRef?: (node: HTMLDivElement | null) => (() => void) | void;
   handlers: Record<string, unknown>;
   /** Where the selected earthquake sits, 0-1, or null when nothing is selected. */
   selectedFraction: number | null;
@@ -526,7 +996,6 @@ function Row({
   hovered,
   ticks,
   thresholdFraction,
-  plotRef,
   handlers,
   selectedFraction,
   ariaLabel,
@@ -549,16 +1018,7 @@ function Row({
         )}
       </div>
 
-      {/* Bound with a ref callback, not an effect: an effect keyed on a
-          conditionally-rendered element leaves the observer watching a detached
-          node, which is a bug this project has already shipped once. */}
-      <div
-        className={styles.plot}
-        ref={plotRef}
-        role="group"
-        aria-label={ariaLabel}
-        {...handlers}
-      >
+      <div className={styles.plot} role="group" aria-label={ariaLabel} {...handlers}>
         <span
           className={styles.stormLine}
           style={{ bottom: `${String(thresholdFraction * 100)}%` }}

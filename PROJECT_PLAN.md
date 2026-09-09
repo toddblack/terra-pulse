@@ -1007,14 +1007,38 @@ server-side proxying of all third-party API calls.
   wanted again.
 - ~~Ionospheric TEC~~ — **shipped.** SWPC GloTEC raster, total and anomaly views,
   fetched on demand because a map is 2.4 MB.
-- Multi-track timeline panel — **Explore mode** (§5.5) — **partially shipped.**
-  Two of the six listed tracks (Kp/Dst, solar wind speed/Bz) are built and share
-  one time axis with the scrubber, downsampled with both a median bar and a peak
-  cap per bucket. GOES X-ray flux, magnetometer traces, tidal stress (Phase 5)
-  and an earthquake-marker row are not built.
-- Click-a-quake → center timeline on it — **not built.** Selecting an event
-  moves the camera (`focusRequest`) but not `playheadMs`; the multi-track panel
-  does not yet highlight a window around a selected event.
+- Multi-track timeline panel — **Explore mode** (§5.5) — **complete, all six
+  listed tracks shipped.** Kp/Dst, solar wind speed/Bz, GOES X-ray flux and
+  ground magnetometer are bar rows sharing one time axis with the scrubber;
+  earthquake markers are a compact marker strip; lunisolar tidal stress is a
+  signed curve.
+  - **The magnetometer row is not live-only, and the assumption that it would
+    be was wrong.** USGS serves 1-minute data back to **1987** — the March 1989
+    Quebec storm reads 1,078 nT peak-to-peak at Boulder. What it does not serve
+    is any coarser cadence (`sampling_period=3600` returns nulls, not hourly
+    means), so the row is capped at a 30-day window and goes quiet on archive
+    spans while the *playhead* may sit anywhere in the record.
+  - **Four processing levels, tried in turn**, because coverage between them is
+    non-monotonic and undocumented — and an era a product does not cover
+    answers **HTTP 200 with an array of nulls**, not a 404. Measured coverage
+    and the trap are in `SOURCES.md`.
+  - **The rows are independently toggleable**, as §5.5 asked — a chip line above
+    the track, backed by `panels/track-rows.ts`. It was overdue: the panel is at
+    the bottom of the window and the inspector is *centred*, so every row costs
+    the inspector twice its own height.
+  - The inspector's clearance is now **measured**, not a constant.
+    `TimeScrubber` publishes its real height into `--scrubber-height` and the
+    inspector subtracts it twice. The hand-maintained `calc(100vh - 37rem)` it
+    replaced had grown 21.4 → 27 → 31 → 37rem as rows were added, its last two
+    increases were never checked against the running app, and no constant can
+    follow a height that changes at runtime.
+- Click-a-quake → center timeline on it — **shipped.** Selecting an event draws
+  a persistent dashed guide at its exact time on every row
+  (`selectedFraction` in `SpaceWeatherTrack.tsx`). The window deliberately does
+  *not* move: a quake is only clickable while its mark is drawn, so its time is
+  already inside the displayed window, and re-centring would hide other events
+  between it and now in live mode — for a feature whose whole point is
+  orientation.
 - ~~Large-event alerts (§5.8)~~ — **shipped early.** Needed no new data source,
   only the existing USGS poll, so it did not have to wait for the rest of this
   phase. One active alert, click-to-fly, OS notification when unfocused.
@@ -1153,8 +1177,10 @@ server-side proxying of all third-party API calls.
 - ~~`HYPOTHESES.md` needs reconciling~~ — **done 2026-08-20.** All five run
   families now carry their `Status` and `Result`, each reproduced against the
   live database with its own registered seed before being written down.
-- **Milestone:** H1–H5 tested and honestly reported. Not yet reached — three
-  of six families run.
+- **Milestone: reached 2026-08-26.** H1–H5 tested and honestly reported — and
+  H6 with them, so the whole registered matrix is answered: **19 tests, six
+  families, none rejected.** (This line read "not yet reached — three of six
+  families run" until 2026-09-09, having gone stale as the last three shipped.)
 
 ### Phase 5 — Astronomical Extension
 - ~~Skyfield + DE440 integration~~ — **shipped 2026-08-26.** `de440s.bsp` is
@@ -1164,14 +1190,32 @@ server-side proxying of all third-party API calls.
   userData, not bundled** — it is public domain so it legally could be, but it
   is 31 MB for one test and nothing outside H6 reads it. The prerequisite card
   lives in Analyze on H6's tab, not with the archive panels.
-- Planetary and lunar position layer (labeled decorative)
-- **Lunisolar tidal stress tensors**, resolved onto fault geometry
+- ~~Planetary and lunar position layer (labeled decorative)~~ — **shipped
+  2026-09-08.** Sun, Moon and seven planets at their sub-points, following the
+  scrubber, from Schlyter's low-precision elements rather than DE440 (the kernel
+  is an Analyze-only prerequisite the renderer never opens). The registry label
+  says "decorative" and nothing it draws feeds any computation.
+- ~~**Lunisolar tidal stress tensors**, resolved onto fault geometry~~ —
+  **shipped 2026-09-08/09**, scoped down deliberately. Painting all 13,696 GEM
+  traces live was measured and rejected: `active-faults.ts` is one
+  `PolylineCollection` with a single shared material and no per-fault colour,
+  and GEM publishes dip and rake for only **21.7%** of its faults, so most of
+  the globe would have had nothing to paint. What shipped is a per-click
+  readout in the fault inspector, probe mode and the location panel.
+  - **And now a timeline row too** (§5.5, above): the same physics across the
+    visible window, as a signed curve on the multi-track panel. Fixed ±1.5 kPa
+    scale — measured over 400 real faults across a synodic month, where |τ| runs
+    p50 265 Pa / p90 673 / max 1,662, so the ceiling clips 0.065%. Refuses to
+    draw past 30 days, because the 12.42 h tide aliases into convincing noise
+    long before the globe's 130-year window.
 - ~~Tidal stress globe surface~~ — **the potential half shipped 2026-08-20** as
   the `tides` layer: the equilibrium tide as a raster following the scrubber,
   computed locally with an analytic ephemeris and no Skyfield. Deliberately the
   *potential*, not stress — stress is a tensor and needs a fault plane to become
-  a number, which is H6's problem and not a global scalar. Timeline track still
-  open.
+  a number, which is H6's problem and not a global scalar. **The timeline track
+  is now built** and resolves that tensor onto one selected fault, which is the
+  form a track can legitimately take: a row describes one place, so it has a
+  plane to use, where a global raster would have to invent one per cell.
 - ~~H6 testing~~ — **shipped and run 2026-08-26; clean null on both tests, and
   the registered matrix is now complete at 19 of 19.** Kept below for the
   reconnaissance that shaped it. It was blocked on orientations, not on the
@@ -1215,8 +1259,10 @@ server-side proxying of all third-party API calls.
     is subduction-only. Depth mix does drift at M5.0+ (shallow 72 → 82%) and is
     much flatter at M5.5+.
 
-  **H6's registration was completed the same day and it is no longer blocked —
-  only unbuilt.** Every implied parameter now has a value in `HYPOTHESES.md`,
+  **H6's registration was completed the same day, unblocking it** — it was
+  built and run five days later; this paragraph is the reconnaissance as it
+  stood on 2026-08-21, kept for the measurements. Every implied parameter now
+  has a value in `HYPOTHESES.md`,
   written against the measurements above rather than ahead of them. The four
   that took real work:
 

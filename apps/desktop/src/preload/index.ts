@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   MagnetometerReading,
+  MagnetometerSeries,
   TecGrid,
   AftershockSequence,
   AuroraGrid,
@@ -164,6 +165,20 @@ contextBridge.exposeInMainWorld('terraPulse', {
      * for this hour again. History comes from the INTERMAGNET archive instead.
      */
     latest: (): Promise<MagnetometerReading[]> => ipcRenderer.invoke('magnetometer:latest'),
+
+    /**
+     * One station's horizontal-component trace over a window, for the timeline
+     * row — or null when no USGS product covers it.
+     *
+     * Null is an **ordinary** answer here, not a failure: nothing is served
+     * before 1987, and the four processing levels have real holes between them.
+     * The row draws that as "no data for this window", never as a quiet station.
+     */
+    series: (request: {
+      code: string;
+      startUtc: string;
+      endUtc: string;
+    }): Promise<MagnetometerSeries | null> => ipcRenderer.invoke('magnetometer:series', request),
 
     /** Subscribes to each refresh. Returns an unsubscribe function. */
     onUpdated: (callback: (readings: MagnetometerReading[]) => void): (() => void) => {

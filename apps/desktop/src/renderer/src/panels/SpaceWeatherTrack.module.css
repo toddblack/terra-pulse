@@ -12,6 +12,47 @@
   color: rgb(203 213 225);
 }
 
+/* §5.5's per-row toggles. One line, above the rows it controls.
+
+   Uses the app's established disclosure language rather than a hue: which rows
+   you are looking at is not a status and not a significance claim, so it gets
+   neutral emphasis — dim and flat when off, filled and near-white when on —
+   exactly as CollapsibleSection's own note argues. The chips that *are* allowed
+   colour elsewhere (the Analyze tab dots) signal background activity, which
+   this is not. */
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.chip {
+  padding: 0.05rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 0.2rem;
+  background: none;
+  color: rgb(100 116 139);
+  font-size: 0.5625rem;
+  cursor: pointer;
+}
+
+.chip:hover {
+  color: rgb(203 213 225);
+}
+
+/* The border exists in both states and is merely transparent when off, so
+   switching a row does not shift the line's height by a pixel. */
+.chipOn {
+  border-color: rgb(255 255 255 / 18%);
+  background-color: rgb(255 255 255 / 8%);
+  color: rgb(226 232 240);
+}
+
+.chip:focus-visible {
+  outline: 1px solid rgb(148 163 184 / 60%);
+  outline-offset: 1px;
+}
+
 /* One plotted quantity. The axis is not in here — it belongs to the stack, so
    that two rows share one set of labels rather than repeating them. */
 .row {
@@ -213,6 +254,45 @@
 .dotHovered {
   outline: 1px solid rgb(226 232 240 / 85%);
   outline-offset: 1px;
+}
+
+/* The tidal row's midline — zero shear.
+
+   Solid, unlike `.stormLine`'s dashes, and for a real reason: a dashed line in
+   this track means "a threshold someone chose" (Kp 5, 500 km/s, M-class), while
+   this is the row's own origin. The curve swings both sides of it, so it is
+   part of the plot rather than an annotation over it. */
+.zeroLine {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  border-top: 1px solid rgb(255 255 255 / 14%);
+}
+
+/* The tidal stress curve.
+
+   Sized to fill the plot so its 0-100 viewBox maps onto the same 0-1 space the
+   other rows position their marks in. Stroke colour matches the other series'
+   blue: it is a measurement of the same kind, drawn differently because it is
+   continuous rather than sampled — not a different category of thing.
+
+   `stroke-width` is in *pixels*, not viewBox units, because the polyline is
+   drawn with `vector-effect: non-scaling-stroke`; without that a stretched
+   square viewBox gives a line several times thicker across than down. */
+.curve {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.curve polyline {
+  fill: none;
+  stroke: rgb(56 189 248 / 85%);
+  stroke-width: 1.25px;
+  stroke-linejoin: round;
 }
 
 .axis {

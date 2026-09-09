@@ -1,4 +1,10 @@
-import type { MagnetometerStation, StationDisturbance } from '@terra-pulse/schema';
+import type {
+  MagnetometerProduct,
+  MagnetometerSample,
+  MagnetometerSeries,
+  MagnetometerStation,
+  StationDisturbance,
+} from '@terra-pulse/schema';
 
 /**
  * Ground magnetometers, from the USGS geomagnetism web service.
@@ -174,4 +180,109 @@ export function parseDisturbance(code: string, payload: unknown): StationDisturb
     samples: readings.length,
     observedAtUtc: typeof last === 'string' ? last : new Date().toISOString(),
   };
+}
+
+/**
+ * The year from which `variation` starts being the product that answers, and
+ * `definitive` stops.
+ *
+ * Measured at Boulder: `definitive` returns real values through 2013 and
+ * nothing from 2014; `variation` answers at 2010 and after. They overlap
+ * around 2010-2013, so the boundary is a choice inside that overlap rather
+ * than a cliff. 2014 is where `definitive` demonstrably stops.
+ *
+ * This only decides which product is **tried first**. Everything falls back, so
+ * a wrong guess here costs one extra request, never a wrong answer — which is
+ * the point, because the coverage is not monotonic enough for any rule to be
+ * right every time (2015 answers from neither of the two obvious candidates).
+ */
+const VARIATION_FROM_YEAR = 2014;
+
+/**
+ * Products to try, best guess first.
+ *
+ * Ordered rather than filtered: nothing is ruled out, because the measured
+ * coverage has holes that no date rule predicts. See `MagnetometerProduct`.
+ */
+export function productOrderFor(startUtc: Date): MagnetometerProduct[] {
+  return startUtc.getUTCFullYear() >= VARIATION_FROM_YEAR
+    ? ['variation', 'adjusted', 'quasi-definitive', 'definitive']
+    : ['definitive', 'quasi-definitive', 'variation', 'adjusted'];
+}
+
+/**
+ * One station's horizontal-component trace over a window, or null if no
+ * product covers it.
+ *
+ * Tries each product until one returns real numbers. Usually one request; at
+ * worst four, which is the price of an era the guess got wrong. **Only
+ * `sampling_period=60` is usable** — measured, `3600` returns an array of
+ * nulls rather than hourly means, so a long window cannot be thinned at the
+ * source and has to be refused by the caller instead.
+ */
+export async function fetchStationSeries(
+  code: string,
+  startUtc: Date,
+  endUtc: Date,
+  fetchImpl: typeof fetch = fetch,
+): Promise<MagnetometerSeries | null> {
+  for (const product of productOrderFor(startUtc)) {
+    const query = new URLSearchParams({
+      id: code,
+      format: 'json',
+      type: product,
+      elements: 'H',
+      sampling_period: '60',
+      starttime: startUtc.toISOString(),
+      endtime: endUtc.toISOString(),
+    });
+
+    let response: Response;
+    try {
+      response = await fetchImpl(`${DATA_URL}?${query.toString()}`);
+    } catch {
+      // A transport failure on one product says nothing about the others, and
+      // the whole point of the loop is that most of them will not answer.
+      continue;
+    }
+    if (!response.ok) continue;
+
+    const samples = parseSeries(await response.json());
+    // The load-bearing check: an uncovered era returns 200 with all-null
+    // values, so "did it parse" is not the question — "did it contain
+    // measurements" is.
+    if (samples && samples.length >= 2) return { code, product, samples };
+  }
+
+  return null;
+}
+
+/** Split out from the fetch so it can be tested against a fixture. */
+export function parseSeries(payload: unknown): MagnetometerSample[] | null {
+  if (typeof payload !== 'object' || payload === null) return null;
+  const body = payload as { times?: unknown; values?: unknown };
+  if (!Array.isArray(body.times) || !Array.isArray(body.values)) return null;
+
+  const channel = (body.values as { values?: unknown }[])[0];
+  if (!channel || !Array.isArray(channel.values)) return null;
+
+  const times = body.times as unknown[];
+  const values = channel.values as unknown[];
+  const samples: MagnetometerSample[] = [];
+
+  for (let i = 0; i < times.length; i += 1) {
+    const value = values[i];
+    const time = times[i];
+    // Nulls are dropped rather than carried as gaps: a magnetometer trace is
+    // drawn as a line, and the caller needs to know where it genuinely has
+    // measurements. Dropping keeps `samples.length` an honest count, which is
+    // what distinguishes an uncovered era from a real one.
+    if (typeof value !== 'number' || !Number.isFinite(value)) continue;
+    if (typeof time !== 'string') continue;
+    const timeMs = Date.parse(time);
+    if (!Number.isFinite(timeMs)) continue;
+    samples.push({ timeMs, hNt: value });
+  }
+
+  return samples;
 }

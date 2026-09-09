@@ -13,7 +13,7 @@ import styles from './NearestFault.module.css';
  * be technically true and read as an association. 150 km keeps roughly the
  * populated nine-tenths and refuses the rest outright.
  */
-const MAX_MEANINGFUL_KM = 150;
+export const MAX_MEANINGFUL_KM = 150;
 
 /**
  * Below this, the trace is close enough that the reader can reasonably wonder

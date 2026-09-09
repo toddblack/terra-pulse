@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { HISTORICAL_DATA_SECTION_ID, useGlobeStore, type LocationSelection } from './useGlobeStore';
 import type { FaultRecord } from '../layers/fault-association';
+import {
+  defaultTrackVisibility,
+  isTrackVisible,
+  TRACK_ROWS,
+} from '../panels/track-rows';
 
 const reset = () => useGlobeStore.setState({ faultProbeActive: false, location: null });
 
@@ -192,5 +197,65 @@ describe('the historical data section, which starts open', () => {
     useGlobeStore.getState().toggleSection(HISTORICAL_DATA_SECTION_ID);
     useGlobeStore.getState().toggleSection(HISTORICAL_DATA_SECTION_ID);
     expect(useGlobeStore.getState().expandedSections[HISTORICAL_DATA_SECTION_ID]).toBe(true);
+  });
+});
+
+describe('timeline row visibility', () => {
+  beforeEach(() => {
+    useGlobeStore.setState({ visibleTracks: defaultTrackVisibility() });
+  });
+
+  it('starts with the four rows that were already shipping switched on', () => {
+    // Turning off a row someone has been reading for months is a regression,
+    // not a default — see `TRACK_ROWS`.
+    const { visibleTracks } = useGlobeStore.getState();
+    expect(isTrackVisible('geomagnetic', visibleTracks)).toBe(true);
+    expect(isTrackVisible('solar-wind', visibleTracks)).toBe(true);
+    expect(isTrackVisible('xray-flux', visibleTracks)).toBe(true);
+    expect(isTrackVisible('earthquakes', visibleTracks)).toBe(true);
+  });
+
+  it('starts with tidal stress off, alone among the five', () => {
+    // It is the only row that says nothing until something is selected.
+    expect(isTrackVisible('tidal-stress', useGlobeStore.getState().visibleTracks)).toBe(false);
+  });
+
+  it('hides on the first toggle, not the second', () => {
+    useGlobeStore.getState().toggleTrack('geomagnetic');
+    expect(isTrackVisible('geomagnetic', useGlobeStore.getState().visibleTracks)).toBe(false);
+  });
+
+  it('shows again on the second', () => {
+    useGlobeStore.getState().toggleTrack('geomagnetic');
+    useGlobeStore.getState().toggleTrack('geomagnetic');
+    expect(isTrackVisible('geomagnetic', useGlobeStore.getState().visibleTracks)).toBe(true);
+  });
+
+  it('hides a row whose key is absent on the first click, not the second', () => {
+    // The rule that is the *inverse* of `expandedSections`: absent means
+    // visible here, so `toggleTrack` has to negate through `isTrackVisible`
+    // rather than negate the raw stored value. Written the naive way,
+    // `!undefined` is `true` — setting a row that already drew to "visible"
+    // — and the first click on a newly registered row would do nothing at all.
+    useGlobeStore.setState({ visibleTracks: {} });
+    expect(isTrackVisible('earthquakes', useGlobeStore.getState().visibleTracks)).toBe(true);
+    useGlobeStore.getState().toggleTrack('earthquakes');
+    expect(isTrackVisible('earthquakes', useGlobeStore.getState().visibleTracks)).toBe(false);
+  });
+
+  it('leaves the other rows and the layer toggles alone', () => {
+    const layersBefore = useGlobeStore.getState().layerVisibility;
+    useGlobeStore.getState().toggleTrack('tidal-stress');
+    const { visibleTracks, layerVisibility } = useGlobeStore.getState();
+    expect(isTrackVisible('geomagnetic', visibleTracks)).toBe(true);
+    expect(isTrackVisible('earthquakes', visibleTracks)).toBe(true);
+    expect(layerVisibility).toEqual(layersBefore);
+  });
+
+  it('gives every registered row a default', () => {
+    const visibility = defaultTrackVisibility();
+    for (const row of TRACK_ROWS) {
+      expect(visibility[row.id], row.id).toBe(row.defaultVisible);
+    }
   });
 });

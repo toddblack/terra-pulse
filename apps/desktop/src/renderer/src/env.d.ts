@@ -2,6 +2,7 @@
 
 import type {
   MagnetometerReading,
+  MagnetometerSeries,
   TecGrid,
   AftershockSequence,
   AuroraGrid,
@@ -77,6 +78,16 @@ declare global {
       magnetometer: {
         /** The latest network read, empty before the first successful poll. */
         latest(): Promise<MagnetometerReading[]>;
+        /**
+         * One station's horizontal-component trace over a window, for the
+         * timeline row — or null when no USGS product covers it, which is an
+         * ordinary answer rather than a failure.
+         */
+        series(request: {
+          code: string;
+          startUtc: string;
+          endUtc: string;
+        }): Promise<MagnetometerSeries | null>;
         /** Subscribe to each refresh; returns an unsubscribe function. */
         onUpdated(callback: (readings: MagnetometerReading[]) => void): () => void;
       };
