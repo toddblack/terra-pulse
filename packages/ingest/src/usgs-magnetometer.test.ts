@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseDisturbance, parseStations } from './usgs-magnetometer';
+import {
+  fetchStationSeries,
+  parseDisturbance,
+  parseSeries,
+  parseStations,
+  productOrderFor,
+} from './usgs-magnetometer';
 
 /** The service's real shape, trimmed. */
 const observatories = {
@@ -111,5 +117,172 @@ describe('parseDisturbance', () => {
   it('carries the last observation time, so staleness is visible', () => {
     const result = parseDisturbance('BOU', series([1, 2, 3]));
     expect(result?.observedAtUtc).toBe('2026-08-15T09:02:00.000Z');
+  });
+});
+
+/**
+ * The query of a URL the adapter asked for.
+ *
+ * The adapter always passes a string, but `fetch`'s first parameter is
+ * `RequestInfo | URL` — and a `Request` would stringify to "[object Object]",
+ * which is what the lint rule is right to object to. Narrowed once here rather
+ * than coerced at four call sites.
+ */
+function paramsOf(input: RequestInfo | URL): URLSearchParams {
+  const href = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
+  return new URL(href).searchParams;
+}
+
+/** The service's real series shape: parallel `times` and one channel of values. */
+function seriesPayload(times: string[], values: (number | null)[]) {
+  return { times, values: [{ id: 'H', values }] };
+}
+
+describe('productOrderFor', () => {
+  it('tries variation first for modern windows and definitive first for old ones', () => {
+    // Measured at Boulder: definitive returns real values through 2013 and
+    // nothing from 2014; variation answers at 2010 and after.
+    expect(productOrderFor(new Date('2022-06-15T00:00:00Z'))[0]).toBe('variation');
+    expect(productOrderFor(new Date('1995-06-15T00:00:00Z'))[0]).toBe('definitive');
+  });
+
+  it('rules nothing out, whichever era it is', () => {
+    // The coverage has holes no date rule predicts — 2015 is answered by
+    // neither of the two obvious candidates — so the order is a guess at what
+    // to try first, never a filter. A wrong guess costs one request.
+    for (const date of ['2022-06-15T00:00:00Z', '1995-06-15T00:00:00Z']) {
+      expect(productOrderFor(new Date(date))).toHaveLength(4);
+      expect(new Set(productOrderFor(new Date(date))).size).toBe(4);
+    }
+  });
+});
+
+describe('parseSeries', () => {
+  it('drops nulls rather than carrying them as readings', () => {
+    const parsed = parseSeries(
+      seriesPayload(
+        ['2026-08-15T09:00:00Z', '2026-08-15T09:01:00Z', '2026-08-15T09:02:00Z'],
+        [21000, null, 21002],
+      ),
+    );
+    expect(parsed).toHaveLength(2);
+    expect(parsed?.map((s) => s.hNt)).toEqual([21000, 21002]);
+  });
+
+  it('pairs each value with its own timestamp, not with its position after filtering', () => {
+    // The bug this guards: filtering values before zipping shifts every later
+    // sample earlier in time, which draws a real trace at the wrong instants.
+    const parsed = parseSeries(
+      seriesPayload(
+        ['2026-08-15T09:00:00Z', '2026-08-15T09:01:00Z', '2026-08-15T09:02:00Z'],
+        [null, null, 21002],
+      ),
+    );
+    expect(parsed).toHaveLength(1);
+    expect(parsed?.[0]?.timeMs).toBe(Date.parse('2026-08-15T09:02:00Z'));
+  });
+
+  it('returns an empty array for an all-null era, not null', () => {
+    // The distinction the fetch loop turns on: the payload was well-formed and
+    // simply held no measurements, which is how an uncovered era answers.
+    const parsed = parseSeries(
+      seriesPayload(['2026-08-15T09:00:00Z', '2026-08-15T09:01:00Z'], [null, null]),
+    );
+    expect(parsed).toEqual([]);
+  });
+
+  it('returns null for a payload that is not a series at all', () => {
+    expect(parseSeries(null)).toBeNull();
+    expect(parseSeries({})).toBeNull();
+    expect(parseSeries({ times: [], values: 'no' })).toBeNull();
+  });
+});
+
+describe('fetchStationSeries', () => {
+  const times = ['2026-08-15T09:00:00Z', '2026-08-15T09:01:00Z'];
+  const ok = (values: (number | null)[]) =>
+    ({ ok: true, json: () => Promise.resolve(seriesPayload(times, values)) }) as unknown as Response;
+
+  it('skips a product that answers 200 with all nulls', async () => {
+    // The trap this whole mechanism exists for. An era a product does not
+    // cover is not a 404 — it is a well-formed 200 containing no numbers, so
+    // trusting the status would render "station offline" across 2015-2024 and
+    // look entirely healthy.
+    const tried: string[] = [];
+    const result = await fetchStationSeries(
+      'BOU',
+      new Date('2022-06-15T00:00:00Z'),
+      new Date('2022-06-15T01:00:00Z'),
+      (url) => {
+        const type = paramsOf(url).get('type') ?? '';
+        tried.push(type);
+        return Promise.resolve(type === 'quasi-definitive' ? ok([21000, 21005]) : ok([null, null]));
+      },
+    );
+
+    expect(result?.product).toBe('quasi-definitive');
+    expect(result?.samples).toHaveLength(2);
+    // It kept going past the products that answered emptily.
+    expect(tried.slice(0, 2)).toEqual(['variation', 'adjusted']);
+  });
+
+  it('stops at the first product that answers, without asking the rest', async () => {
+    const tried: string[] = [];
+    await fetchStationSeries(
+      'BOU',
+      new Date('2022-06-15T00:00:00Z'),
+      new Date('2022-06-15T01:00:00Z'),
+      (url) => {
+        tried.push(paramsOf(url).get('type') ?? '');
+        return Promise.resolve(ok([21000, 21005]));
+      },
+    );
+    expect(tried).toEqual(['variation']);
+  });
+
+  it('returns null when no product covers the window', async () => {
+    // Nothing is served before 1987, and that is an ordinary answer the row
+    // draws as "no data", never as a quiet station.
+    const result = await fetchStationSeries(
+      'BOU',
+      new Date('1980-06-15T00:00:00Z'),
+      new Date('1980-06-15T01:00:00Z'),
+      () => Promise.resolve(ok([null, null])),
+    );
+    expect(result).toBeNull();
+  });
+
+  it('keeps trying after a transport failure on one product', async () => {
+    // A dropped connection on one product says nothing about the others, and
+    // the loop exists precisely because most of them will not answer.
+    const result = await fetchStationSeries(
+      'BOU',
+      new Date('2022-06-15T00:00:00Z'),
+      new Date('2022-06-15T01:00:00Z'),
+      (url) => {
+        const type = paramsOf(url).get('type') ?? '';
+        if (type === 'variation') return Promise.reject(new Error('socket hang up'));
+        return Promise.resolve(ok([21000, 21005]));
+      },
+    );
+    expect(result?.product).toBe('adjusted');
+  });
+
+  it('asks for minute data, which is the only cadence that returns values', async () => {
+    let asked: URLSearchParams | null = null;
+    await fetchStationSeries(
+      'BOU',
+      new Date('2022-06-15T00:00:00Z'),
+      new Date('2022-06-15T01:00:00Z'),
+      (url) => {
+        asked = paramsOf(url);
+        return Promise.resolve(ok([21000, 21005]));
+      },
+    );
+    // Measured: sampling_period=3600 returns an array of nulls rather than
+    // hourly means, which is why a long window has to be refused instead of
+    // thinned at the source.
+    expect(asked!.get('sampling_period')).toBe('60');
+    expect(asked!.get('elements')).toBe('H');
   });
 });

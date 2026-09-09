@@ -1071,8 +1071,154 @@ for §5.6's magnetopause work.
   rename doesn't apply. Verified against a copy of the real 202 MB database:
   **924 ms**, all 829,443 space-weather and 311,070 earthquake rows preserved.
 
-**The track is two rows now** — geomagnetic and solar wind — which is §5.5's
-multi-track timeline in its first real form.
+**The track is six rows now** — geomagnetic, solar wind, X-ray flux,
+earthquakes, tidal stress and magnetometer — which **completes §5.5's
+multi-track timeline**. The two-row reasoning below is the original and still
+governs; what each later row added is recorded after it.
+
+**Magnetometer row — shipped 2026-09-09.** §5.5's sixth and last track: ground
+field disturbance at the station nearest the selection.
+
+- **"Live-only" was wrong, and this entry exists partly to kill that
+  assumption.** `magnetometer.ts`'s own comment said no archive was planned
+  because H4b was withdrawn. But USGS itself serves **1-minute data back to
+  1987** — the 1989 Quebec storm reads 1,078 nT peak-to-peak at Boulder. The
+  archive was there the whole time; nothing had asked for it.
+- **Four processing levels, tried in order, and the trap is the reason.** An era
+  a product does not cover answers **HTTP 200 with an array of nulls** — not a
+  404, and `times` comes back the right length. Trusting the status would draw
+  "station offline" across all of 2015–2024 and look entirely healthy. Coverage
+  is also **non-monotonic**: `definitive` is 1987–2013, `variation` ~2010-on but
+  empty at 2015, and 2015 is covered by `quasi-definitive` alone. The date only
+  picks what to try *first*. Full table in `SOURCES.md`.
+- **Only minute cadence is usable** — `sampling_period=3600` returns nulls, not
+  hourly means — so a window cannot be thinned upstream. 30 days is 43,200
+  samples at 1.9 s and is the cap; a year would be 525,600. **The playhead may
+  still sit anywhere**, so a 48-hour window scrubbed to March 1989 fetches
+  March 1989, which is the whole point.
+- **It plots each bucket's peak-to-peak range, which is `rangeNt` — the same
+  quantity the globe marker and tooltip already show.** One definition of
+  "disturbance" across the app. Plotting the field itself would be a flat line:
+  H sits at tens of thousands of nT and varies by tens, so any usable version
+  must remove the station's baseline, and a per-bucket range removes it *by
+  construction* rather than by choosing one.
+- **Log scaled, like the X-ray row and for the same measured reason**: a quiet
+  bucket at Boulder is 3.7 nT while the 2003 Halloween storm reaches 2,046 nT at
+  College, Alaska. Domain 1–2,000 nT. Linear, every quiet day would be an
+  invisible line on the axis.
+- **The distance to the station is always printed, and that is the honest
+  part.** The network is ~31 stations and heavily northern (10 of 31 below 45°),
+  so "nearest" is routinely over a thousand kilometres — Tokyo's nearest is
+  measured in the tests at >5,000 km. A disturbance recorded that far away says
+  much less about the ground under an epicentre than the row's presence implies.
+  It is also a **global** phenomenon: a storm appears at every station at once,
+  so a bar rising near a quake is almost always about the Sun.
+- **Nearest-to-selection rather than a picked station**, reusing
+  `useTidalStressPlane`'s shape — no new pick target and no fourth selection
+  kind. Explicit picking would be an addition on top, not a replacement.
+- **`useMagnetometerSeries` stores its result against the request key**, not as
+  a bare series plus a loading flag. That makes a stale reply *unrenderable*
+  (one station's trace under another's name would look normal — the
+  `useAftershockSequence` lesson), and it makes "loading" a derived comparison
+  rather than state an effect has to clear. **React's `set-state-in-effect` lint
+  rule caught the first version**, which cleared state in the effect body; it
+  was right, and the fix was better than the thing it rejected.
+- Main caches traces keyed by station+window and shares one in-flight request,
+  like `tec.ts` — but **bounded to 12 entries**, because a 30-day trace is
+  ~43,000 samples and scrubbing the archive would otherwise accumulate hundreds
+  of megabytes in main. A transport failure is deliberately **not** cached: one
+  dropped connection must not look like a permanent gap in the record.
+
+**Tidal stress row — shipped 2026-09-09.** §5.5's "lunisolar tidal stress at a
+chosen location", as a signed curve on the selected fault's own plane.
+
+- **It plots the SIGNED value while `TidalShear.tsx` prints a MAGNITUDE, and
+  that split is the whole design.** The panel withholds the sign because a
+  trace's digitisation order is arbitrary, so `faultStrikeDeg` may or may not
+  match the Aki & Richards sense GEM measured dip and rake against. But that
+  ambiguity is **one constant flip per fault, not a per-instant error** — so the
+  *waveform* is correct either way and only its polarity label is unearned.
+  Taking `Math.abs()` would fold every negative half-cycle upward and draw a
+  semidiurnal tide at **twice its real frequency**, inventing a signal rather
+  than hedging one. Don't "make it consistent with the panel" without reading
+  this.
+- **A curve, not bars, and a separate module for the same reason
+  `earthquake-track.ts` is separate.** `layoutTrack` buckets a *measured* hourly
+  stream into a median and a peak; this is a continuous analytic function that
+  can be evaluated at any instant and is never absent. No median/peak pair, no
+  "unmeasured" state, and no reason to tie its fidelity to the pixel width —
+  it samples on a 20-minute target capped at 1,200 points, independent of how
+  wide the panel is.
+- **`TIDAL_SHEAR_MAX_PA` is 1500, measured not guessed.** Over 400 real GEM
+  faults carrying dip and rake, sampled hourly across a synodic month (288,000
+  evaluations): |τ| p50 **265 Pa**, p90 673, p99 1,155, observed max 1,662. A
+  1,500 ceiling clips **0.065%**; 1,000 would look tidier and clip 2.34%, and
+  1,700 clips nothing while spending the row on values that never occur — the
+  same trade `WIND_SPEED_MAX` makes.
+- **Fixed across faults and windows.** The daily peak swings **2.4×** across one
+  month (1,662 Pa down to 685 and back) — that is the spring/neap cycle, the
+  slowest thing the row exists to show, and a per-window domain would flatten it
+  exactly as `field-encoding.ts` warns for declination.
+- **It refuses past 30 days and says so.** The M2 period is 12.42 h; the globe's
+  widest window is 130 years, where 300 buckets sit **158 days apart** and alias
+  into a curve that moves convincingly and means nothing. The limit is
+  legibility rather than Nyquist — one lunar month is already ~58 cycles at
+  ~8-15 px each — and 30 days is also exactly one spring/neap cycle.
+- **`useTidalStressPlane` names every unusable case rather than returning null.**
+  "Nothing selected", "GEM reported no dip for this trace" (**78.3%** of them)
+  and "the nearest mapped fault is 400 km away" are three different facts, and
+  one silence would present them as the same thing.
+- **The guide's first draft printed H6's p-value and `explore-purity.test.ts`
+  caught it.** That is non-negotiable #1's guard firing on a true positive — a
+  rendered string, not a comment, unlike the `AntipodalSection` false positive
+  that shaped the scan. The guide now says H6 ran over 14,021 events and found
+  nothing, a clean null, with the numbers left to Analyze. **Reporting that H6
+  found nothing is required, not optional**: this row draws the same physics a
+  registered test used, so a reader watching a quake land on a tidal peak has to
+  meet that fact in the same place.
+
+**Per-row toggles — shipped with it**, which §5.5 asked for on day one and which
+five rows made unavoidable. `panels/track-rows.ts` is the registry; a chip line
+sits above the track.
+
+- **Not in `LayerPanel`**, whose own doc says adding a layer needs no edit there
+  — it is driven entirely off the layer registry, and a track row is not a
+  `GlobeLayer`. It would also file a control for the bottom panel inside the
+  top-left one.
+- **Absent means *visible*** here, the inverse of `expandedSections`' "absent
+  means collapsed". So `toggleTrack` negates through `isTrackVisible`, not the
+  raw stored value — written naively, `!undefined` is `true` and the first click
+  on a newly registered row does nothing. Both rules are pinned by tests
+  precisely because they look alike and are opposite.
+- `track-guides.test.ts` **reads the registry now** instead of its own hardcoded
+  id list, which meant adding a row could not fail it. Same discipline
+  `layer-guides.test.ts` already enforced, in both directions.
+- The width `ResizeObserver` **moved off the first row onto the track
+  container**. It was bound to the geomagnetic plot on the reasoning that every
+  row is the same width — true, and a trap the moment that row can be switched
+  off: the observer would never bind, width would stay at the 480px fallback
+  forever, and bucket and tick counts would silently stop adapting.
+
+**The inspector's clearance is measured now, not a constant** — `TimeScrubber`
+publishes its own height into `--scrubber-height` and the inspector subtracts it
+**twice**, because it is centred.
+
+- The `calc(100vh - 37rem)` it replaced had grown 21.4 → 27 → 31 → 37rem as rows
+  were added, and its own comment admitted **the last two increases were never
+  checked against the running app**. No constant can follow a height that
+  changes at runtime, which per-row toggles make it do.
+- This is `App.module.css`'s panel-placement rule applied where columns can't
+  reach: "any `top` offset or `max-height` on a neighbour is a guess that goes
+  wrong on the next toggle or resize." The inspector can't live in a column
+  because it is pinned beside the selected mark.
+- **Measured in the running app: 356px** with all five rows, so the CSS fallback
+  is 22.25rem — the first-paint frame now errs toward too little room instead of
+  an overlap.
+- Measured off `getBoundingClientRect()`, **not `entry.contentRect`**, which
+  excludes the scrubber's 0.625rem of vertical padding — the two disagree by
+  ~20px, and what has to be cleared is the box on screen.
+
+**The original two-row reasoning, still governing:**
 
 - **Two rows because two y-scales in one plot is the worst thing you can do to a
   chart.** Kp is 0-9, speed is 250-900 km/s, Dst is 0 to -600 nT. They get a row
@@ -1703,6 +1849,11 @@ on `GUIDES_STILL_NEEDED` deliberately. A rule in a document gets forgotten; a re
 test does not. **That list is currently empty** — all thirteen layers are
 written up — and it is worth keeping that way; it is a deliberate "not yet",
 not an escape hatch.
+
+**The same now holds for timeline rows.** `track-guides.ts` covers all six, and
+`track-guides.test.ts` reads `TRACK_ROWS` rather than its own copy of the ids —
+so a new row fails the suite until it is explained, and a guide left behind for
+a deleted row fails it too.
 
 The shape is fixed at four sections — what it shows, how to read it, **what it
 can't tell you**, where it came from. The third is why the feature exists. Nearly

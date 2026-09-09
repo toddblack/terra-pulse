@@ -1,6 +1,6 @@
 # HYPOTHESES.md — Pre-Registration Log
 
-**Last updated:** 2026-08-20
+**Last updated:** 2026-09-09
 
 ---
 
@@ -1018,6 +1018,103 @@ and the registered Monte Carlo null is what prevents it.
 
 ---
 
+## Registered Models
+
+**These are not hypothesis tests and they contribute nothing to the test
+matrix.** A hypothesis test asks "is this pattern distinguishable from chance?"
+and produces a p-value that has to be paid for in the FDR denominator. A model
+takes established physics or an established empirical law and *reports what it
+implies*. It makes no significance claim, so there is nothing to correct for —
+adding one to the denominator would be as wrong as removing a test from it.
+
+They are registered here anyway, under rules 1 and 2, for the other reason this
+file exists: **model output with parameters chosen after seeing the answer is
+just as dishonest as a p-value chosen that way.** Anyone can check what the
+forecast was going to say before it said it.
+
+Model output must never be presented with the weight of an observation, and the
+UI is required to mark it as model output — the same rule the `magnetopause`
+layer already follows with its `(model)` label.
+
+### M1 — Aftershock forecasting (Reasenberg–Jones)
+
+| Field | Value |
+|---|---|
+| **Registered** | 2026-09-09 |
+| **Status** | Not yet built |
+| **Kind** | Forecast model. **Not a hypothesis test. 0 tests in the matrix.** |
+| **Statement** | Given a mainshock, the expected rate of aftershocks decays as a modified Omori law in time and follows Gutenberg–Richter in magnitude. Report the expected count in fixed forward windows, as an interval. |
+| **Model** | `λ(t, M) = 10^(a + b(Mm − M)) / (t + c)^p`, with `t` in days since the mainshock, `Mm` the mainshock magnitude, and `λ` the rate of events of magnitude ≥ `M` per day. |
+| **Parameters** | **Global generic: a = −1.97, b = 1.0, p = 0.92, c = 0.018 days.** Fixed, from Page et al. (2016), Table 2's all-region stacked fit (935 sequences, Mmain ≥ 6.0), corrected for time-dependent catalogue incompleteness. |
+| **Eligible mainshocks** | M ≥ 5.0, matching §5.9 and the shared analysis floor. |
+| **Forecast magnitudes** | M ≥ 5.0 (the floor at which this app's catalogue is globally complete) and M ≥ Mm (the "was it a foreshock" case). |
+| **Forecast windows** | 0–24 h and 0–7 d from the moment the forecast is made. Fixed. |
+| **Interval** | 95% Poisson prediction interval on the expected count. Never a point estimate. |
+| **Declustering** | **None, and this is deliberate** — see below. |
+| **Result** | — |
+
+**Why generic parameters and not sequence-fitted ones.** §5.9 notes fitted
+parameters are better, and they are. They are also a *free parameter chosen
+after seeing the data* unless the fitting procedure is itself registered, and
+fitting on half a dozen aftershocks produces confident nonsense — Page et al.
+note that **half of all sequences have no aftershocks above the completeness
+magnitude at all**, which is exactly why RJ89's own fit overestimated mean
+productivity. Sequence-specific or Bayesian-updated parameters are a legitimate
+upgrade and would register as **M1b**, with the fitting rule and the minimum
+event count fixed in advance. Not this round.
+
+**Why the global stack and not the tectonic-regime values.** Page et al. give
+per-regime parameters that are materially different — `SZ-GENERIC` (subduction)
+is a = −2.98, p = 0.97 against `ANSR-ABSLOCB` at a = −2.04, p = 1.01, which is
+nearly an order of magnitude in productivity. Using them needs the García et al.
+(2012) regionalization, which this app does not vendor. Assigning a regime by
+eye, or by proximity to a Slab2 trench, would be inventing a classification the
+source does not sanction. The global stack is the honest choice for an app with
+no regionalization, and the UI must say which was used.
+
+**Why `a = −1.97` and not RJ89's own `a = −1.67`.** The original value is
+**known to be biased upward**: Page et al. record that RJ89 fitted only
+sequences with sufficient data, overestimating mean productivity, and that many
+researchers informally adjust it to −1.85 (Felzer et al., 2003). Registering
+the classic number would knowingly register a biased one. The global stack fit
+supersedes it and is corrected for time-dependent incompleteness.
+
+**Why no declustering, when non-negotiable #2 requires it everywhere else.**
+That rule exists so aftershock sequences cannot masquerade as signal in a
+**rate claim**. Here the aftershock sequence *is the subject*. Declustering the
+target set would remove the very events being forecast. The rule is not being
+bent: no significance claim is made, so there is no null for dependence to
+corrupt. Stated explicitly because a reader who knows rule 2 will otherwise
+reasonably assume this is an oversight.
+
+**The number that gets misread, and its required framing.** The model also
+yields the probability that a later event exceeds the mainshock — that the
+mainshock was a foreshock. It is typically a few percent and it is the single
+most screenshot-able figure this app will ever produce. §5.9's condition
+stands: **it is shown only with its framing attached, never as a bare
+percentage**, and never as the headline of the panel.
+
+**Known limits, to be reported with any output.**
+
+- Generic global parameters applied to every tectonic setting, which the source
+  itself shows is a real simplification.
+- The model describes *aftershocks of the selected mainshock*. It does not
+  forecast independent earthquakes and says nothing about whether a larger event
+  is coming from some other source.
+- It is calibrated on Mmain ≥ 6.0 sequences and is applied here from M ≥ 5.0.
+- No time-dependent completeness correction is applied to *this app's* observed
+  counts, so an observed-versus-forecast comparison will under-count early
+  aftershocks — which is the exact effect Page et al. correct for upstream.
+
+**Reference.** Page, M. T., N. van der Elst, J. Hardebeck, K. Felzer, and A. J.
+Michael (2016). Three ingredients for improved global aftershock forecasts:
+tectonic region, time-dependent catalog incompleteness, and intersequence
+variability. *Bulletin of the Seismological Society of America* 106(5),
+2290–2301. Parameters read from Table 2 and Figure 5 of the author's copy,
+2026-09-09.
+
+---
+
 ## Explicitly Not Tested
 
 **Planetary alignment as a causal factor.** Planetary tidal forces on Earth are
@@ -1048,6 +1145,12 @@ not as a discovery.
 | H5 | 1 |
 | H6 | 2 |
 | **Total** | **19** |
+
+**Registered *models* are not in this table and must not be added to it.** M1
+(aftershock forecasting) produces no p-value, so it has nothing to correct.
+Growing this denominator is the safe direction and shrinking it is the move to
+be suspicious of — but padding it with things that were never tests would
+weaken every correction already applied, which is the opposite of caution.
 
 **H4b is the one withdrawal that is not a supersession**, and it is accounted
 for differently on purpose. The four above it each transferred their tests to a

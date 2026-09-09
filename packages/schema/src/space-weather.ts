@@ -526,3 +526,47 @@ export interface MagnetometerReading {
   station: MagnetometerStation;
   disturbance: StationDisturbance | null;
 }
+
+/**
+ * Which of USGS's four processing levels a series came from.
+ *
+ * They are **not** a quality ladder to pick the best of — they are different
+ * products covering different eras, and which one holds a given window is
+ * neither monotonic nor documented. Measured at Boulder, 1-minute H:
+ *
+ * | product | covers |
+ * |---|---|
+ * | `definitive` | 1987-2013. Empty at 1986 and from 2014 on. |
+ * | `variation` | ~2010 onward, but empty at 2015, 2003 and 1995. |
+ * | `adjusted` | roughly the last year, and 2018 — but empty at 2022. |
+ * | `quasi-definitive` | 2018 yes, 2022 no. |
+ *
+ * **The failure mode is what makes this worth writing down.** An era a product
+ * does not cover answers **HTTP 200 with an array of nulls**, not an error and
+ * not a 404. Code that asks for one product and trusts the status would render
+ * "station offline" across the whole of 2015-2024 and look entirely healthy —
+ * the same "absent is not quiet" trap `StationDisturbance` already guards, one
+ * level up. So a series is fetched by trying products in order and keeping the
+ * first that returns real numbers, and it reports which one answered.
+ */
+export type MagnetometerProduct = 'variation' | 'adjusted' | 'quasi-definitive' | 'definitive';
+
+export interface MagnetometerSample {
+  timeMs: number;
+  /** Horizontal component, nT. Absolute, so tens of thousands — see the series. */
+  hNt: number;
+}
+
+/**
+ * A station's horizontal-component trace over a window.
+ *
+ * Samples carry the **absolute** field, not a deviation. Baselining is a
+ * display decision (each station sits at its own tens-of-thousands of nT, and
+ * what a reader wants to see is the departure from quiet), and doing it here
+ * would bake one choice of baseline into the data the whole app shares.
+ */
+export interface MagnetometerSeries {
+  code: string;
+  product: MagnetometerProduct;
+  samples: MagnetometerSample[];
+}

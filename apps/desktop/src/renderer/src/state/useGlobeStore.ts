@@ -17,6 +17,7 @@ import {
 } from '../layers/registry';
 import type { HoverTarget } from '../globe/hover-target';
 import type { FaultRecord } from '../layers/fault-association';
+import { defaultTrackVisibility, isTrackVisible, type TrackRowId } from '../panels/track-rows';
 import {
   DEFAULT_RECURRENCE_FLOOR,
   DEFAULT_RECURRENCE_RADIUS_KM,
@@ -97,6 +98,20 @@ interface GlobeState {
   activeBasemapId: BasemapId;
   /** Independent toggles, keyed by layer id. */
   layerVisibility: Record<string, boolean>;
+
+  /**
+   * Which rows of the multi-track timeline are drawn, keyed by `TrackRowId`.
+   *
+   * Separate from `layerVisibility` because a track row is not a `GlobeLayer` —
+   * it has no `mount`/`unmount`, nothing to destroy, and it is not in the layer
+   * registry. Sharing one map would have made `layer-guides.test.ts`'s "every
+   * key names a real layer" assertion false, which is the same reason
+   * `track-guides.ts` is its own file.
+   *
+   * Read through `isTrackVisible`, not directly: absent means *visible*, so a
+   * row added later still draws for someone whose stored map predates it.
+   */
+  visibleTracks: Record<string, boolean>;
 
   /**
    * Whether clicking the globe asks "what fault is here?" instead of selecting.
@@ -195,6 +210,7 @@ interface GlobeState {
   setActiveBasemap: (id: BasemapId) => void;
   toggleLayer: (id: string) => void;
   setLayerVisible: (id: string, visible: boolean) => void;
+  toggleTrack: (id: string) => void;
   toggleFaultProbe: () => void;
   selectLocation: (selection: LocationSelection | null) => void;
   selectSolarEvent: (selection: SolarEventSelection | null) => void;
@@ -233,6 +249,7 @@ export const HISTORICAL_DATA_SECTION_ID = 'historical-data';
 export const useGlobeStore = create<GlobeState>((set) => ({
   activeBasemapId: DEFAULT_BASEMAP_ID,
   layerVisibility: defaultOverlayVisibility(),
+  visibleTracks: defaultTrackVisibility(),
   faultProbeActive: false,
   location: null,
   selectedSolarEvent: null,
@@ -308,6 +325,22 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   setLayerVisible: (id, visible) =>
     set((state) => ({
       layerVisibility: { ...state.layerVisibility, [id]: visible },
+    })),
+
+  /**
+   * Negates through `isTrackVisible` rather than `!state.visibleTracks[id]`,
+   * because absent means *visible* here. Written the other way, the first click
+   * on a row whose key is missing would set it to `true` — which it already
+   * effectively was — and read as a dead button. The inverse of the bug
+   * `toggleSection`'s own note records, and it is worth keeping the two rules
+   * visibly different rather than making them look alike.
+   */
+  toggleTrack: (id) =>
+    set((state) => ({
+      visibleTracks: {
+        ...state.visibleTracks,
+        [id]: !isTrackVisible(id as TrackRowId, state.visibleTracks),
+      },
     })),
 }));
 

@@ -1,19 +1,23 @@
 import type { LayerGuide } from './layer-guides';
 
 /**
- * The same explanation system `layer-guides.ts` built, for the four rows of
- * the multi-track timeline (§5.5) instead of the globe layer registry.
+ * The same explanation system `layer-guides.ts` built, for the rows of the
+ * multi-track timeline (§5.5) instead of the globe layer registry.
  *
  * ## Why this is a separate file rather than more entries in `LAYER_GUIDES`
  *
  * `layer-guides.test.ts` asserts that every key in `LAYER_GUIDES` names a
  * real, currently-registered layer — the check that catches a guide left
- * behind for a deleted layer. A track row is not a registry entry (it can't
- * be toggled off, it has no `GlobeLayer`), so adding its id there would fail
- * that assertion the moment someone re-reads it carefully, and widening the
- * check to tolerate track ids would blur the one thing it currently
- * guarantees: *every key here is real*. Two small files, each meaning
- * exactly what it says, beats one file with a footnote.
+ * behind for a deleted layer. A track row is not a registry entry: it has no
+ * `GlobeLayer`, nothing to mount and nothing to destroy. Adding its id there
+ * would fail that assertion the moment someone re-reads it carefully, and
+ * widening the check to tolerate track ids would blur the one thing it
+ * currently guarantees: *every key here is real*. Two small files, each
+ * meaning exactly what it says, beats one file with a footnote.
+ *
+ * The rows now have a registry of their own (`track-rows.ts`), so
+ * `track-guides.test.ts` checks against that rather than a hardcoded list —
+ * the same forcing function, on both sides.
  *
  * `LayerGuideModal.tsx` and `LayerGuideButton` still do the actual
  * rendering — they look here whenever a layer guide doesn't match, so this
@@ -88,6 +92,49 @@ export const TRACK_GUIDES: Record<string, LayerGuide> = {
       'A quake lining up with a spike in another row is not evidence of anything — Explore mode makes no significance claim by design. Every hypothesis this app tests is pre-registered in HYPOTHESES.md with its parameters fixed before the test runs, specifically so a pattern noticed by eye here can never quietly become the test itself.',
     ],
     source: 'This app’s own USGS/EMSC earthquake catalogue — no separate ingest.',
+  },
+
+  'track-tidal-stress': {
+    title: 'Lunisolar tidal stress',
+    shows:
+      'The shear stress the Sun and Moon are exerting on one mapped fault’s own plane, across the visible window. Unlike the tidal-potential globe layer — which is defined everywhere and makes no claim about any fault — this resolves that pull onto a specific orientation, which is what turns a potential into a stress a fault could actually feel.',
+    reading: [
+      'The curve is the resolved shear, with the midline at zero. It runs against a fixed ±1.5 kPa scale, so the amplitude means the same thing for every fault and in every window — a strongly stressed trace genuinely looks louder than a weak one.',
+      'The fast oscillation is the semidiurnal tide, about 12.4 hours. The slow swelling and fading over a fortnight is the spring/neap cycle, when the solar and lunar tides fall in and out of alignment — measured across a real month, the daily peak swings by about 2.4×. Both are visible at once, which is the reason for the fixed scale.',
+      'Which fault the row is describing is named in its caption. It follows the selection: pick an earthquake, click a fault trace, or probe a point, and the row resolves stress onto the nearest mapped fault to that place.',
+      'For scale, the whole range here tops out around 1.5 kPa — roughly the pressure of a hand resting on a table, and something like a hundred-thousandth of the stress released in a moderate earthquake.',
+    ],
+    limits: [
+      'The sign is not resolved, and the row says so. Which half of the cycle encourages slip and which resists it depends on reading strike in the same sense GEM measured its dip and rake against — and strike here is derived from the digitised direction of the mapped trace, which is arbitrary. The *shape* of the curve is right either way, because that ambiguity is one constant flip for the whole fault rather than a per-hour error; only the labels "positive" and "negative" are unearned.',
+      'It needs a dip and a rake, and GEM publishes them for only 21.7% of its 13,696 faults (2,976, measured when the dataset was vendored). Most traces have no plane to resolve onto and the row will say so rather than guess one.',
+      'The window has to be short enough to draw a 12.4-hour cycle, so the row stops at 30 days and explains itself past that. Across a decade a sampled tide is not a slower tide — it is aliased noise that would move convincingly and mean nothing.',
+      'No ocean tide loading, and the free-surface condition is applied whatever the fault’s depth. Near a coast the ocean load is comparable to the solid-earth tide drawn here and shifts its *phase*, not just its size — the same two simplifications H6 reports as caveats on its own result.',
+      'This is not H6 and proves nothing. H6 is the registered test of tidal triggering; it resolves stress onto Global CMT focal mechanisms rather than onto mapped traces, and it has been run — over 14,021 independent earthquakes it found no detectable relationship between the tidal cycle and when they happened, a clean null, as did every other test in the registered matrix. The numbers behind that belong in Analyze mode and are reported there. A quake lining up with a peak on this row is a coincidence you can see, and Explore mode makes no significance claim about it.',
+    ],
+    source:
+      'Computed locally — no network. Sun and Moon positions from the same analytic ephemeris the tidal-potential layer uses; fault dip and rake from GEM’s Global Active Faults database; the stress chain is a port of the analysis engine’s own H6 physics.',
+  },
+
+  'track-magnetometer': {
+    title: 'Ground magnetometer',
+    shows:
+      'How disturbed Earth’s magnetic field was at ground level, measured by the observatory nearest whatever you have selected. This is the same quantity the magnetometer globe layer shows on each station — the peak-to-peak swing of the horizontal component — plotted over time instead of as a single current value.',
+    reading: [
+      'Each bar is that interval’s largest swing minus its smallest, in nT. The scale is logarithmic, because the range is genuinely enormous: a quiet interval at Boulder is around 4 nT while the 2003 Halloween storm reached over 2,000 nT at College, Alaska. On a linear scale every quiet day would be a flat line along the axis.',
+      'The dashed line marks 50 nT, the app’s own "this is more than ordinary" level for a station. Bars reaching it take the app’s red. It is display emphasis, not a threshold anything is tested against.',
+      'The caption names the station and how far it is from what you selected. That distance is the thing to read first — see below.',
+      'This row reaches back to 1987, so scrubbing a short window to March 1989 shows the Quebec storm as the observatories actually recorded it. It is the only row here whose history comes from a live query rather than a stored archive.',
+      'A grey mark on the baseline is an interval the station did not report. Observatories drop out for maintenance constantly, and one that goes down during a storm is exactly the interval you must not read as calm.',
+    ],
+    limits: [
+      'The nearest station is often nowhere near. The USGS network is about 31 observatories and heavily northern — 10 of them sit below 45 degrees latitude — so for most of the world the "nearest" station is hundreds to thousands of kilometres from the point you selected. The distance is printed for exactly this reason: a disturbance recorded 2,000 km away says very little about the ground beneath an epicentre.',
+      'Geomagnetic disturbance is a global, near-simultaneous phenomenon driven by the Sun, not by the ground. A storm shows up at every station at once. So a bar rising near an earthquake is almost always telling you about space weather, not about that earthquake.',
+      'Nothing is served before 1987, and the four USGS processing levels have real holes between them — 2015, for one, is covered by none of the two obvious candidates. The row says "no data for this window" rather than drawing a flat line, because an era nobody published and a genuinely quiet station look identical otherwise.',
+      'Only minute-resolution data is served, so the row goes quiet on any window longer than 30 days. A year would be over half a million samples, and the service returns nulls rather than hourly averages if you ask it to thin them.',
+      'Whether ground magnetic disturbance relates to nearby seismicity was going to be H4b. It was withdrawn unrun in August 2026 after measurement showed its trigger set correlated at rho = 0.74 with the planetary Kp index that H4c already tested — and H4c came back a clean null. This row is for looking, and it settles nothing.',
+    ],
+    source:
+      'USGS Geomagnetism Program (geomag.usgs.gov), horizontal component at 1-minute cadence, public domain. Four processing levels are tried in turn — variation, adjusted, quasi-definitive, definitive — and the row reports whichever answered.',
   },
 };
 
