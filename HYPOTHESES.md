@@ -1113,6 +1113,63 @@ variability. *Bulletin of the Seismological Society of America* 106(5),
 2290–2301. Parameters read from Table 2 and Figure 5 of the author's copy,
 2026-09-09.
 
+### M1b — Aftershock forecasting, binned by magnitude
+
+| Field | Value |
+|---|---|
+| **Registered** | 2026-09-09 |
+| **Status** | Not yet built |
+| **Kind** | Forecast model. **Not a hypothesis test. 0 tests in the matrix.** |
+| **Amends** | M1, same day, **unrun in the sense that matters**: M1's rate model, parameters and eligibility are carried over **unchanged**. Only the reported magnitudes and windows change. |
+| **Model** | Unchanged from M1: `λ(t, M) = 10^(a + b(Mm − M)) / (t + c)^p`. |
+| **Parameters** | Unchanged from M1: a = −1.97, b = 1.0, p = 0.92, c = 0.018 days. |
+| **Eligible mainshocks** | Unchanged: M ≥ 5.0, within 365 days. |
+| **Forecast magnitudes** | **M ≥ 3.0, 4.0, 5.0, 6.0, 7.0** — five bins, replacing M1's single M ≥ 5.0. |
+| **Forecast windows** | **0–24 h, 0–7 d, 0–30 d** from the moment the forecast is made, replacing M1's two. |
+| **Per cell** | Probability of at least one, `P(N ≥ 1) = 1 − e^(−λ)`, **and** the 95% Poisson prediction interval on the count. |
+| **Declustering** | Unchanged: none. See M1. |
+| **Result** | — |
+
+**Why amend, and why it is an amendment rather than an edit.** Rule 3: a
+parameter that turns out wrong gets a new entry and both stay. M1's single
+M ≥ 5.0 target is not *wrong*, but it makes the panel useless for the events
+people actually select. Measured against the shipped model: an M5.5 mainshock
+expects **0.015** M5+ aftershocks in 24 hours, so the panel renders "0–0" and
+"<0.1" — arithmetically correct and indistinguishable from a broken feature.
+The expected count only reaches one event around **M6.3+**, which is a few
+dozen earthquakes a year globally.
+
+Binning by magnitude is where the information actually is. On a live USGS
+forecast for an M5.3, the one-week row reads **M3+ 17.3%** against **M5+ 0.2%**
+— same sequence, same model, and only the smaller bins say anything.
+
+**The layout is USGS's own**, from their operational aftershock product
+(magnitude bins as rows, time windows as columns, probability and a 95% count
+range in each cell). Adopting a presentation that thousands of people have
+already seen on USGS event pages is worth more than inventing one, and it makes
+this app's output directly comparable to theirs.
+
+**M ≥ 3.0 is below this app's catalogue completeness, deliberately.** M1
+justified the M5.0 floor as "the smallest number a reader could check the
+forecast against", and that reasoning still holds — the app cannot verify an
+M3+ forecast from its own data. It is registered anyway because a forecast is
+model output, not a catalogue claim, and USGS publishes M3+ for the same
+reason. The consequence is that the M3+ and M4+ rows can never be checked
+against the observed-sequence panel above them, and the UI must not invite that
+comparison.
+
+**The interval is narrower than USGS's, and this is the honest gap.** Ours is a
+pure Poisson interval at a *fixed* λ — it captures the randomness of the count
+and nothing else. USGS's published ranges are wider because they integrate over
+uncertainty in the productivity parameter itself; the live product read above
+carried `aSigma = 0.523`, and Page et al. give intersequence variability with
+σ₀ = 0.49 plus a per-region, magnitude-dependent term. **That combination is
+not registered here because it was not read reliably from the source** — the
+equation did not extract cleanly and guessing it would be exactly the invented
+parameter this file exists to prevent. Any output must therefore say that the
+range understates the true uncertainty. Adding it properly is **M1c**, and
+needs the equation read from the published paper first.
+
 ---
 
 ## Explicitly Not Tested

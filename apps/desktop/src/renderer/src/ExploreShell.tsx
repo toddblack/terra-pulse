@@ -117,10 +117,15 @@ export function ExploreShell() {
 
   return (
     <>
+      {/* The layer panel is the last child rather than placing itself at
+          `bottom: 3rem`, which is where it used to collide with the archive
+          above it on a short screen. `margin-top: auto` keeps it at the
+          bottom; the archive is what shrinks. See App.module.css. */}
       <div className={styles.leftColumn}>
         <RangeControls />
         <HistoricalDataPanel />
         <FaultProbeToggle />
+        <LayerPanel />
       </div>
       {/* Order in the column is reading order, top to bottom: what just
           happened, what you missed, then whatever you clicked. */}
@@ -130,7 +135,6 @@ export function ExploreShell() {
         <LocationPanel />
         <SolarEventPanel />
       </div>
-      <LayerPanel />
       <TimeScrubber />
       <div className={styles.rightColumn}>
         <EventListPanel />

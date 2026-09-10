@@ -4,6 +4,15 @@
    is sized by whichever panel is widest, so this quietly sets that floor —
    see App.module.css's .leftColumn (`width: max-content`). */
 .card {
+  /* The panel that gives when the left column runs short — the range controls
+     above and the layer list below both declare `flex: none`, so this is the
+     one that shrinks and scrolls. Same job `EventListPanel` does above the
+     legend in `.rightColumn`, and `min-height: 0` is the load-bearing half:
+     a flex item's default `min-height: auto` refuses to go below its content,
+     which is what let this card push past the column and draw over the layers
+     on a 1080-tall screen. */
+  min-height: 0;
+  overflow-y: auto;
   min-width: 14rem;
   padding: 0.625rem 0.75rem;
   border-radius: 0.5rem;

@@ -3,6 +3,7 @@ import { useEarthquakeStore, selectEventById } from '../state/useEarthquakeStore
 import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
 import { depthClass, depthColorHex } from '../layers/earthquake-encoding';
 import { AftershockSequenceBody } from './AftershockSequence';
+import { AftershockForecastBody, hasForecastPanel } from './AftershockForecast';
 import { AntipodalBody, hasAntipodalPanel } from './AntipodalSection';
 import { CollapsibleSection } from './CollapsibleSection';
 import { NearestFaultBody } from './NearestFault';
@@ -186,6 +187,24 @@ export function EarthquakeInspector() {
         {hasSequencePanel(event) && (
           <CollapsibleSection id="sequence" title="What followed">
             <AftershockSequenceBody event={event} />
+          </CollapsibleSection>
+        )}
+
+        {/* The model half of §5.9, directly beneath the observed half — the
+            pair is the honest picture, and putting them apart would invite
+            reading either one alone. Registered as M1 in HYPOTHESES.md; the
+            title says "forecast" and the body carries a `model` badge, because
+            model output must never be presented with an observation's weight.
+
+            Not a significance claim, so non-negotiable #1 is untouched — the
+            same footing the magnetopause layer already draws model output on.
+
+            Gated on M5+ and on the event being recent enough for Omori decay
+            to still mean something: "expected: 0.02" on a 1974 event is a
+            number pretending to be information. */}
+        {hasForecastPanel(event, nowMs) && (
+          <CollapsibleSection id="forecast" title="What to expect (forecast)">
+            <AftershockForecastBody event={event} />
           </CollapsibleSection>
         )}
 

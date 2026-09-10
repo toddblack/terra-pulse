@@ -1203,6 +1203,22 @@ sits above the track.
 publishes its own height into `--scrubber-height` and the inspector subtracts it
 **twice**, because it is centred.
 
+- **The budget goes on `.inspector`, not on `.scrollArea`, and putting it on the
+  wrong one shipped a bug.** The arithmetic derives the *panel's outer* height,
+  but the scroll area sits inside 1.875rem of padding — so the panel came out
+  that much taller than allowed, and centred, half of it showed as **~15px of
+  overlap** onto the scrubber. Reported by the user from a screenshot.
+  `box-sizing: border-box` is global, so a max-height on the panel includes its
+  padding and a future padding change is absorbed instead of needing a matching
+  magic number. `.scrollArea` then takes `flex: 1 1 auto; min-height: 0` — the
+  `min-height` is load-bearing, or a flex item refuses to shrink below its
+  content and the panel grows past its own max-height rather than scrolling.
+  Same mechanism `App.module.css` uses for the side columns.
+- **Verified by measuring the gap across the full range**: 12px at 0 rows, at 3,
+  and at 6 — while the scrubber itself varies **126px → 368px**. A constant gap
+  under a 3× change in the thing being cleared is the check that the
+  measurement is actually driving it.
+
 - The `calc(100vh - 37rem)` it replaced had grown 21.4 → 27 → 31 → 37rem as rows
   were added, and its own comment admitted **the last two increases were never
   checked against the running app**. No constant can follow a height that
@@ -1487,8 +1503,74 @@ launch and clickable to fly to an event.
   against now and reports an empty absence on every launch. There is a test
   named for exactly this.
 
-**Planned, not built:** aftershock *forecasting* (§5.9, Phase 4) — the model
-half. The observed-sequence half shipped; see below.
+**Aftershock forecasting — shipped 2026-09-09** (§5.9's model half), registered
+as **M1**. In the inspector directly beneath "What followed", so the observed
+and the expected sit together.
+
+- **Registered as a *model*, not a hypothesis: 0 tests in the FDR matrix.** It
+  produces no p-value, so there is nothing to correct — and padding that
+  denominator with non-tests would weaken the corrections applied to the
+  nineteen real ones. `HYPOTHESES.md` gained a "Registered Models" section so
+  the distinction is structural.
+- **Checking the constants against the source changed three of four.** I would
+  have written RJ89's generics from memory (a −1.67, b 0.91, p 1.08, c 0.05).
+  **Page et al. (2016)** records `a = −1.67` as **biased upward** — RJ89 fitted
+  only sequences with enough data — informally corrected to −1.85 by Felzer et
+  al. (2003). Shipped: the global stacked fit **a −1.97, b 1.0, p 0.92,
+  c 0.018 d**, 935 sequences, corrected for time-dependent incompleteness.
+  **Don't "restore" the classic values.**
+- **Global, not per-tectonic-regime.** The paper's regime values span nearly an
+  order of magnitude in productivity, but using them needs the García et al.
+  (2012) regionalization this app doesn't vendor; assigning a regime by Slab2
+  proximity would invent a classification the source doesn't sanction.
+- **No declustering, deliberately.** Non-negotiable #2 protects *rate claims*
+  from sequences masquerading as signal; here the sequence **is** the subject
+  and declustering would delete what is being forecast. Said out loud in the
+  module, because a reader who knows rule 2 will otherwise assume an oversight.
+- **Binned by magnitude — M1b, and it is USGS's own layout.** M1 forecast a
+  single M5.0+ count, which was right and useless: an M5.5 expects **0.015**
+  M5+ aftershocks in a day, so every cell read `0–0` / `<0.1`. The expected
+  count only reaches one event around **M6.3+**, a few dozen quakes a year.
+  Rows M3+ … M7+ × columns 24 h / 7 d / 30 d, each cell carrying `P(≥1)` and
+  the 95% count range. Verified against a **live USGS product** before
+  building: their M5.3 one-week row reads M3+ **17.3%** against M5+ **0.2%**.
+  Measured here after: an M5.5 two days old now reads M3+ 67% / M5+ 1% at 24 h.
+  - **The user asked for this from memory of a USGS page** — worth finding the
+    real product rather than reconstructing it. `producttype=oaf` on the FDSN
+    event query finds events carrying one; the product JSON has
+    `forecast[].bins[]` with `probability`, `p95minimum`, `p95maximum`.
+  - **M3+ and M4+ are below this app's completeness** and footnoted as such:
+    model output, not catalogue claims, and not checkable against the observed
+    sequence directly above them.
+  - An earlier `FORECAST_COUNT_READABLE_ABOVE` display threshold (swap the
+    table for a sentence when counts went sub-one) is **deleted** — binning
+    removed the problem rather than the symptom.
+- **The count ranges are narrower than USGS's and the panel admits it.** Ours
+  is a pure Poisson interval at fixed λ; USGS integrates over productivity
+  uncertainty (`aSigma = 0.523` on the live product; Page et al. give σ₀ = 0.49
+  plus a magnitude-dependent term). **Not implemented on purpose** — the
+  equation did not extract reliably from the paper, and guessing it is exactly
+  the invented parameter this project forbids. That is **M1c**.
+- **`poissonInterval` runs the pmf recurrence in log space**, because a great
+  earthquake gives λ in the hundreds where `exp(−λ)` underflows to zero — a
+  multiplicative recurrence seeded there returns all zeros, a wrong interval
+  with no error at all. Pinned by a test at λ = 466.
+- **The foreshock probability is prose, never a table cell** (§5.9's own
+  condition). And a property worth not "fixing": with `b` fixed, `b(Mm − M)` is
+  zero at `M = Mm`, so it is **the same for every mainshock magnitude** and
+  varies only with elapsed time.
+- **TypeScript, not the Python engine.** Closed-form arithmetic, no Monte
+  Carlo; the engine would add a `python-not-found` failure mode to a per-click
+  readout for nothing. Needs no IPC either — it is a pure function of magnitude
+  and elapsed time.
+- **Two copy defects found by looking at real events, not by tests.** "Very few
+  are expected" undersold a 24% chance; and "the same figure whatever the
+  magnitude" read as self-contradictory next to 2% and <1% on two events, which
+  were both right — the difference was elapsed time. The sentence has to say
+  which variable it holds fixed.
+- **Still open on purpose: sequence-fitted parameters (M1b).** Better, and a
+  free parameter unless the fitting rule is registered too — half of all
+  sequences have no aftershocks above completeness, which is what biased RJ89.
 
 **Event list — shipped.** A collapsible top-right panel listing exactly what the
 globe is drawing, click-to-fly, sortable by time or magnitude.
@@ -1548,8 +1630,34 @@ functions; `index.ts` does the Electron wiring.
 ### Panel placement
 
 **Panels describe themselves; a column positions them.** `App.module.css` owns
-`.leftColumn` (range controls + archive) and `.rightColumn` (event list +
-legend); the panels carry no `position: absolute`.
+`.leftColumn` (range controls, archive, probe toggle, **layer panel**) and
+`.rightColumn` (event list + legend); the panels carry no `position: absolute`.
+
+**The layer panel joined the left column on 2026-09-09, after colliding with
+the archive** — and it is the same mistake this note already warns about, found
+in the field rather than in review. It placed itself at `bottom: 3rem` while
+`.leftColumn` grew downward from `top: 1rem` **with no lower bound**, so on a
+1080-tall screen with the archive expanded the two drew on top of each other.
+Reported from a screenshot; the tell was the archive's own text bleeding
+through behind the layer checkboxes.
+
+- The column now carries `bottom: 3rem` (the offset the layer panel used to
+  own, meaning the same thing: clearance for Cesium's attribution strip, which
+  is a *licence condition* for OSM/GEBCO/GEM/PB2002, not a courtesy).
+- **Exactly one child may shrink**, and it says so in its own module:
+  `HistoricalDataPanel`'s `.card` takes `min-height: 0; overflow-y: auto`.
+  `RangeControls`, `FaultProbeToggle` and `LayerPanel` all declare `flex: none`
+  — squeezing the controls you steer the app with, or a one-line button, would
+  clip rather than scroll.
+- `LayerPanel` keeps `margin-top: auto`, so it still sits at the bottom when
+  there is slack, which is where it has always appeared.
+- **Verified by measuring at three real window heights**, not by eyeballing
+  one: at vh 835 and 1103 the archive scrolls and the gap holds at 46px; at
+  vh 1375 there is slack, the archive does not scroll, and the gap opens to
+  197px. The layer panel is fully on screen in all three.
+- **A resize-driving test must restore the window**, because `window-bounds.ts`
+  persists size to `app_state` — leaving it resized changes what the user sees
+  on their next launch. Capture `getNormalBounds()` and `isMaximized()` first.
 
 This is not tidiness. Both columns hold a panel whose height changes at runtime
 — the range controls gain and lose floors and notes, the legend gains and loses
