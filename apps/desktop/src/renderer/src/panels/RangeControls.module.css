@@ -1,6 +1,11 @@
 /* Placement belongs to App's .leftColumn, which stacks this above the archive
-   panel — this one only describes itself. */
+   panel — this one only describes itself.
+
+   `flex: none` because the column is bounded and something has to give when it
+   runs short: that is the archive, not this. Squeezing the magnitude and window
+   selectors would clip the controls you steer the whole app with. */
 .panel {
+  flex: none;
   padding: 0.625rem 0.75rem;
   border-radius: 0.5rem;
   background-color: rgb(15 23 42 / 80%);

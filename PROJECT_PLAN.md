@@ -615,6 +615,76 @@ all, it is shown with its framing attached, never as a bare percentage.
 
 ---
 
+#### The forecast panel — shipped 2026-09-09
+
+Registered as **M1** in `HYPOTHESES.md` before any code ran. It sits in the
+inspector directly beneath the observed-sequence panel, because the pair is the
+honest picture and either one alone invites a wrong reading.
+
+- **Registered as a *model*, not a hypothesis, and it adds 0 to the test
+  matrix.** It produces no p-value, so there is nothing for FDR to correct —
+  and padding that denominator with things that were never tests would weaken
+  the corrections applied to the nineteen that were. A new "Registered Models"
+  section holds it, so the distinction is structural rather than a footnote.
+- **The parameters were checked against the source, and three of the four
+  values that would have been written from memory were wrong.** The classic
+  Reasenberg-Jones generics (a −1.67, b 0.91, p 1.08, c 0.05) are not what
+  shipped. **Page et al. (2016)** — the paper behind USGS's global forecasts —
+  records that `a = −1.67` is **biased upward**, because RJ89 fitted only
+  sequences with enough data, and that it is informally corrected to −1.85
+  (Felzer et al. 2003). Registered instead: the global stacked fit,
+  **a −1.97, b 1.0, p 0.92, c 0.018 d**, from 935 sequences and corrected for
+  time-dependent catalogue incompleteness.
+- **Global parameters, not per-tectonic-regime.** Page et al.'s regime values
+  differ by nearly an order of magnitude in productivity (subduction a = −2.98
+  against a = −2.04 for some active non-subduction regions), but using them
+  needs the García et al. (2012) regionalization, which this app does not
+  vendor. Assigning a regime by proximity to a Slab2 trench would invent a
+  classification the source does not sanction.
+- **No declustering, and it is stated in the panel's own module.**
+  Non-negotiable #2 exists so sequences cannot masquerade as signal in a *rate
+  claim*; here the sequence is the subject, and declustering would delete the
+  events being forecast. No significance claim is made, so there is no null for
+  dependence to corrupt.
+- **Binned by magnitude, which is USGS's own layout — registered as M1b.** M1
+  forecast a single M5.0+ count, and that was right and useless: an M5.5
+  expects **0.015** M5+ aftershocks in 24 hours, so every cell rendered "0–0"
+  and "<0.1", indistinguishable from a broken feature. The expected count only
+  reaches one event around **M6.3+**.
+
+  Binning is where the information is. Rows M3+ … M7+, columns 24 h / 7 d /
+  30 d, each cell carrying the probability of at least one **and** the 95%
+  count range — the same shape USGS publishes on its event pages, verified
+  against a live product (an M5.3 whose one-week row reads **M3+ 17.3%**
+  against **M5+ 0.2%**). Measured in this app afterwards, an M5.5 two days old
+  now reads M3+ 67% / M5+ 1% over 24 h, where before every cell was "<0.1".
+
+  **M3+ and M4+ are below this app's own catalogue completeness** and are
+  marked with a footnote: they are model output, not a catalogue claim, and
+  they can never be checked against the observed-sequence panel above them.
+- **The count ranges are narrower than USGS's, and the panel says so.** Ours is
+  a pure Poisson interval at fixed λ — the randomness of the count and nothing
+  else. USGS integrates over uncertainty in the productivity parameter (the
+  live product carried `aSigma = 0.523`; Page et al. give σ₀ = 0.49 plus a
+  per-region magnitude-dependent term). **That combination is deliberately not
+  implemented**, because the equation did not extract reliably from the paper
+  and guessing it would be the invented parameter `HYPOTHESES.md` exists to
+  prevent. Doing it properly is **M1c**.
+- **The foreshock probability is prose, never a table cell**, per §5.9's own
+  condition — a cell reading "5%" is precisely what gets screenshotted without
+  its framing. A real property of the model rides with it: with `b` fixed,
+  `b(Mm − M)` is zero at `M = Mm`, so the expected count of events at least as
+  large as the mainshock is `10^a` times the decay integral and is **the same
+  for every mainshock magnitude**. It varies only with elapsed time.
+- **It computes in TypeScript, not the Python engine.** Reasenberg-Jones is
+  closed-form arithmetic with no Monte Carlo; routing it through the engine
+  would make a per-click readout fail with `python-not-found` whenever the
+  engine is down, for no benefit.
+- **Still open, and deliberately: sequence-fitted parameters.** They are better
+  and they are a free parameter unless the fitting rule is registered too —
+  Page et al. note half of all sequences have no aftershocks above completeness
+  at all, which is what biased RJ89's own fit. That is **M1b**, not an edit.
+
 #### The observed-sequence panel — shipped
 
 The archive half of the split above. Pure observation, so it lives in Explore;
@@ -1106,7 +1176,8 @@ server-side proxying of all third-party API calls.
   than in Phase 3. ~~The *observed* sequence panel for archive events needs none
   of that and can land earlier.~~ — **shipped**, see §5.9. It also delivered the
   Gardner-Knopoff windows this phase's declustering needs, already checked
-  against the published table. Forecasting itself is not yet built.
+  against the published table. ~~Forecasting itself is not yet built.~~ —
+  **the forecast half shipped 2026-09-09**, registered as **M1**.
 - **H3b (coronal hole high-speed streams) shipped the same day** — proof the
   pipeline built for H4c actually generalizes: `pipeline/` needed zero
   changes, only a new `hypotheses/h3b.py` (one trigger, four lag windows,

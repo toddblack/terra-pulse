@@ -5,7 +5,7 @@
 }
 
 /*
- * The top-left stack: coverage controls, then the archive.
+ * The left stack: coverage controls, the archive, and the layer list.
  *
  * One positioned column rather than each panel placing itself, because the
  * range controls change height — floors drop out with the window, and the
@@ -15,10 +15,25 @@
  * The archive panel used to sit top-right, where it covered Cesium's home
  * button. It belongs here anyway: it is scoped by date and magnitude, like
  * everything else in this column.
+ *
+ * **The layer panel joined the column after colliding with the archive**, and
+ * it is the same mistake the centre column's note describes: it placed itself
+ * at `bottom: 3rem` while this column grew downward from `top: 1rem` with no
+ * lower bound, so on a 1080-tall screen with the archive open the two drew on
+ * top of each other. Reported from a screenshot. Bounding the column and
+ * putting all three panels in it makes overlap unreachable — the archive
+ * shrinks and scrolls instead, exactly as the event list does above the legend
+ * in `.rightColumn`.
+ *
+ * `bottom: 3rem` is inherited from where the layer panel used to sit, and it
+ * still means the same thing: clearance for Cesium's attribution strip, which
+ * is a *condition* of using the OSM, GEBCO, GEM and PB2002 data rather than a
+ * courtesy. See `LayerPanel.module.css`.
  */
 .leftColumn {
   position: absolute;
   top: 1rem;
+  bottom: 3rem;
   left: 1rem;
   display: flex;
   flex-direction: column;
@@ -33,6 +48,10 @@
 
 .leftColumn > * {
   pointer-events: auto;
+  /* The column is bounded now, so a child that refuses to shrink would run
+     past it instead. Only the archive actually gives — the other two declare
+     `flex: none` in their own modules. */
+  min-height: 0;
 }
 
 /*

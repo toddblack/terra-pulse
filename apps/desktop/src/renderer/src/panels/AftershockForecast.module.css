@@ -1,0 +1,151 @@
+/* The forecast section of the inspector (PROJECT_PLAN §5.9, registered as
+   M1/M1b). Colocated with its component, like every other panel's styles.
+
+   This sits directly beneath the *observed* sequence panel, and the whole point
+   of the styling here is that the two must not read as the same kind of
+   statement. The observed panel leads with a large count because a count is a
+   fact; this one leads with a badge, and every cell carries a range. */
+
+.body {
+  margin: 0.25rem 0 0;
+}
+
+.lede {
+  margin: 0;
+  color: rgb(203 213 225);
+  font-size: 0.6875rem;
+  line-height: 1.45;
+}
+
+/* The label that keeps this apart from an observation.
+
+   Same job as the `(model)` suffix on the magnetopause layer's registry entry,
+   and deliberately the *first* thing in the section rather than a footnote — a
+   caveat below the numbers is read after the numbers, which is too late.
+
+   Neutral rather than coloured: this is a statement about what kind of thing
+   the panel is, not a status or a severity, and the app's colour language is
+   reserved for things that mean something (red = notable event, cyan =
+   running). Same reasoning CollapsibleSection's own note gives for keeping
+   disclosure state hue-free. */
+.badge {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.05rem 0.3rem;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 0.2rem;
+  color: rgb(148 163 184);
+  font-size: 0.5625rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: 0.05rem;
+}
+
+/* Magnitude bins down, time windows across — USGS's own layout. Fixed table
+   layout so the three window columns stay equal regardless of whether a cell
+   reads "<1%" or ">99%"; without it the columns jump between events. */
+.grid {
+  width: 100%;
+  margin: 0.5rem 0 0;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-variant-numeric: tabular-nums;
+}
+
+.grid th[scope='col'] {
+  padding: 0 0 0.2rem;
+  border-bottom: 1px solid rgb(255 255 255 / 12%);
+  color: rgb(100 116 139);
+  font-size: 0.5625rem;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  text-align: right;
+  text-transform: uppercase;
+}
+
+/* The magnitude column is narrow and left-aligned — it is a label, not a
+   value, and giving it the same width as a data column wastes the row. */
+.magHead {
+  width: 3.1rem;
+  text-align: left !important;
+}
+
+.grid th[scope='row'] {
+  padding: 0.28rem 0 0;
+  color: rgb(203 213 225);
+  font-size: 0.6875rem;
+  font-weight: 400;
+}
+
+.grid td {
+  padding: 0.28rem 0 0;
+  text-align: right;
+}
+
+/* Two numbers stacked in one cell: the probability of at least one, over the
+   95% count range. Stacked rather than side by side because three windows of
+   "17% 0-2" side by side does not fit a 24rem panel. */
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.15;
+}
+
+/* Leads, because it stays meaningful at every magnitude — which is the whole
+   reason M1b bins by magnitude. */
+.chance {
+  color: rgb(226 232 240);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* §5.9 requires an interval rather than a point estimate. Quieter than the
+   probability, but always present: a bare mean is what this must never be. */
+.range {
+  color: rgb(100 116 139);
+  font-size: 0.5625rem;
+}
+
+/* A bin the model says is effectively impossible in this window. Dimmed rather
+   than blanked, so the grid keeps its shape and the reader can see the row was
+   computed and came back negligible — the same "absence is drawn" habit the
+   timeline rows follow. */
+.cellQuiet .chance {
+  color: rgb(100 116 139);
+  font-weight: 400;
+}
+
+.cellQuiet .range {
+  color: rgb(71 85 105);
+}
+
+/* Marks the bins below this catalogue's own completeness. */
+.unverifiable {
+  margin-left: 0.1rem;
+  color: rgb(100 116 139);
+}
+
+.footnote {
+  margin: 0.4rem 0 0;
+  color: rgb(100 116 139);
+  font-size: 0.5625rem;
+  line-height: 1.35;
+}
+
+/* §5.9's "one number people misread catastrophically" — kept as prose, never
+   as a cell in the grid, because a cell reading "5%" is precisely what gets
+   screenshotted without its framing. */
+.foreshock {
+  margin: 0.55rem 0 0;
+  color: rgb(203 213 225);
+  font-size: 0.6875rem;
+  line-height: 1.45;
+}
+
+.caveat {
+  margin: 0.5rem 0 0;
+  color: rgb(100 116 139);
+  font-size: 0.625rem;
+  line-height: 1.4;
+}

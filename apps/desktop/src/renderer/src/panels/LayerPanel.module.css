@@ -1,16 +1,27 @@
 /**
- * Bottom-left, riding above Cesium's attribution strip.
+ * Bottom of the left column, riding above Cesium's attribution strip.
  *
- * The strip is pinned and height-capped in `globe/CesiumViewer.module.css`, and
- * this offset clears it: 2rem of strip + its 0.375rem bottom inset + a little
- * air. The two constants are a pair — raising the cap there without raising
- * this puts the panel back on top of attribution that is a *condition* of using
- * the OSM, GEBCO, GEM and PB2002 data, not a courtesy.
+ * **It used to place itself** at `bottom: 3rem; left: 1rem`, and that collided
+ * with the archive above it: `.leftColumn` grew downward from `top: 1rem` with
+ * no lower bound, so on a 1080-tall screen with the archive expanded the two
+ * drew on top of each other. It is a child of that column now, which is bounded
+ * — see the note in `App.module.css`.
+ *
+ * The 3rem clearance moved to the column with it, and still means the same
+ * thing: the attribution strip is pinned and height-capped in
+ * `globe/CesiumViewer.module.css`, and 2rem of strip + its 0.375rem bottom
+ * inset + a little air clears it. The two constants are still a pair — raising
+ * the cap there without raising the column's `bottom` puts this panel back on
+ * top of attribution that is a *condition* of using the OSM, GEBCO, GEM and
+ * PB2002 data, not a courtesy.
+ *
+ * `margin-top: auto` keeps it at the bottom of the column when there is slack,
+ * which is where it has always appeared; `flex: none` keeps it from being the
+ * panel that shrinks when there is not. The archive is the one that gives.
  */
 .panel {
-  position: absolute;
-  bottom: 3rem;
-  left: 1rem;
+  flex: none;
+  margin-top: auto;
   padding: 0.25rem;
   border-radius: 0.5rem;
   background-color: rgb(15 23 42 / 80%);

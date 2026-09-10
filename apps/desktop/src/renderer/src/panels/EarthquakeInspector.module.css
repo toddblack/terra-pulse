@@ -14,6 +14,38 @@
   width: 24rem;
   transform: translateY(-50%);
   padding: 0.875rem 1rem 1rem;
+
+  /* The height budget lives here, on the whole panel, **not** on `.scrollArea`.
+
+     It was on the scroll area and that was an off-by-the-padding error: the
+     budget below is derived for the panel's *outer* box, but the scroll area
+     sits inside 1.875rem of padding, so the panel came out that much taller
+     than the arithmetic allowed. Centred, half of it shows — about 15px of
+     overlap onto the scrubber, which is exactly what got reported.
+
+     `box-sizing: border-box` is global (index.css), so a max-height here
+     includes the padding and any future change to it is absorbed rather than
+     needing a matching edit to a magic number.
+
+     The flex column is what makes it work: `.scrollArea` gets `min-height: 0`
+     and scrolls when the content exceeds what is left. Same mechanism
+     `App.module.css` uses for the side columns, and its note applies here too
+     — in a column, overlap is unreachable.
+
+     The arithmetic, because it is not guessable: the panel is centred
+     (`top: 50%` + `translateY(-50%)`), so its bottom edge sits at
+     `(100vh + height) / 2` and **every rem of height costs only half a rem of
+     clearance** — which is why the scrubber's height is subtracted *twice*,
+     as is its own `bottom: 1rem` and the 0.75rem gap left between them.
+
+     `--scrubber-height` is published by `TimeScrubber` from its own measured
+     box; see the long note there. The fallback applies on the first paint and
+     while Analyze has the scrubber unmounted, and is the measured height with
+     every track row shown, so the un-measured frame errs toward too little
+     room rather than an overlap. */
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 2 * var(--scrubber-height, 22.25rem) - 3.5rem);
   border-radius: 0.5rem;
   background-color: rgb(15 23 42 / 88%);
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 40%);
@@ -36,32 +68,22 @@
 }
 
 .scrollArea {
-  /* Sized so the panel cannot reach the time scrubber, which is the collision
-     the collapsible sections exist to make rare and this makes impossible.
-     Collapsing helps by default; two expanded sections would otherwise put the
-     panel straight back over the scrubber.
+  /* Takes whatever height the panel has left, and scrolls past that.
 
-     The arithmetic, because it is not guessable: the panel is centred
-     (`top: 50%` + `translateY(-50%)`), so its bottom edge sits at
-     `(100vh - height) / 2` and **every rem taken off the height buys only half
-     a rem of clearance** — the clearance is paid at the top too, where nothing
-     is in the way. So the scrubber's height is subtracted twice. The remaining
-     2rem is the scrubber's own `bottom: 1rem`, doubled for the same reason.
+     The constraint itself lives on `.inspector` — see the note there for the
+     arithmetic and for why it moved. `min-height: 0` is the load-bearing part:
+     without it a flex item refuses to shrink below its content and the panel
+     grows past its own max-height instead of scrolling, which is the same trap
+     `App.module.css` documents for the side columns.
 
-     `--scrubber-height` is published by `TimeScrubber` from its own measured
-     box; see the long note there. It replaced a hand-maintained constant that
-     had grown 21.4rem → 27 → 31 → 37 as track rows were added, whose last two
-     increases were never checked against the running app, and which could not
-     work at all once §5.5's per-row toggles let that height change while the
-     app is running. Switching two rows off now genuinely gives this panel the
-     room back rather than leaving a gap.
-
-     The fallback matters: it is what applies on the first paint before the
-     observer has reported, and while Analyze mode has the scrubber unmounted
-     entirely. 22.25rem is the height **measured in the running app** with all
-     five rows and the toggle line shown (356px at a 16px root), so the
-     un-measured frame errs toward too little room rather than an overlap. */
-  max-height: calc(100vh - 2 * var(--scrubber-height, 22.25rem) - 2rem);
+     This replaced a hand-maintained `calc(100vh - 37rem)` that had grown
+     21.4rem → 27 → 31 → 37 as track rows were added, whose last two increases
+     were never checked against the running app, and which could not work at
+     all once §5.5's per-row toggles let that height change while the app is
+     running. Switching rows off now genuinely gives this panel the room back
+     rather than leaving a gap. */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
 }
 

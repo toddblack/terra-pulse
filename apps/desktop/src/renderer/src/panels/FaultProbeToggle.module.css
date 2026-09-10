@@ -1,6 +1,11 @@
-/* Sits in the left column; the column owns placement (see App.module.css). */
+/* Sits in the left column; the column owns placement (see App.module.css).
+
+   `flex: none` because that column is bounded: something has to give when it
+   runs short, and it is the archive rather than a one-line button that would
+   simply clip. */
 
 .toggle {
+  flex: none;
   width: 100%;
   padding: 0.4375rem 0.5rem;
   border: 1px solid rgb(255 255 255 / 12%);
