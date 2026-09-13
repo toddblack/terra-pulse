@@ -917,6 +917,64 @@ earthquakes arriving.
   returns 1900 at M7.5+ and 1970 below. Assuming 1900 at M6 would count seven
   near-empty decades as observation and inflate every interval through them.
 
+### 5.12 Live Seismic Waveforms — shipped
+
+The app's **third mode**, and the first thing in it that is not a record of
+something already catalogued: real ground motion, streaming from public seismic
+stations, drawn as scrolling traces. Everything else here draws marks for events
+that already happened; this draws the ground moving.
+
+**Display only, decided explicitly.** No detection, no STA/LTA, no association,
+no alerting. No persistence of any kind — a rolling two-minute in-memory buffer
+that dies with the component. Region presets for v1, with globe-click station
+picking as a phase 2 the data shapes already accommodate: `waveforms:start`
+takes channels, never a preset id, so a click that produces a channel needs no
+change in main, the buffer or the rendering.
+
+**Transport is SeedLink v3.1 over a single TCP connection** to EarthScope's
+ring, demultiplexed by each record's own header. Records are miniSEED, decoded
+in main by a hand-rolled Steim-1/Steim-2 decoder — the app's established
+posture of porting a reference rather than taking a dependency (`seisplotjs`
+was evaluated and rejected: MIT and maintained, but it pulls Leaflet, a second
+map library in a Cesium app).
+
+**The decode is self-checking, which is the load-bearing design decision.** Every
+miniSEED record carries both its first sample and its last, so a correct decode
+must land exactly on the declared last one. Every plausible way to get Steim
+wrong — a wrong nibble table, the wrong sub-code split, sign extension off by a
+bit, forgetting that the leading difference belongs to the *previous* record —
+produces a smooth, entirely believable seismogram that is not what the
+instrument recorded. Checking against that last sample turns the whole class
+into a loud named failure.
+
+**Measured against the live ring (2026-09-10/11), and four failure modes here
+are silent:**
+
+- `CAPABILITIES SLPROTO:3.1` must follow `HELLO` and precede any `STATION`, or
+  RingServer 4.x serves v4 framing and a v3 parser discards every packet while
+  reporting nothing.
+- The selector must carry a real location code and omit a blank one. Blank is
+  **95-100%** of regional stations, so a `??` wildcard drops nearly all of them;
+  conversely a bare `BHZ` at a global station delivers *every* location.
+- Framing must be strict. Scanning for the next `SL` after a bad byte invents
+  plausible records — a phantom station appeared in every run of a prototype
+  that did this.
+- **The ring answers `OK` to everything.** A station, channel or network that
+  does not exist is accepted and then simply sends nothing, so the handshake
+  cannot distinguish a typo from a slow station. The ring's own stream list is
+  consulted instead, *alongside* connecting rather than before it.
+
+**Latency is data-dependent and cannot be improved from here**, which is the
+honest limit the UI leads with: a record ships only once full, and how many
+samples fit depends on how well the signal compresses. Measured 2.3-7.2 s at
+100 Hz and 5.2-25 s on the slower global channels, plus ~2 s in transit. A
+*quieter* station therefore lags *more*. The blank strip at each trace's right
+edge is that delay, drawn rather than hidden.
+
+Ten further limits ship in the mode's own guide, in the same four-section shape
+every layer uses — chief among them that raw counts are not comparable between
+rows, and that almost anything moving on a trace is ocean microseism rather
+than an earthquake.
 
 ---
 
@@ -1551,6 +1609,6 @@ server-side proxying of all third-party API calls.
 | Web app instead of desktop | Cesium in-browser is viable, but desktop enables local caching, offline analysis, and heavier computation without hosting costs. |
 | Infinite historical scrubber | Data volume makes it unusable; window-select is both faster and clearer. |
 | Cesium World Terrain as a basemap | Ion's free tier is non-commercial only. It also needs `enableLighting` (day/night shading) to be visible at all, which conflicts with wanting the whole globe uniformly lit for data visualization — half the quakes would sit on the "night" side. |
-| Earthquake early warning (EEW) | Structurally impossible from this data source, not merely hard. Real EEW detects the P-wave near the source and races the S-wave, buying seconds from sub-second raw waveform streams. Measured on the USGS `all_hour` feed: first publication lags origin by **78 s min / 222 s median**, before this app's poll interval. At ~3.5 km/s the S-wave has covered ~270 km by 78 s and ~780 km by 222 s — the shaking is over before the event exists in the feed. Recorded here so it doesn't get re-proposed. What *is* possible is §5.8 (alerts, after the fact) and §5.9 (aftershock forecasting). |
+| Earthquake early warning (EEW) | Structurally impossible from this data source, not merely hard. Real EEW detects the P-wave near the source and races the S-wave, buying seconds from sub-second raw waveform streams. Measured on the USGS `all_hour` feed: first publication lags origin by **78 s min / 222 s median**, before this app's poll interval. At ~3.5 km/s the S-wave has covered ~270 km by 78 s and ~780 km by 222 s — the shaking is over before the event exists in the feed. Recorded here so it doesn't get re-proposed. What *is* possible is §5.8 (alerts, after the fact) and §5.9 (aftershock forecasting). **§5.12 now streams raw waveforms and does not reopen this** — it is evidence for the row, not against it. A record ships only once full (measured 2.3-7.2 s at 100 Hz) plus ~2 s transit, so the floor is ~5.5 s before association could even begin, against a P–S gap of 0.118 s/km: nothing is left inside ~50 km. Single-station triggers also cannot separate a quarry blast from an earthquake, which is why ShakeAlert associates four stations. |
 | Earthquake prediction (where/when/magnitude in advance) | Not a solved problem, and not one this app is going to solve. Aftershock *forecasting* (§5.9) is a different and legitimate thing: it is a probabilistic rate for a sequence already underway, not a claim that an earthquake is coming. |
 | SpatiaLite (real attempt, not skipped) | `node:sqlite`'s extension loading genuinely works (verified). The blocker is the binary: the only real Windows build available (`spatialite-bin` on npm) is a single unmaintained release bundling GEOS 3.5 (~2016). Its DLL fails its own init routine on a modern system even once the Windows DLL search-path problem is fixed — confirmed with a direct `LoadLibraryEx` call outside of Node entirely, so it's not a Node/SQLite-specific issue. R-Tree (built into SQLite core) covers the bbox/radius queries actually needed; revisit real SpatiaLite if a maintained binary source turns up later. |

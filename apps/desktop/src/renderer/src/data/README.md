@@ -10,6 +10,7 @@ script to regenerate; don't hand-edit.
 | `plate-boundaries.json` | `vendor-plate-data.mjs` | Bird (2003) PB2002 | ODC-BY |
 | `subduction-trenches.json` | `vendor-slab2-trenches.mjs` | USGS Slab2 | CC0 |
 | `active-faults.json` | `vendor-gem-faults.mjs` | GEM Global Active Faults | CC-BY-SA 4.0 |
+| `waveform-regions.json` | `vendor-waveform-stations.mjs` | EarthScope ring + FDSN station service | public domain |
 
 The first two are separate sources on purpose — see "Why there is no
 motion-arrow layer" below.
@@ -351,3 +352,81 @@ reference implementation rather than an independent derivation. A
 spherical-harmonic expansion that is subtly wrong still produces a smooth,
 entirely plausible-looking field, so matching the reference is worth more than
 matching the mathematics from memory.
+
+---
+
+# 4. Live waveform region presets
+
+## Source
+
+Two services, cross-referenced, and a preset contains only what **both** agreed
+on at the moment the script ran.
+
+| | |
+|---|---|
+| **Ring** | `http://rtserve.iris.washington.edu:18000/streamids` — what is actually being published right now |
+| **Metadata** | `https://service.earthscope.org/fdsnws/station/1/query` — coordinates and site names, which the ring does not carry |
+| **Licence** | US federal / EarthScope open data; **no attribution condition**. The network credits in the app's guide are scientific courtesy, like the Slab2 citation, not a licence term. |
+| **Generated** | 2026-09-11 |
+
+Doing the cross-reference at authoring time is what makes ring validation free
+at runtime: a shipped preset can only name a stream that really existed. The
+app still re-checks at connect time, because the ring changes — see
+`NOT_ON_RING_REASON`.
+
+## `waveform-regions.json` — 9.9 KB, 4 regions × 8 stations
+
+```
+{ "generatedUtc": "…", "ring": "…", "stationService": "…",
+  "regions": [ { "id": "socal", "label": "Southern California",
+                 "network": "CI", "channel": "HHZ", "note": "…",
+                 "channels": [ { network, station, location, channel,
+                                 latitude, longitude, site, sampleRateHz } ] } ] }
+```
+
+**This file is gitignored**, like every other dataset here. Run
+`node scripts/vendor-waveform-stations.mjs` after a fresh clone or the renderer
+build will fail on the missing import.
+
+## Why these four regions, and why eight stations each
+
+Measured vertical streams on the ring, 2026-09-10: **UW 184 HHZ**, **IU 61**
+stations (125 BHZ streams across location codes), **CI 52**, **NN 44**.
+
+- **No Northern California.** NC publishes **zero** streams on this ring and BK
+  publishes three. That region needs NCEDC's own server, so offering it here
+  would be four dead rows.
+- **PB is absent from the Pacific Northwest preset** although it is a regional
+  network: it publishes only **4** HHZ streams, because its real vertical
+  channel is EHZ, with 66. Mixing a short-period borehole channel into a
+  broadband preset puts two very different instruments on one screen under
+  per-station scales that already warn amplitudes are not comparable.
+- Eight is `WAVEFORM_MAX_CHANNELS`. The limit is not bandwidth — eight channels
+  is about 3 KB/s — but the handshake, which is strictly sequential at roughly
+  180 ms a command and three commands a station.
+
+**Stations are chosen by greedy farthest-point sampling, not alphabetically.**
+Networks cluster hard: 184 UW stations bunch around Puget Sound and the
+volcanoes, so the first eight by name would show one patch of ground eight
+times. The script starts from the station nearest the network centroid and
+repeatedly adds whichever candidate is furthest from everything already chosen.
+The result spans San Nicolas Island to Mammoth, Oregon to the Canadian border,
+and the Aleutians to New Zealand.
+
+## Two upstream traps
+
+- **Use `service.earthscope.org`, never `service.iris.edu`.** The old hostname
+  answers with a 307 redirect carrying `Content-Length: 0` **twice**, which is
+  malformed HTTP: Node's `fetch` rejects the entire response with
+  `HTTPParserError: Duplicate Content-Length`, while curl tolerates it. This is
+  the inverse of the GFZ lesson in `CLAUDE.md` — there curl failed where `fetch`
+  worked. **Check a source with the runtime that will actually fetch it.**
+- **Columns are read by name from the `#` header row**, never by position, so an
+  inserted column cannot silently shift latitude into elevation.
+
+## Re-run it periodically
+
+The ring gains and loses stations. A preset shipped once can rot into a row that
+never draws, and nothing in the app can repair that — it can only report it. The
+station epochs with an empty `EndTime` are the currently-operating ones; rows for
+retired epochs carry the same station at its old coordinates.

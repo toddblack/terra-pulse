@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useGlobeStore } from '../state/useGlobeStore';
 import { guideFor } from './layer-guides';
 import { trackGuideFor } from './track-guides';
+import { waveformGuideFor } from '../waveforms/waveform-limits';
 import styles from './LayerGuideModal.module.css';
 
 /**
@@ -54,7 +55,10 @@ export function LayerGuideModal() {
 
   if (openGuideLayerId === null) return null;
 
-  const guide = guideFor(openGuideLayerId) ?? trackGuideFor(openGuideLayerId);
+  const guide =
+    guideFor(openGuideLayerId) ??
+    trackGuideFor(openGuideLayerId) ??
+    waveformGuideFor(openGuideLayerId);
   if (!guide) return null;
 
   return (

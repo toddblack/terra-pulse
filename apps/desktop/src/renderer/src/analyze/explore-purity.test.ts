@@ -26,7 +26,11 @@ import { describe, expect, it } from 'vitest';
  * reads as idiomatic here, not paranoid.
  */
 
-const EXPLORE_DIRS = ['panels', 'layers', 'globe', 'state'];
+// `waveforms` is a third mode, not part of Explore — but it is observation by
+// definition, so non-negotiable #1 applies for the rule's own reason. A new
+// mode directory is covered by **neither** guard by default, which is why it
+// has to be named here as well as in the eslint glob.
+const EXPLORE_DIRS = ['panels', 'layers', 'globe', 'state', 'waveforms'];
 const RENDERER_SRC = join(__dirname, '..');
 
 // Precise signals only. An earlier draft also matched bare "correlation" and

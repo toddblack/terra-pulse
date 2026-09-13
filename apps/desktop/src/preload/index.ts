@@ -23,6 +23,9 @@ import type {
   MissedEvents,
   RegionalRecurrence,
   SolarFlare,
+  WaveformChannel,
+  WaveformSegment,
+  WaveformStreamStatus,
 } from '@terra-pulse/schema';
 
 // Narrow, specific functions — never a raw ipcRenderer passthrough
@@ -188,6 +191,53 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.on('magnetometer:updated', listener);
       return () => {
         ipcRenderer.removeListener('magnetometer:updated', listener);
+      };
+    },
+  },
+  waveforms: {
+    /**
+     * Opens the SeedLink stream for these channels, replacing any stream
+     * already running. Main validates every code before it reaches a command
+     * line — the renderer is not trusted to have done so.
+     *
+     * The mode calls this on mount and `stop` on unmount. A launch never opens
+     * the connection.
+     */
+    start: (channels: readonly WaveformChannel[]): Promise<WaveformStreamStatus> =>
+      ipcRenderer.invoke('waveforms:start', { channels }),
+
+    stop: (): Promise<void> => ipcRenderer.invoke('waveforms:stop'),
+
+    /**
+     * Current status, pulled once on mount before subscribing — the `aurora`
+     * two-step, so a mode that mounts just after a state change is not blank
+     * until the next one.
+     */
+    status: (): Promise<WaveformStreamStatus> => ipcRenderer.invoke('waveforms:status'),
+
+    /**
+     * Each decoded record as it arrives — one message per record, every
+     * 2-14 s per channel. Batching would only add latency to a feed whose whole
+     * limitation is latency. Returns an unsubscribe function.
+     */
+    onSegment: (callback: (segment: WaveformSegment) => void): (() => void) => {
+      const listener = (_event: unknown, segment: WaveformSegment) => {
+        callback(segment);
+      };
+      ipcRenderer.on('waveforms:segment', listener);
+      return () => {
+        ipcRenderer.removeListener('waveforms:segment', listener);
+      };
+    },
+
+    /** Subscribes to connection and channel state changes. */
+    onStatus: (callback: (status: WaveformStreamStatus) => void): (() => void) => {
+      const listener = (_event: unknown, status: WaveformStreamStatus) => {
+        callback(status);
+      };
+      ipcRenderer.on('waveforms:status-changed', listener);
+      return () => {
+        ipcRenderer.removeListener('waveforms:status-changed', listener);
       };
     },
   },

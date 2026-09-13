@@ -36,6 +36,7 @@ import {
 } from './ipc/earthquakes';
 import { registerAuroraIpcHandlers, startAuroraPolling } from './ipc/aurora';
 import { registerTecIpcHandlers } from './ipc/tec';
+import { createWaveformController, registerWaveformIpcHandlers } from './ipc/waveforms';
 import {
   registerMagnetometerIpcHandlers,
   startMagnetometerPolling,
@@ -262,8 +263,8 @@ app
   .whenReady()
   .then(() => {
     // Each independent subsystem below (earthquakes, aurora, magnetometers,
-    // Kp/Dst, DONKI, GOES flares, GCMT, the ephemeris downloader, the
-    // archive backfill, the analysis engine) registers its own `will-quit`
+    // live waveforms, Kp/Dst, DONKI, GOES flares, GCMT, the ephemeris
+    // downloader, the archive backfill, the analysis engine) registers its own `will-quit`
     // cleanup, on purpose — see the comment above each one for why it isn't
     // shared with its neighbours. That is now past Node's default cap of 10
     // listeners per event, which logs a false-positive leak warning on every
@@ -375,6 +376,27 @@ app
       }
     });
     app.on('will-quit', stopMagnetometerPolling);
+
+    // Live seismic waveforms — the app's only persistent outbound connection.
+    // Nothing starts here: the waveform mode calls `waveforms:start` when it
+    // mounts and `:stop` when it unmounts, so a launch never opens a socket.
+    // The quit handler exists for a mode left open when the app closes.
+    const waveforms = createWaveformController({
+      onSegment: (segment) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('waveforms:segment', segment);
+        }
+      },
+      onStatus: (status) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('waveforms:status-changed', status);
+        }
+      },
+    });
+    registerWaveformIpcHandlers(waveforms);
+    app.on('will-quit', () => {
+      waveforms.dispose();
+    });
 
     // Kp and Dst. The rolling Kp tail runs always — it is an 8 KB read from
     // GFZ's nowcast file. The deep backfill is user-triggered, because its Dst

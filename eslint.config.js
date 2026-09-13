@@ -27,8 +27,11 @@ export default defineConfig([
     // `apps/desktop/src/renderer/src/analyze/explore-purity.test.ts` for the
     // scan that catches what this rule structurally can't (a p-value typed
     // into JSX by hand rather than imported).
+    // `waveforms` is covered for the rule's own reason rather than by
+    // analogy: a live seismogram is observation by definition, so nothing in
+    // it may ever carry a significance claim either.
     files: [
-      'apps/desktop/src/renderer/src/{panels,layers,globe,state}/**/*.{ts,tsx}',
+      'apps/desktop/src/renderer/src/{panels,layers,globe,state,waveforms}/**/*.{ts,tsx}',
     ],
     rules: {
       'no-restricted-imports': [
