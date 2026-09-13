@@ -57,6 +57,7 @@ import { createEphemerisController, registerEphemerisIpcHandlers } from './ipc/e
 import { registerExternalLinkIpcHandlers } from './ipc/external-links';
 import { createEngineController, registerAnalysisIpcHandlers } from './ipc/analysis';
 import { applyTileIdentity } from './tile-identity';
+import { sendToRenderer } from './renderer-send';
 
 // dotenv.config() with no options resolves relative to process.cwd(), but
 // pnpm runs this package's scripts with apps/desktop as cwd, not the repo
@@ -381,16 +382,18 @@ app
     // Nothing starts here: the waveform mode calls `waveforms:start` when it
     // mounts and `:stop` when it unmounts, so a launch never opens a socket.
     // The quit handler exists for a mode left open when the app closes.
+    //
+    // These two use `sendToRenderer` rather than the `mainWindow.isDestroyed()`
+    // check every other push here uses, and the difference is load-bearing:
+    // stopping the stream is triggered by the renderer's own `destroyed`
+    // event, so `onStatus` fires *during* teardown, when the WebContents is
+    // already gone but the window is not. See `renderer-send.ts`.
     const waveforms = createWaveformController({
       onSegment: (segment) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('waveforms:segment', segment);
-        }
+        sendToRenderer(mainWindow, 'waveforms:segment', segment);
       },
       onStatus: (status) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('waveforms:status-changed', status);
-        }
+        sendToRenderer(mainWindow, 'waveforms:status-changed', status);
       },
     });
     registerWaveformIpcHandlers(waveforms);

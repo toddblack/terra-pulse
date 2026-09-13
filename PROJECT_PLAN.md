@@ -968,8 +968,19 @@ are silent:**
 honest limit the UI leads with: a record ships only once full, and how many
 samples fit depends on how well the signal compresses. Measured 2.3-7.2 s at
 100 Hz and 5.2-25 s on the slower global channels, plus ~2 s in transit. A
-*quieter* station therefore lags *more*. The blank strip at each trace's right
-edge is that delay, drawn rather than hidden.
+*quieter* station therefore lags *more*.
+
+**The rows share one clock, and the window ends a few seconds behind live so
+that they do.** Ending it at wall-clock now made every trace stop at its own x
+— visually a ragged right edge that reads as a rendering fault rather than as
+physics. The shared edge moves back instead, far enough that every station has
+data at it; the delay is derived from how long records actually are (stable)
+rather than from how stale each channel currently is (which oscillates by a
+whole record interval). **Per-row axes were rejected outright**: a column must
+mean the same instant on every station, or a wave cannot be watched sweeping
+across the network, which is the only reason eight rows beat one. The cost is
+that the slowest station sets the delay for the view, so the footer states it
+and each row prints its own sample age.
 
 Ten further limits ship in the mode's own guide, in the same four-section shape
 every layer uses — chief among them that raw counts are not comparable between

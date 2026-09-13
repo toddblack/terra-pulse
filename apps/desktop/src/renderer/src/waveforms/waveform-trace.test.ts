@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { WaveformSegment } from '@terra-pulse/schema';
-import { layoutWaveform, niceScale, polylinePoints } from './waveform-trace';
+import {
+  WAVEFORM_MAX_DISPLAY_LAG_MS,
+  WAVEFORM_MIN_DISPLAY_LAG_MS,
+  displayLagMs,
+  layoutWaveform,
+  niceScale,
+  polylinePoints,
+} from './waveform-trace';
 
 const RATE = 100;
 const BASE = Date.UTC(2026, 8, 10, 6, 0, 0);
@@ -36,6 +43,54 @@ describe('niceScale', () => {
     expect(niceScale(0)).toBe(1);
     expect(niceScale(-5)).toBe(1);
     expect(niceScale(Number.NaN)).toBe(1);
+  });
+});
+
+describe('displayLagMs', () => {
+  /** `seconds` of samples at 100 Hz — one record's worth. */
+  const record = (seconds: number) => segment(0, new Int32Array(seconds * RATE));
+
+  it('clears the longest record on screen, plus the transit allowance', () => {
+    // 7 s record + 3 s transit = 10 s.
+    expect(displayLagMs([[record(7)]])).toBe(10_000);
+  });
+
+  it('is set by the slowest station, not the fastest', () => {
+    expect(displayLagMs([[record(2)], [record(7)], [record(3)]])).toBe(10_000);
+  });
+
+  it('rounds up to a whole second, so the edge never shifts by a fraction', () => {
+    expect(displayLagMs([[record(2.4)]])).toBe(6_000);
+    expect(displayLagMs([[record(2.5)]])).toBe(6_000);
+  });
+
+  it('does not follow how stale a channel currently is', () => {
+    // Staleness swings by a whole record interval as packets land; record
+    // length does not. Two buffers holding identical records give the same lag
+    // regardless of when they arrived.
+    const early = [segment(0, new Int32Array(4 * RATE))];
+    const late = [segment(90, new Int32Array(4 * RATE))];
+    expect(displayLagMs([early])).toBe(displayLagMs([late]));
+  });
+
+  it('accommodates a slow global channel rather than clipping it', () => {
+    // A 20 Hz channel packing 500 samples covers 25 s.
+    const slow: WaveformSegment = {
+      channelId: 'IU_LCO_00_BHZ',
+      startTimeMs: BASE,
+      sampleRateHz: 20,
+      samples: new Int32Array(500),
+    };
+    expect(displayLagMs([[slow]])).toBe(28_000);
+  });
+
+  it('stays inside its bounds', () => {
+    // With nothing buffered there is no record length to go on.
+    expect(displayLagMs([])).toBe(WAVEFORM_MIN_DISPLAY_LAG_MS);
+    // The floor does not bite on a real record: even a 0.1 s one clears the
+    // transit allowance and rounds to 4 s.
+    expect(displayLagMs([[record(0.1)]])).toBe(4_000);
+    expect(displayLagMs([[record(600)]])).toBe(WAVEFORM_MAX_DISPLAY_LAG_MS);
   });
 });
 

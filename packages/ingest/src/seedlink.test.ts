@@ -91,6 +91,20 @@ describe('ring inventory', () => {
     );
   });
 
+  it('asks for identity encoding, because the gzipped reply crashes the process', async () => {
+    // Not a micro-optimisation to undo: gzip + connection:close trips an
+    // uncatchable assertion in Node's HTTP parser. See
+    // RING_INVENTORY_IDENTITY_NOTE — measured, it asserted on all three gzip
+    // runs and on none of 90 identity requests.
+    const seen: (RequestInit | undefined)[] = [];
+    const capturing: typeof fetch = (_input, init) => {
+      seen.push(init);
+      return Promise.resolve(new Response('FDSN:CI_ADO__H_H_Z/MSEED\n', { status: 200 }));
+    };
+    await fetchRingInventory(capturing);
+    expect(seen[0]?.headers).toEqual({ 'accept-encoding': 'identity' });
+  });
+
   it('gives up on a stalled transfer instead of inheriting a five-minute default', async () => {
     // Honour the signal the way real fetch does: reject when it aborts.
     const stalled = vi.fn(

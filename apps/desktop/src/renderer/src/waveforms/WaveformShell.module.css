@@ -218,6 +218,16 @@
   align-items: flex-end;
   color: rgb(100 116 139);
   font-size: 0.6875rem;
+  line-height: 1.25;
+}
+
+/* The per-station delay, which used to be legible only as where the ink
+   stopped. Muted, because it is a property of the transport rather than of the
+   ground. */
+.age {
+  color: rgb(71 85 105);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .scaleValue {
@@ -234,4 +244,10 @@
   padding-top: 0.4rem;
   color: rgb(100 116 139);
   font-size: 0.6875rem;
+}
+
+.lag {
+  color: rgb(148 163 184);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }

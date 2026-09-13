@@ -3310,6 +3310,27 @@ is ~5.5 s before association could begin, against a P–S gap of 0.118 s/km.
   returned the same 17 of 17 streams and **every record was quality `D`**. So
   `.D` excludes nothing today while being the option that goes silently empty
   if a station ever publishes `R`/`Q`/`M`.
+- **The inventory request must ask for `identity` encoding, or it crashes the
+  app — and no `try`/`catch` can save it.** The ring serves `/streamids`
+  gzipped (128 KB → 1.19 MB) and sends `connection: close`. That combination
+  trips an assertion inside Node's own HTTP client:
+  `AssertionError: assert(!this.paused)` in `Parser.finish`, from
+  `Socket.onHttpSocketEnd` — the parser is paused for decompression when the
+  socket ends. **It throws from a socket handler rather than rejecting the
+  promise**, so the `try`/`catch` around the fetch never sees it; in main it is
+  an uncaught exception, which Electron shows as a modal error box.
+  - Reported by the user as two dialogs on opening the mode. **Two**, because
+    StrictMode double-mounts the shell and fires two inventory fetches at once.
+  - Measured: **gzipped it asserted on all three runs (after 6, 10 and 19
+    requests); with `identity`, 90 consecutive requests were clean**, plus six
+    more through the app clicking into the mode 1.6 s after launch.
+  - The cost is 1.19 MB on the wire instead of 128 KB, once per session, since
+    the result is cached for an hour. Cheap against a crash dialog.
+  - **No other source here needs this**: the rest are HTTPS CDNs with
+    keep-alive, and none has ever shown it. If it recurs, the next step is
+    `node:http` plus `zlib` for this one request, avoiding undici entirely.
+  - The general lesson: **an async throw inside a transport cannot be caught at
+    the call site.** Guarding the call is not the same as the call being safe.
 - **The inventory is the whole stream list, not a server-side `match`, and the
   first version shipped as dead code.** `match` looks efficient — three
   channels in 52 bytes — but it has an undocumented length cap: **200 up to 70
@@ -3335,8 +3356,28 @@ is ~5.5 s before association could begin, against a P–S gap of 0.118 s/km.
   only when full, and how many samples fit depends on how well the signal
   compresses: sample counts ran **225 to 720** on real records. Measured
   **2.3-7.2 s at 100 Hz** and **5.2-25 s at 40/20 Hz**, plus ~2 s transit. The
-  recon's flat "5.6 s/record" was an average, not a constant. The blank strip
-  at each trace's right edge *is* that delay, drawn rather than hidden.
+  recon's flat "5.6 s/record" was an average, not a constant.
+- **The shared window ends behind wall-clock now, and that replaced a ragged
+  right edge the user rejected on sight.** Ending it at `now` left every trace
+  stopping at its own x — measured spread **4.13 viewBox units, ~67 px** — which
+  reads as a rendering fault rather than as physics, however honest it is.
+  - **The fix must not be a per-row time axis.** Rows share one clock so a
+    column is one instant on every station; that is what makes a wave visibly
+    sweep across a network and the only reason eight rows beat one. Giving each
+    row its own axis to flush its edge would silently break cross-row reading.
+  - So the *shared* edge moves back by `displayLagMs`, and every trace reaches
+    it: measured spread **0.00** after.
+  - **The lag comes from record *length*, not from current staleness.**
+    Staleness swings by a whole record interval as packets land, so a lag
+    tracking it would make the window jitter back and forth by seconds. Record
+    duration is a stable property of the channel. Longest buffered record +
+    3 s transit, rounded up to a whole second, clamped 3-35 s.
+  - **The slowest station on screen therefore sets the delay for the view** —
+    a 20 Hz global channel packing 25 s of samples pushes it to 28 s. That is
+    the price of one shared axis, and the footer states it rather than leaving
+    it to be inferred. Per-station delay is a number at each row's right.
+  - The blank-strip code stays: it is normally zero-width, and a station
+    running later than the rest still shows its own shortfall.
 - **The vertical scale is per station and per window — a deliberate exception
   to this repo's fixed-domain rule**, which `field-encoding.ts` and
   `tidal-stress-track.ts` state the opposite of. Raw counts have no fixed
@@ -3373,6 +3414,22 @@ is ~5.5 s before association could begin, against a P–S gap of 0.118 s/km.
   cleanup leaves the connection up, and the watchdog cannot catch it because the
   connection is *healthy*, merely unwatched. The sender that started the stream
   is watched for `did-start-loading`.
+- **That same watch made `mainWindow.isDestroyed()` an insufficient guard, and
+  it shipped as a crash dialog on quit.** Reported by the user: quitting while
+  the mode was open raised `TypeError: Object has been destroyed` from
+  `WebContents.send`. **On quit Electron destroys the `WebContents` before the
+  `BrowserWindow` reports destroyed**, so there is an interval where the window
+  looks alive and `send` throws — an uncaught exception in main, which Electron
+  shows as a modal error box.
+  - Every other push here is on a timer or an IPC reply, so none is ever in
+    flight during teardown and none had ever hit this. The waveform stream is
+    the exception **by construction**: it watches the renderer for `destroyed`
+    so the socket closes with it, and that handler runs *during* teardown and
+    emits a status change as it stops.
+  - `main/renderer-send.ts` checks the object `send` actually lives on. The
+    remaining call sites still use the older window-only check; they are not
+    reachable this way, but the helper is there if anything else ever pushes
+    during teardown.
 - **`service.earthscope.org`, never `service.iris.edu`** for station metadata:
   the old hostname answers with a 307 carrying `Content-Length: 0` **twice**,
   which Node's `fetch` rejects outright (`HTTPParserError`) while curl tolerates
