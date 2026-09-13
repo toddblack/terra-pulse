@@ -44,6 +44,56 @@ export interface TraceLayout {
  */
 export const GAP_TOLERANCE_SAMPLES = 1.5;
 
+/** Allowance for the network hop on top of the time a record takes to fill. */
+export const WAVEFORM_TRANSIT_ALLOWANCE_MS = 3_000;
+export const WAVEFORM_MIN_DISPLAY_LAG_MS = 3_000;
+export const WAVEFORM_MAX_DISPLAY_LAG_MS = 35_000;
+
+/** How long a record covers: its sample count over its rate. */
+export function recordDurationMs(segment: WaveformSegment): number {
+  return (segment.samples.length / segment.sampleRateHz) * 1000;
+}
+
+/**
+ * How far behind wall-clock now the shared right edge sits.
+ *
+ * **Why the window does not end at "now".** A station's newest sample is
+ * always seconds old, because a record ships only once full — and *how* old
+ * differs per station, since how many samples fit depends on how well the
+ * signal compresses. Ending the window at now therefore leaves every trace
+ * stopping at its own x, which reads as a rendering fault rather than as
+ * physics.
+ *
+ * The fix must not be to give each row its own time axis. Rows share one axis
+ * so that a column means one instant on every station — that is what makes a
+ * wave visibly sweep across a network, and the only reason eight rows beat
+ * one. So the *shared* edge moves back instead, far enough that every station
+ * normally has data at it.
+ *
+ * The lag is taken from **how long records actually are**, not from how stale
+ * each channel happens to be right now. Staleness oscillates by a whole record
+ * interval as packets land, which would make the window jitter back and forth;
+ * record duration is a stable property of the channel (measured 2.3-7.2 s at
+ * 100 Hz, up to ~25 s on a 20 Hz global channel). Taking the longest across
+ * the buffered history, then rounding up to a whole second, means the edge
+ * changes rarely and never by more than a second.
+ *
+ * The slowest station on screen therefore sets the lag for the view. That is
+ * the honest trade for a shared axis, and the footer states it rather than
+ * leaving the reader to infer it.
+ */
+export function displayLagMs(segmentsByChannel: Iterable<readonly WaveformSegment[]>): number {
+  let longest = 0;
+  for (const segments of segmentsByChannel) {
+    for (const segment of segments) {
+      longest = Math.max(longest, recordDurationMs(segment));
+    }
+  }
+  if (longest === 0) return WAVEFORM_MIN_DISPLAY_LAG_MS;
+  const lag = Math.ceil((longest + WAVEFORM_TRANSIT_ALLOWANCE_MS) / 1000) * 1000;
+  return Math.min(WAVEFORM_MAX_DISPLAY_LAG_MS, Math.max(WAVEFORM_MIN_DISPLAY_LAG_MS, lag));
+}
+
 /**
  * The smallest 1-2-5 step at or above `peak`.
  *

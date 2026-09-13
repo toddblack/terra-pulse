@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { WAVEFORM_WINDOW_MS } from '@terra-pulse/schema';
 import { StationTrace } from './StationTrace';
 import { EMPTY_CHANNEL_BUFFER } from './waveform-buffer';
+import { displayLagMs } from './waveform-trace';
 import { WAVEFORM_GUIDE_ID } from './waveform-limits';
 import { LayerGuideModal } from '../panels/LayerGuideModal';
 import { useGlobeStore } from '../state/useGlobeStore';
@@ -84,8 +85,18 @@ export function WaveformShell() {
     [status],
   );
 
-  const windowEndMs = nowMs;
-  const windowStartMs = nowMs - WAVEFORM_WINDOW_MS;
+  /**
+   * The shared right edge sits a few seconds behind now, so that every station
+   * has data at it and the traces line up. See `displayLagMs` for why this is
+   * derived from record length rather than from each channel's staleness, and
+   * why rows must not get their own axes.
+   */
+  const lagMs = useMemo(
+    () => displayLagMs([...buffers.values()].map((buffer) => buffer.segments)),
+    [buffers],
+  );
+  const windowEndMs = nowMs - lagMs;
+  const windowStartMs = windowEndMs - WAVEFORM_WINDOW_MS;
   const liveCount = (status?.channels ?? []).filter((channel) => channel.state === 'live').length;
 
   return (
@@ -151,6 +162,7 @@ export function WaveformShell() {
               status={statusById.get(id)}
               windowStartMs={windowStartMs}
               windowEndMs={windowEndMs}
+              nowMs={nowMs}
               columns={columns}
             />
           );
@@ -158,8 +170,10 @@ export function WaveformShell() {
       </ol>
 
       <footer className={styles.footer}>
-        Two minutes, newest at the right. The blank strip at each right edge is how far behind live
-        the stream is — records ship only once full.
+        Two minutes on one shared clock, newest at the right. The right edge is{' '}
+        <strong className={styles.lag}>{Math.round(lagMs / 1000)} s behind live</strong> — records
+        ship only once full, and the slowest station on screen sets the delay. The figure at each
+        row&rsquo;s right is how old that station&rsquo;s newest sample is.
       </footer>
 
       {/* Explore's copy is not mounted in this mode, so this one serves the

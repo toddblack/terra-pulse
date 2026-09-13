@@ -11,6 +11,8 @@ interface StationTraceProps {
   status: WaveformChannelStatus | undefined;
   windowStartMs: number;
   windowEndMs: number;
+  /** Wall clock, for the age readout. The window ends before this — see `displayLagMs`. */
+  nowMs: number;
   columns: number;
 }
 
@@ -36,6 +38,7 @@ export function StationTrace({
   status,
   windowStartMs,
   windowEndMs,
+  nowMs,
   columns,
 }: StationTraceProps) {
   const layout = useMemo(
@@ -46,9 +49,10 @@ export function StationTrace({
   const state = status?.state ?? 'connecting';
   const hasData = layout.spans.length > 0;
 
-  // Where the data actually stops. Everything right of this is the transport
-  // delay, drawn rather than hidden: showing it is more honest than an offset
-  // that would make a stalled station look live.
+  // Where the data actually stops. Normally at or past the right edge, because
+  // the shared window ends far enough behind now for every station to have
+  // reached it — but a station running later than the rest still shows its
+  // shortfall rather than being stretched to fit.
   const awaitingFrom =
     layout.newestSampleMs === null
       ? 0
@@ -56,6 +60,12 @@ export function StationTrace({
           0,
           Math.min(100, ((layout.newestSampleMs - windowStartMs) / (windowEndMs - windowStartMs)) * 100),
         );
+
+  // How old this station's newest sample is. This is the per-station delay that
+  // used to be readable only as where the ink stopped — which looked like a
+  // broken container. A number says it without breaking the shared time axis.
+  const ageSeconds =
+    layout.newestSampleMs === null ? null : Math.max(0, Math.round((nowMs - layout.newestSampleMs) / 1000));
 
   const note = (() => {
     if (state === 'rejected') return status?.rejectedReason ?? 'not available';
@@ -112,6 +122,14 @@ export function StationTrace({
           <>
             <span className={styles.scaleValue}>±{formatCounts(layout.scaleCounts)}</span>
             <span className={styles.scaleUnit}>counts</span>
+            {ageSeconds !== null && (
+              <span
+                className={styles.age}
+                title={`Newest sample from this station is ${String(ageSeconds)} s old`}
+              >
+                {ageSeconds}s old
+              </span>
+            )}
           </>
         ) : (
           <span className={styles.scaleUnit}>—</span>

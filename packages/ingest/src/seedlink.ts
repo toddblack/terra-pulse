@@ -61,6 +61,38 @@ export const SEEDLINK_COMMAND_TIMEOUT_MS = 10_000;
  */
 export const RING_INVENTORY_TIMEOUT_MS = 20_000;
 
+/**
+ * **This request must ask for `identity` encoding, or it crashes the app.**
+ *
+ * The ring serves `/streamids` gzipped (128 KB compressed, 1.19 MB of text) and
+ * closes the connection afterwards — `connection: close`. That combination
+ * trips an assertion inside Node's own HTTP client:
+ *
+ *     AssertionError [ERR_ASSERTION]: assert(!this.paused)
+ *       at Parser.finish (node:internal/deps/undici/undici)
+ *       at Socket.onHttpSocketEnd
+ *
+ * The parser is paused for decompression when the socket ends. It throws from a
+ * socket handler rather than rejecting the promise, so **no `try`/`catch` around
+ * the fetch can catch it** — in the main process it lands as an uncaught
+ * exception, which Electron shows the user as a modal error box. It was
+ * reported exactly that way: two dialogs, on launch and on opening the mode.
+ *
+ * Measured against the live ring: **gzipped, it asserted on all three runs
+ * (after 6, 10 and 19 successful requests); with `identity`, 90 consecutive
+ * requests were clean.** The cost is transfer size — 1.19 MB rather than
+ * 128 KB — which is paid once per session, since the result is cached for an
+ * hour. That is the right trade against a crash dialog.
+ *
+ * Nothing else here needs this: every other source is an HTTPS CDN with
+ * keep-alive, and none has ever shown it. If this ever recurs, the next step is
+ * `node:http` plus `zlib` for this one request, which avoids undici entirely
+ * and keeps the compression.
+ */
+export const RING_INVENTORY_IDENTITY_NOTE =
+  'Accept-Encoding: identity is required — gzip + connection:close trips an assertion in ' +
+  "Node's HTTP parser that cannot be caught and crashes the main process.";
+
 export class SeedLinkProtocolError extends Error {
   constructor(message: string) {
     super(message);
@@ -155,6 +187,9 @@ export async function fetchRingInventory(
   try {
     response = await fetchImpl(`http://${host}:${String(port)}/streamids`, {
       signal: AbortSignal.timeout(timeoutMs),
+      // See RING_INVENTORY_IDENTITY_NOTE: compressed, this response crashes
+      // the process.
+      headers: { 'accept-encoding': 'identity' },
     });
     body = await response.text();
   } catch {
