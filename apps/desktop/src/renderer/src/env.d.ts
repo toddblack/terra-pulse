@@ -25,6 +25,9 @@ import type {
   MissedEvents,
   RegionalRecurrence,
   SolarFlare,
+  WaveformChannel,
+  WaveformSegment,
+  WaveformStreamStatus,
 } from '@terra-pulse/schema';
 
 export {};
@@ -90,6 +93,21 @@ declare global {
         }): Promise<MagnetometerSeries | null>;
         /** Subscribe to each refresh; returns an unsubscribe function. */
         onUpdated(callback: (readings: MagnetometerReading[]) => void): () => void;
+      };
+      waveforms: {
+        /**
+         * Opens the stream, replacing any already running. Main re-validates
+         * every code — the renderer is not trusted to have done so. Throws on a
+         * request main refuses.
+         */
+        start(channels: readonly WaveformChannel[]): Promise<WaveformStreamStatus>;
+        stop(): Promise<void>;
+        /** Current status, pulled once before subscribing. */
+        status(): Promise<WaveformStreamStatus>;
+        /** Each decoded record as it arrives; returns an unsubscribe function. */
+        onSegment(callback: (segment: WaveformSegment) => void): () => void;
+        /** Connection and channel state changes; returns an unsubscribe function. */
+        onStatus(callback: (status: WaveformStreamStatus) => void): () => void;
       };
       spaceWeather: {
         /** Kp and Dst over a half-open range. Bounded on both ends. */

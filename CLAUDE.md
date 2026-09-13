@@ -1963,6 +1963,15 @@ not an escape hatch.
 so a new row fails the suite until it is explained, and a guide left behind for
 a deleted row fails it too.
 
+**And for the waveform mode**, whose guide lives in
+`waveforms/waveform-limits.ts` and is resolved by `LayerGuideModal` as a third
+id namespace beside layers and tracks. It is deliberately *not* in
+`LAYER_GUIDES`: that registry is checked against the globe layer registry in
+both directions, so an entry with no layer behind it would fail
+`layer-guides.test.ts`. A whole mode owes a reader what a layer does — more so
+here, since a scrolling seismogram is the most naturally over-read display in
+the app.
+
 The shape is fixed at four sections — what it shows, how to read it, **what it
 can't tell you**, where it came from. The third is why the feature exists. Nearly
 every layer here carries a caveat that changes what a reader may conclude (the
@@ -3270,6 +3279,122 @@ variable before debugging any "packaged app won't start" symptom** — the
 existing note said it makes Electron a liar about `require('electron')`, and
 this adds the other half: it also makes a perfectly good packaged app look
 stillborn.
+
+## Live seismic waveforms — a third mode. Shipped 2026-09-11.
+
+`PROJECT_PLAN.md` §5.12. Ground motion streaming from EarthScope's public
+SeedLink ring, eight stations at a time, as scrolling traces. The first thing
+here that is not a record of something already catalogued.
+
+**Display only, and that is a decision rather than a stage.** No detection, no
+STA/LTA, no association, no alerting; no persistence at all. It is evidence
+*for* §11's early-warning rejection, not a step toward reopening it — the floor
+is ~5.5 s before association could begin, against a P–S gap of 0.118 s/km.
+
+- **Four traps, every one silent**, all measured against the live ring:
+  - **`CAPABILITIES SLPROTO:3.1` must follow `HELLO` and precede any
+    `STATION`.** Without it RingServer 4.x serves v4 framing and a v3 parser
+    discards every packet while reporting nothing.
+  - **The selector carries a real location code and omits a blank one.**
+    Blank is **95-100%** of regional stations (96% CI, 95% UW, 100% PB and NN),
+    so `??HHZ` drops nearly all of them; and a bare `BHZ` at an IU station
+    delivers *every* location — ANMO came back as both `00` and `10`.
+  - **Framing is strict**: on a bad signature the connection is dropped, never
+    resynced by scanning for the next `SL`, which invents plausible records.
+  - **The ring answers `OK` to everything.** `STATION ZZZZZ CI`, `SELECT XYZ`
+    and a network that does not exist were all accepted, then silent. So the
+    handshake can never tell a typo from a slow station, and `rejected` is
+    reachable only by consulting the ring's own stream list.
+- **`.D` was the plan's one open question and the answer is: no suffix.**
+  Probed head to head over 100 s across five networks, `HHZ` and `HHZ.D`
+  returned the same 17 of 17 streams and **every record was quality `D`**. So
+  `.D` excludes nothing today while being the option that goes silently empty
+  if a station ever publishes `R`/`Q`/`M`.
+- **The inventory is the whole stream list, not a server-side `match`, and the
+  first version shipped as dead code.** `match` looks efficient — three
+  channels in 52 bytes — but it has an undocumented length cap: **200 up to 70
+  characters, 500 at 72, 414 from 73 on**, which is about two channels a
+  request. The first implementation hit it, **failed open exactly as designed**,
+  and would therefore have shipped as a check that silently never ran. Found
+  only by running it against the live ring. The full list is 1.24 MB / ~1.8 s,
+  fetched **alongside** connecting (asking for an absent station costs nothing),
+  cached an hour, and is the same inventory a station picker will want.
+- **A packet outranks the inventory.** A cached list can be an hour old and
+  arrives after data has already proved a channel present, so a channel that
+  has delivered is never rejected. A test pins it; the first version got this
+  wrong and a test caught it.
+- **The decode is self-checking, and that is the point.** Every miniSEED record
+  carries its first *and* last sample, so a correct decode must land exactly on
+  the declared last one. Wrong nibble table, wrong dnib split, sign extension
+  off by a bit, one frame too many, or forgetting that **`diffs[0]` belongs to
+  the previous record** — every one of those yields a smooth, believable
+  seismogram that is not what the instrument recorded. `MiniSeedIntegrityError`
+  names stream, expected and reached. A negative test flips one byte and
+  asserts the error, so the guard is provably load-bearing.
+- **Latency is data-dependent and a quieter station lags more.** Records ship
+  only when full, and how many samples fit depends on how well the signal
+  compresses: sample counts ran **225 to 720** on real records. Measured
+  **2.3-7.2 s at 100 Hz** and **5.2-25 s at 40/20 Hz**, plus ~2 s transit. The
+  recon's flat "5.6 s/record" was an average, not a constant. The blank strip
+  at each trace's right edge *is* that delay, drawn rather than hidden.
+- **The vertical scale is per station and per window — a deliberate exception
+  to this repo's fixed-domain rule**, which `field-encoding.ts` and
+  `tidal-stress-track.ts` state the opposite of. Raw counts have no fixed
+  physical meaning: an STS-2 runs ~20,000 counts/(µm/s) against a short-period
+  sensor's ~400, so a shared domain would draw most stations flat. Snapping to
+  a **1-2-5 ladder** recovers most of what the rule protected — the scale steps
+  visibly instead of breathing — and the UI says amplitudes are not comparable
+  between rows.
+- **Min/max decimation, never stride sampling**, and the test asserts both
+  halves: a two-sample spike survives the envelope *and* would have been lost by
+  taking every 40th sample. (The first version of that test put the spike at an
+  index divisible by the stride, so stride sampling found it too and the test
+  proved nothing.)
+- **Gaps are never bridged** — a span ends and a new one starts. A straight line
+  across a 40 s outage reads as quiet ground.
+- **`useWaveformStream` stores state against the channel list it describes**,
+  the `useMagnetometerSeries` shape. That makes one region's traces under
+  another's headings unrenderable, and it is what keeps the hook free of a
+  `setState` in the effect body — React's `set-state-in-effect` rule rejected
+  the first version and was right, again.
+- **Two generation counters in the controller, not one and not a boolean.** A
+  region switch is start→stop→start in one tick (and StrictMode makes every
+  mount do it), so `startGeneration` guards a late inventory or a queued
+  reconnect, while `connectionGeneration` stops a dying connection's last
+  callbacks touching its replacement.
+- **The backoff ladder resets only after a packet**, never after a successful
+  connect: a server that accepts and then fails would otherwise be hammered at
+  the one-second rung forever.
+- **Silence is unambiguous on this feed**, which is what makes a plain timeout a
+  sound detector: a seismometer always records *something* — ocean microseism if
+  nothing else — so a channel that stops delivering has a dead path rather than
+  still ground.
+- **The renderer-reload leak needs its own guard.** A reload without effect
+  cleanup leaves the connection up, and the watchdog cannot catch it because the
+  connection is *healthy*, merely unwatched. The sender that started the stream
+  is watched for `did-start-loading`.
+- **`service.earthscope.org`, never `service.iris.edu`** for station metadata:
+  the old hostname answers with a 307 carrying `Content-Length: 0` **twice**,
+  which Node's `fetch` rejects outright (`HTTPParserError`) while curl tolerates
+  it. **The exact inverse of the GFZ lesson below** — there curl failed where
+  `fetch` worked. Same rule both ways: check a source with the runtime that will
+  actually fetch it.
+- **Presets pick a geographic spread, not the first eight alphabetically.**
+  Networks cluster hard (184 UW streams bunch around Puget Sound), so greedy
+  farthest-point sampling is what makes eight rows show eight places. No
+  Northern California: **NC publishes zero streams on this ring**, BK three.
+  PB is out of the PNW preset because it publishes 4 HHZ against 66 EHZ.
+- **`waveform-regions.json` is gitignored** like every vendored dataset, so a
+  fresh clone must run `node scripts/vendor-waveform-stations.mjs` or the
+  renderer build fails on the missing import. Re-run it periodically: the ring
+  changes, and a rotted preset can only be reported, never repaired.
+- **Verified in the running app over CDP, not just by tests** — the things no
+  unit test can reach: a launch opens **no** socket (0 for 30 s in Explore),
+  entering the mode opens exactly one, leaving it closes it, switching
+  Waveforms→Analyze fast leaves none, and a region switch keeps exactly one
+  while swapping every row. Records climbed steadily on all 8 channels with 0
+  retries; a filled window showed all eight traces with per-station scales from
+  ±200 to ±20k counts.
 
 ## Non-negotiables
 

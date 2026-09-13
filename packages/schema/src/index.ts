@@ -13,3 +13,4 @@ export * from './hypotheses';
 export * from './analysis';
 export * from './focal-mechanisms';
 export * from './ephemeris';
+export * from './seismic-waveforms';

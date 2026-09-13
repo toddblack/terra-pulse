@@ -98,10 +98,15 @@
  *
  * The one offset left is this column's own, and it clears `ModeSwitch`, which
  * keeps placing itself. That is deliberate rather than an omission: the switch
- * lives in `App.tsx` because it shows in Analyze too, where none of these
- * panels exist — and unlike them its height is fixed by construction, two
- * buttons that never change, so an offset below it is arithmetic rather than a
- * guess.
+ * lives in `App.tsx` because it shows in every mode, where none of these
+ * panels exist — and its height is fixed by construction, so an offset below
+ * it is arithmetic rather than a guess.
+ *
+ * **That holds only while the switch is a single row.** It used to say "two
+ * buttons that never change"; there are three now, and adding modes grows it
+ * horizontally, which this offset does not care about. A switch that ever
+ * wrapped to a second line would invalidate the 4rem, and this comment is the
+ * warning rather than the constant being the guess.
  */
 .topCentreColumn {
   position: absolute;
