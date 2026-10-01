@@ -3,6 +3,7 @@ import type { SeedLinkConnect, SeedLinkSocket } from '@terra-pulse/ingest';
 import {
   NOT_ON_RING_REASON,
   WAVEFORM_CONNECTION_DEAD_AFTER_MS,
+  WAVEFORM_MAX_CHANNELS,
   WAVEFORM_STALL_AFTER_MS,
   type WaveformChannel,
   type WaveformSegment,
@@ -191,8 +192,13 @@ describe('parseWaveformStartRequest', () => {
   });
 
   it('enforces the channel cap', () => {
-    const nine = Array.from({ length: 9 }, (_, i) => ({ ...ADO, station: `S${String(i)}` }));
-    expect(() => parseWaveformStartRequest({ channels: nine })).toThrow(/at most 8/);
+    const tooMany = Array.from({ length: WAVEFORM_MAX_CHANNELS + 1 }, (_, i) => ({
+      ...ADO,
+      station: `S${String(i)}`,
+    }));
+    expect(() => parseWaveformStartRequest({ channels: tooMany })).toThrow(
+      new RegExp(`at most ${String(WAVEFORM_MAX_CHANNELS)}`),
+    );
   });
 
   it('rejects duplicates, lower case, missing fields, and non-arrays', () => {

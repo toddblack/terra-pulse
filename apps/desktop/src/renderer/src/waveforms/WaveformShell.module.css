@@ -70,6 +70,34 @@
   font-variant-numeric: tabular-nums;
 }
 
+.tabRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  align-items: center;
+}
+
+/* Says the globe is clickable, which nothing else on screen does. Muted: it is
+   an affordance, not news. */
+.pickHint {
+  color: rgb(100 116 139);
+  font-size: 0.6875rem;
+}
+
+.retry {
+  padding: 0.05rem 0.45rem;
+  border: 1px solid rgb(71 85 105);
+  border-radius: 0.25rem;
+  background-color: transparent;
+  color: rgb(203 213 225);
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+
+.retry:hover {
+  border-color: rgb(148 163 184);
+}
+
 .regions {
   display: inline-flex;
   padding: 0.15rem;
@@ -147,6 +175,12 @@
   font-size: 0.75rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/* Muted beside the code: a property of the pick, not of the station. */
+.distance {
+  color: rgb(148 163 184);
+  font-weight: 400;
 }
 
 .site {

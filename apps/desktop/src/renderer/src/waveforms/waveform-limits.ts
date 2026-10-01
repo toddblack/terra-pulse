@@ -27,8 +27,11 @@ export function waveformGuideFor(id: string): LayerGuide | undefined {
 export const WAVEFORM_GUIDE: LayerGuide = {
   title: 'Live waveforms',
   shows:
-    'Ground motion as it is recorded, streamed from public seismic stations. Each row is one station\'s vertical component over the last two minutes, scrolling right to left. This is the only part of the app showing the ground actually moving rather than marks for events already catalogued.',
+    'Ground motion as it is recorded, streamed from public seismic stations. Each row is one station\'s vertical component over the last two minutes, scrolling right to left. This is the only part of the app showing the ground actually moving rather than marks for events already catalogued. Pick a preset region, or click anywhere on the globe — or on an earthquake — to stream up to ten stations surrounding that spot.',
   reading: [
+    'The stations being streamed are marked on the globe as cyan triangles, labelled with the code each row carries. A picked spot is marked with a white bracket.',
+    'A picked spot is surrounded rather than just neighboured: the nearest station in each of eight compass directions within 150 km, then the nearest of the rest. Each row says how far that station is from where you clicked and in which direction, nearest first. A wave arriving from a side with no station reaches every row late, so the note above the rows gives the widest direction left uncovered — on a coast that is usually the sea.',
+    'No two picked stations are within 25 km of each other, so each row is a different place rather than one site counted twice. Clicking an earthquake centres the pick on its epicentre, not on the pixel you clicked.',
     'Each trace is the envelope of the recorded samples: the vertical extent of a column is the range the ground covered in that slice of time, so a brief sharp arrival stays visible rather than being skipped over.',
     'The centre line is that station\'s own average over the window, removed — a seismometer sits on an arbitrary offset of tens of thousands of counts, which would otherwise push every trace off its row.',
     'The vertical scale is per station and steps in a 1-2-5 sequence, so it changes visibly rather than drifting. The number beside each row is what full height currently means.',
@@ -43,9 +46,11 @@ export const WAVEFORM_GUIDE: LayerGuide = {
     'Only vertical motion is shown. Horizontal shaking, which is what damages buildings, is not.',
     'Nothing is kept. Two minutes are held in memory while this mode is open, and discarded when you leave it. There is no history to scroll back through.',
     'A blank row does not mean still ground — it means no packets arrived. The status beside each station separates never-connected from stopped-delivering, but nothing here can tell a dead station from a dead network path.',
-    'These are whichever stations happen to be on a public ring, not a designed network. Coverage is wildly uneven: one regional network publishes 184 vertical channels here while its neighbour publishes none, so a region without a preset is a gap in the ring, not a quiet part of the world.',
+    'These are whichever stations happen to be on a public ring, not a designed network. Coverage is wildly uneven: about 3,200 stations, more than half of them in the contiguous United States, while Northern California publishes none here at all. So the nearest station to a pick is often far away — 74 km from Tokyo, over 2,000 km from the middle of the Pacific — and the distance on each row is the honest measure of how much it says about the spot you clicked.',
+    'A picked set can mix instruments: 100 Hz broadband, slower 20-40 Hz broadband, and short-period sensors, chosen per station in that order of preference. A slow station on screen pushes the whole view further behind live, and a short-period trace looks different from a broadband one for reasons that have nothing to do with the ground.',
+    'A station near an earthquake you clicked shows what is arriving now, not what that earthquake did. By the time an event is catalogued, its waves have usually passed every nearby station, and nothing here goes back to fetch them.',
     'Timing is each station\'s own clock. A station with a bad clock draws its trace in the wrong place, and nothing here can detect that from a single channel.',
   ],
   source:
-    'EarthScope/IRIS SeedLink (rtserve.iris.washington.edu), with station coordinates from the FDSN station service. Networks CI (Caltech/USGS), UW (Pacific Northwest Seismic Network), NN (Nevada Seismic Network) and IU (Global Seismographic Network) are separately operated and separately cited.',
+    'EarthScope/IRIS SeedLink (rtserve.iris.washington.edu), with station coordinates and names from the FDSN station service (service.earthscope.org). Data were accessed from the NSF NGF data archive operated by EarthScope Consortium. Each network — the code before each station name, such as CI (Caltech/USGS), UW (Pacific Northwest Seismic Network), NN (Nevada Seismic Network) or IU (Global Seismographic Network) — is separately operated, and declares its own licence and citation in its FDSN registration at fdsn.org/networks.',
 };

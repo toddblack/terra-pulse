@@ -931,6 +931,20 @@ picking as a phase 2 the data shapes already accommodate: `waveforms:start`
 takes channels, never a preset id, so a click that produces a channel needs no
 change in main, the buffer or the rendering.
 
+**Phase 2 shipped 2026-09-30 as "click a spot, get its stations"**, chosen over
+clicking stations one at a time. Every globe click in the mode streams up to ten
+stations *surrounding* that spot (an earthquake's epicentre when one is
+clicked) — the nearest in each of eight directions within 150 km, then the
+nearest of the rest, none within 25 km of another — beside the four presets.
+Direction was added after a Burbank pick left the south-east uncovered; it took
+the widest uncovered arc there from 132° to 71°. The channel cap rose 8 → 10 to
+make room. The
+station list is the whole ring — 3,222 stations — fetched at runtime from the
+FDSN station service and joined to the ring's own list, rather than vendored.
+Prediction held: main's stream path, the buffer and the trace rendering did not
+change. Clicking individual stations remains possible on top of this, since the
+stations are already drawn on the globe.
+
 **Transport is SeedLink v3.1 over a single TCP connection** to EarthScope's
 ring, demultiplexed by each record's own header. Records are miniSEED, decoded
 in main by a hand-rolled Steim-1/Steim-2 decoder — the app's established

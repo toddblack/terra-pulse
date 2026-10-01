@@ -25,6 +25,7 @@ import type {
   SolarFlare,
   WaveformChannel,
   WaveformSegment,
+  WaveformStationCatalogue,
   WaveformStreamStatus,
 } from '@terra-pulse/schema';
 
@@ -214,6 +215,13 @@ contextBridge.exposeInMainWorld('terraPulse', {
      * until the next one.
      */
     status: (): Promise<WaveformStreamStatus> => ipcRenderer.invoke('waveforms:status'),
+
+    /**
+     * Every station the picker can choose from, with coordinates — or why the
+     * list is unavailable. Pulled when the mode mounts; main caches it for an
+     * hour and shares one fetch between askers.
+     */
+    stations: (): Promise<WaveformStationCatalogue> => ipcRenderer.invoke('waveforms:stations'),
 
     /**
      * Each decoded record as it arrives — one message per record, every

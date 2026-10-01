@@ -38,7 +38,12 @@ import { dirname, join } from 'node:path';
 const RING = 'http://rtserve.iris.washington.edu:18000';
 const STATION_SERVICE = 'https://service.earthscope.org/fdsnws/station/1/query';
 
-/** Matches the app's `WAVEFORM_MAX_CHANNELS`. */
+/**
+ * At most the app's `WAVEFORM_MAX_CHANNELS` (10 since 2026-09-30). Presets stay
+ * at 8: they are spread across a whole network for distant-quake sweeps, and
+ * the two extra slots exist for the picker's nearest stations, which a preset
+ * has no use for.
+ */
 const STATIONS_PER_REGION = 8;
 
 /**
@@ -172,19 +177,24 @@ function spreadOut(candidates, count) {
   return chosen;
 }
 
+/**
+ * Asks for current epochs only. **A non-empty `EndTime` does not mean retired**:
+ * ~650 current channel epochs carry a planned end date (2027, 2032, even 2099),
+ * and an earlier version that skipped any row with an end time silently dropped
+ * them. `endafter=<today>` lets the service decide what is current.
+ */
+const TODAY = new Date().toISOString().slice(0, 10);
+
 async function buildRegion(region, onRing) {
   const [channels, stations] = await Promise.all([
-    fdsnRows({ net: region.network, cha: region.channel, level: 'channel' }),
-    fdsnRows({ net: region.network, cha: region.channel, level: 'station' }),
+    fdsnRows({ net: region.network, cha: region.channel, level: 'channel', endafter: TODAY }),
+    fdsnRows({ net: region.network, cha: region.channel, level: 'station', endafter: TODAY }),
   ]);
 
   const siteNames = new Map(stations.map((row) => [row.Station, row.SiteName]));
 
   const byId = new Map();
   for (const row of channels) {
-    // An empty EndTime is the currently-operating epoch. Rows for retired
-    // epochs carry the same station with old coordinates.
-    if (row.EndTime !== '') continue;
     const id = `${row.Network}_${row.Station}_${row.Location}_${row.Channel}`;
     if (!onRing.has(id) || byId.has(id)) continue;
     byId.set(id, {

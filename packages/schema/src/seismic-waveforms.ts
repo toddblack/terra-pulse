@@ -69,6 +69,45 @@ export function isValidWaveformChannel(channel: WaveformChannel): boolean {
 }
 
 /**
+ * A streamable channel plus where it is and what to call it.
+ *
+ * The ring carries no coordinates, so these come from the FDSN station service
+ * and are joined to the ring's own stream list — a station appears here only if
+ * both agree it exists. The region presets and the click-a-spot picker produce
+ * the same shape, so everything downstream of "which stations" is shared.
+ */
+export interface WaveformStation extends WaveformChannel {
+  latitude: number;
+  longitude: number;
+  /** The station's site name, or its code when the service gives none. */
+  site: string;
+  /** From station metadata. The record's own rate is what actually gets used. */
+  sampleRateHz: number;
+}
+
+/**
+ * Every station the picker can choose from, or why there is no list.
+ *
+ * A failure is a reason rather than an empty list: "nothing is published near
+ * here" and "the station list could not be fetched" must not look alike.
+ */
+export type WaveformStationCatalogue =
+  | { status: 'ready'; stations: WaveformStation[]; fetchedAtMs: number }
+  | { status: 'unavailable'; reason: string };
+
+/**
+ * Vertical channels the picker will choose, best first.
+ *
+ * One channel per station, so each row is a different place. `HHZ` first because
+ * it is broadband *and* 100 Hz — the higher rate fills records faster, and the
+ * slowest station on screen sets the display delay for every row. `BHZ` is
+ * broadband at 20-40 Hz; `EHZ` is short-period, last because its response is
+ * the least like the others'. Accelerometers (`HN?`) are left out: they are
+ * built to stay on scale in strong shaking and show little else.
+ */
+export const WAVEFORM_PICKER_CHANNELS = ['HHZ', 'BHZ', 'EHZ'] as const;
+
+/**
  * A contiguous run of samples from one channel, as decoded from one miniSEED
  * record.
  *
@@ -138,7 +177,7 @@ export interface WaveformStreamStatus {
 
 /**
  * How much history a trace shows. Two minutes at 100 Hz is 48 KB per channel,
- * so eight channels is ~384 KB — small enough that the buffer lives in the
+ * so ten channels is ~480 KB — small enough that the buffer lives in the
  * renderer and dies with the component.
  */
 export const WAVEFORM_WINDOW_MS = 120_000;
@@ -146,13 +185,19 @@ export const WAVEFORM_WINDOW_MS = 120_000;
 /**
  * Hard cap on simultaneous channels.
  *
- * Not a performance limit — 8 channels is ~3.2 KB/s. It bounds the handshake,
+ * Not a performance limit — 10 channels is ~4 KB/s. It bounds the handshake,
  * which is strictly sequential: measured against the live ring, each command
  * costs ~180 ms of round trip, and a station needs three (`STATION`, `SELECT`,
- * `DATA`). Seventeen stations took 9.0-9.4 s to negotiate; eight take ~4.5 s,
- * which is the dominant term in how long a reader waits for a first trace.
+ * `DATA`). Seventeen stations took 9.0-9.4 s to negotiate; eight took ~4.5 s,
+ * and ten cost ~5.6 s, which is the dominant term in how long a reader waits for
+ * a first trace.
+ *
+ * **Raised 8 → 10 on 2026-09-30, for the picker's "surround the spot" rule.**
+ * That rule spends up to eight slots on eight compass directions, which at 8
+ * left nothing for the stations right under the click; two more slots bring
+ * those back. Worth ~1 s of handshake. The vendored presets stay at 8.
  */
-export const WAVEFORM_MAX_CHANNELS = 8;
+export const WAVEFORM_MAX_CHANNELS = 10;
 
 /**
  * Belt-and-braces bound on buffered segments per channel.

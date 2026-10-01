@@ -2,11 +2,12 @@ import { useMemo } from 'react';
 import type { WaveformChannelStatus } from '@terra-pulse/schema';
 import type { ChannelBuffer } from './waveform-buffer';
 import { layoutWaveform, polylinePoints } from './waveform-trace';
-import type { WaveformRegionChannel } from './waveform-regions';
+import { compassPoint, formatDistanceKm, type DisplayStation } from './station-pick';
 import styles from './WaveformShell.module.css';
 
 interface StationTraceProps {
-  channel: WaveformRegionChannel;
+  /** Carries its distance from the pick, or null for a preset. */
+  channel: DisplayStation;
   buffer: ChannelBuffer;
   status: WaveformChannelStatus | undefined;
   windowStartMs: number;
@@ -79,6 +80,20 @@ export function StationTrace({
       <div className={styles.rowLabel}>
         <span className={styles.station}>
           {channel.network} {channel.station}
+          {/* Always printed for a pick, because the nearest station is
+              routinely far — 74 km from Tokyo, over 800 km mid-ocean — and a
+              row with no distance implies it is under the click. The compass
+              point says which side it watches from, which is what the
+              surround rule chose it for. */}
+          {channel.distanceKm !== null && (
+            <span className={styles.distance}>
+              {' '}
+              · {formatDistanceKm(channel.distanceKm)}
+              {channel.bearingDeg !== null && channel.distanceKm >= 1
+                ? ` ${compassPoint(channel.bearingDeg)}`
+                : ''}
+            </span>
+          )}
         </span>
         <span className={styles.site} title={channel.site}>
           {channel.site}

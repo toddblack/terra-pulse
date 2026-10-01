@@ -27,6 +27,7 @@ import type {
   SolarFlare,
   WaveformChannel,
   WaveformSegment,
+  WaveformStationCatalogue,
   WaveformStreamStatus,
 } from '@terra-pulse/schema';
 
@@ -104,6 +105,8 @@ declare global {
         stop(): Promise<void>;
         /** Current status, pulled once before subscribing. */
         status(): Promise<WaveformStreamStatus>;
+        /** Every pickable station with coordinates, or why there is no list. */
+        stations(): Promise<WaveformStationCatalogue>;
         /** Each decoded record as it arrives; returns an unsubscribe function. */
         onSegment(callback: (segment: WaveformSegment) => void): () => void;
         /** Connection and channel state changes; returns an unsubscribe function. */
