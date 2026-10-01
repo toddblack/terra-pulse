@@ -23,10 +23,11 @@ import type { LocationSelection } from '../state/useGlobeStore';
  */
 const FAULT_COLOR = '#f0b25a';
 const BOUNDARY_COLOR = '#c4b5fd';
-const POINT_COLOR = '#f1f5f9';
+/** A bare spot — also the waveform picker's spot, which is the same kind of thing. */
+export const POINT_COLOR = '#f1f5f9';
 
 /** Screen pixels, so the reticle holds its size at every zoom. */
-const RETICLE_PX = 48;
+export const RETICLE_PX = 48;
 
 function reticleColor(kind: LocationSelection['kind']): string {
   if (kind === 'fault') return FAULT_COLOR;
@@ -45,7 +46,7 @@ function reticleColor(kind: LocationSelection['kind']): string {
  * backdrop is arbitrary photography, and a single-colour outline gets lost over
  * busy terrain.
  */
-function reticleImage(color: string): HTMLCanvasElement {
+export function reticleImage(color: string): HTMLCanvasElement {
   const scale = 2;
   const size = RETICLE_PX * scale;
   const canvas = document.createElement('canvas');

@@ -3453,6 +3453,98 @@ is ~5.5 s before association could begin, against a P–S gap of 0.118 s/km.
   retries; a filled window showed all eight traces with per-station scales from
   ±200 to ±20k counts.
 
+**Click a spot, get its stations — shipped 2026-09-30.** Every globe click in
+the waveform mode streams up to ten stations *surrounding* it, as a "Picked spot"
+tab beside the four presets; the streamed stations are drawn on the globe.
+Chosen by the user over clicking stations one at a time, which stays possible on
+top.
+
+- **The ring is much bigger than the presets implied, and that is what made
+  this worth building.** Measured: **3,268 stations with a vertical channel,
+  155 networks**; 1,734 contiguous US, 416 Asia/Oceania, 359 Alaska, 279
+  Europe/Africa, 231 Latin America. 62 of 648 10° cells hold eight or more. The
+  presets use 32.
+- **The station list is fetched at runtime, not vendored** (`ingest/fdsn-stations.ts`,
+  `main/ipc/waveform-stations.ts`). The presets can be vendored because there are
+  32; 3,200 would rot — a stale entry is a row that never draws — and the feature
+  is useless offline anyway, since the stream needs the network. Two station
+  service requests (channel level for coordinates and rates, station level for
+  site names), ~1.6 MB, **run side by side with the ring's own list** and joined
+  after: ~3 s from opening the mode, against ~6 s when the first version ran them
+  in sequence. Verified live: 3,222 stations, every one on the ring, 3,170 named.
+- **One ring inventory, shared.** The controller already fetched `/streamids` on
+  start; the catalogue needs it too. `createCachedLoader` shares one in-flight
+  load and never caches a failure, so entering the mode costs the 1.2 MB list
+  once. The controller keeps its own hour-long copy on top, so a ring list can be
+  up to two hours old there — harmless, since a packet already outranks it.
+- **Pick rule: surround the spot** (`station-pick.ts`) — the nearest station in
+  each of eight 45° directions within 150 km, then the nearest of the rest, never
+  two within 25 km. **It went through two versions the same day, and the second
+  came from the user looking at the result.** The first was nearest-first with the
+  25 km floor (plain nearest-8 put two stations **0 km** apart at Tokyo). Clicked
+  near Burbank, it ran the picks north into the Mojave and south to Catalina and
+  left a **132° arc with no station facing the San Jacinto and southern San
+  Andreas** — though Murrieta, Palomar and Piñon Flat are all on the ring.
+  Nearest-first fills its slots before it reaches them.
+  - The measure is the **azimuthal gap**, the widest arc with no station — what
+    networks use to judge whether an event can be located (>180° is poor).
+    Measured, ten stations: Burbank **132° → 71°**, Anchorage 153° → 66°,
+    Seattle 89° → 67°. Coasts and islands don't move: the gap is the sea.
+  - **150 km radius, measured against 200 and 300**: no better gap at Burbank,
+    picks reach further out. It also keeps a set inside ~400 km, the most a
+    nearby quake's S-wave (3.5 km/s) crosses in the two-minute window.
+  - **The user's framing was early warning**, and the answer given was: this
+    mode cannot be one (§11 — 2-7 s record fill plus transit), but the geometry
+    instinct is exactly right, and the gap is now printed in the panel note.
+  - Each row prints distance **and compass point** from the pick ("121 km SE").
+  - **Local beat a wide "regional" spread for picks** on the same reasoning:
+    the presets already give the network-wide spread that suits distant quakes,
+    where the sweep across rows needs hundreds of km; a pick is for the ground
+    around a spot. Spacing changes what the rows *show together* (arrival-time
+    offsets), never how accurate any row is, and it does not change the lag.
+  - All three numbers are display choices, not analysis parameters.
+- **`WAVEFORM_MAX_CHANNELS` went 8 → 10** for the surround rule: at 8, eight
+  directions left no slot for the stations right under the click. Costs ~1 s of
+  sequential handshake (~0.55 s a station). Presets stay at 8.
+- **One channel per station**: `HHZ` > `BHZ` > `EHZ`, then location blank > `00`
+  > rest (`WAVEFORM_PICKER_CHANNELS`). 100 Hz first because the slowest station
+  sets the shared display lag. Accelerometers excluded. Mixed rates are still
+  common outside the US — Tokyo's picks are all 20-40 Hz BHZ — so **the ~28 s lag
+  on the Global preset is now a general property of picked sets**, not a preset
+  quirk. Still the user's call whether to change it.
+- **Every picked row prints its distance**, because the nearest station is
+  routinely far: 74 km from Tokyo, 858 km mid-Pacific. Same honesty as the
+  magnetometer row's printed distance.
+- **Clicking an earthquake centres on its epicentre, unlike the fault probe.** A
+  quake dot covers ~50 km of ground at whole-globe zoom, and "the stations
+  nearest this quake" is plainly the question. The guide also says what that
+  pick *cannot* show: by the time an event is catalogued its waves have passed
+  nearby stations, and nothing fetches them back.
+- **The stream's channel list is keyed on content (`JSON.stringify` of the
+  channels), not on array identity.** The station list landing ~3 s after mount
+  re-runs the selection and hands out new arrays for the same stations — keyed on
+  identity, that tore down a connection that had just come up. The store also
+  ignores a re-sent catalogue with the same `fetchedAtMs`, and never replaces a
+  good list with a failed refetch.
+- **An empty channel list no longer reaches `start`**, which main refuses as a
+  bad request; the picked tab before its first click would have shown "refused".
+- **In this mode every click is a pick, through a mode ref**, the probe-mode
+  pattern — one handler serves all three modes without rebuilding. Drag no
+  longer deselects there, so an Explore selection survives a visit.
+- **The globe markers are not a registry layer** (`waveform-stations-overlay.ts`),
+  for `location-highlight`'s reasons: mode-scoped, not toggleable, and the layer
+  panel is not on screen. Cyan triangles (the seismometer symbol, in the traces'
+  colour) with a dark casing for the light basemap; the picked spot reuses the
+  location reticle in its bare-point white.
+- **Two smaller findings.** `SOURCES.md` had **no entry for the waveform feed at
+  all**; it has one now, with the facility acknowledgement EarthScope asks for.
+  And the preset vendor script treated any non-empty `EndTime` as retired, but
+  ~650 current epochs carry a planned end date (to 2099) — fixed with
+  `endafter=<today>`, **not yet re-run**, so the vendored presets still predate it.
+- **Both versions were run by the user in the app.** The Burbank screenshot
+  that prompted the surround rule came from the first; the surround version was
+  confirmed by the user to look right ("a pretty wide spread").
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

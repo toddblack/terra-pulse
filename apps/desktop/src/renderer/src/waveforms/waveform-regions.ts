@@ -1,4 +1,4 @@
-import type { WaveformChannel } from '@terra-pulse/schema';
+import type { WaveformChannel, WaveformStation } from '@terra-pulse/schema';
 import raw from '../data/waveform-regions.json';
 
 /**
@@ -12,14 +12,11 @@ import raw from '../data/waveform-regions.json';
  * change to main, the buffer or the rendering.
  */
 
-/** A preset station: a channel plus what the UI needs to label it. */
-export interface WaveformRegionChannel extends WaveformChannel {
-  latitude: number;
-  longitude: number;
-  site: string;
-  /** From station metadata. The record's own rate is what actually gets used. */
-  sampleRateHz: number;
-}
+/**
+ * A preset station. The same shape the picker produces from the live station
+ * list, so a row cannot tell which of the two chose it.
+ */
+export type WaveformRegionChannel = WaveformStation;
 
 export interface WaveformRegion {
   id: string;
@@ -56,14 +53,15 @@ export function waveformRegionById(id: string): WaveformRegion | undefined {
 }
 
 /**
- * The bare channels to stream, with the display fields stripped.
+ * The bare channels to stream, with the display fields stripped — from a
+ * preset or a pick alike.
  *
  * Not cosmetic: `waveforms:start` is validated in main against an exact shape,
  * and sending coordinates and site names through it would widen what crosses
  * the bridge for no reason.
  */
-export function channelsOf(region: WaveformRegion): WaveformChannel[] {
-  return region.channels.map(({ network, station, location, channel }) => ({
+export function channelsOf(stations: readonly WaveformStation[]): WaveformChannel[] {
+  return stations.map(({ network, station, location, channel }) => ({
     network,
     station,
     location,

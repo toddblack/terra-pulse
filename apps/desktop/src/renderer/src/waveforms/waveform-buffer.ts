@@ -14,7 +14,7 @@ import {
  * trace layout decides how to draw it.
  *
  * Memory: 120 s at 100 Hz is 12,000 samples, 48 KB per channel — ~384 KB for
- * the eight-channel cap. Small enough to live here and die with the component.
+ * the ten-channel cap. Small enough to live here and die with the component.
  */
 export interface ChannelBuffer {
   /** Sorted by `startTimeMs`, non-overlapping. */

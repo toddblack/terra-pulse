@@ -53,6 +53,13 @@ export function useWaveformStream(channels: readonly WaveformChannel[]): Wavefor
   const [state, setState] = useState<KeyedStream>({ key: null, ...NOTHING });
 
   useEffect(() => {
+    // Nothing to stream — the picked tab before its first click, or a pick the
+    // station list has not answered yet. Main refuses an empty `start` as a bad
+    // request, and that refusal would surface as an error on a state that is
+    // simply waiting. Any stream already running was stopped by the cleanup of
+    // the previous channel list.
+    if (channels.length === 0) return;
+
     let live = true;
 
     /** Folds an update into the state for *these* channels, and no others. */

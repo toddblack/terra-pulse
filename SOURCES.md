@@ -359,6 +359,31 @@ Rules of the road: <https://supermag.jhuapl.edu/info/?page=rulesoftheroad>
 
 ---
 
+## Live seismic waveforms
+
+| | |
+|---|---|
+| **EarthScope SeedLink ring** | `rtserve.iris.washington.edu:18000` |
+| **FDSN station service** | `service.earthscope.org/fdsnws/station/1/` — never `service.iris.edu`, whose malformed 307 Node's `fetch` rejects |
+| Licence | **Per network, and partly verified.** Each network declares its own licence and citation in its FDSN registration (<https://fdsn.org/networks/>). EarthScope's citation guidance (read 2026-09-30, <https://www.earthscope.org/how-to-cite/>) asks for network citation by DOI and gives the facility acknowledgement below. A general search reported that data from networks declaring no licence are distributed CC BY 4.0; that was **not confirmed** on an EarthScope page and should be before anything derived is published. |
+| Obligation | Acknowledge the facility — *"Data were accessed from the NSF NGF data archive operated by EarthScope Consortium (NSF award 2435260)."* — and the networks shown. The waveform guide's source section carries both. |
+| Redistributable | Moot as built: **nothing is stored**. Samples live in renderer memory for two minutes; station metadata is fetched per session and cached in main for an hour, never written to disk or vendored beyond the 32 preset stations. |
+| Credential | None |
+
+- **Station metadata is fetched at runtime, not vendored**, for the picker's
+  ~3,200 stations — see `packages/ingest/src/fdsn-stations.ts`. Standing rule 1
+  is why the preset file stays small: the presets are 32 stations, the picker's
+  list is the whole ring.
+- Measured 2026-09-30: the ring lists **3,268 stations with a vertical channel
+  from 155 networks**, ~53% in the contiguous US; **NC publishes nothing** on
+  this ring, so Northern California needs NCEDC's own server.
+- The station service did not compress its replies and kept connections alive
+  when measured, so the gzip + `connection: close` crash that `/streamids`
+  triggers (`RING_INVENTORY_IDENTITY_NOTE`) cannot happen there today. The
+  adapter asks for `identity` anyway, because that crash cannot be caught.
+
+---
+
 ## Basemaps and imagery
 
 | | |

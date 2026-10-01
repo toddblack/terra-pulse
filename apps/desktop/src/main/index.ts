@@ -38,6 +38,10 @@ import { registerAuroraIpcHandlers, startAuroraPolling } from './ipc/aurora';
 import { registerTecIpcHandlers } from './ipc/tec';
 import { createWaveformController, registerWaveformIpcHandlers } from './ipc/waveforms';
 import {
+  createWaveformStationSources,
+  registerWaveformStationHandlers,
+} from './ipc/waveform-stations';
+import {
   registerMagnetometerIpcHandlers,
   startMagnetometerPolling,
 } from './ipc/magnetometer';
@@ -388,6 +392,10 @@ app
     // stopping the stream is triggered by the renderer's own `destroyed`
     // event, so `onStatus` fires *during* teardown, when the WebContents is
     // already gone but the window is not. See `renderer-send.ts`.
+    //
+    // The ring inventory is shared with the picker's station list, so entering
+    // the mode fetches the 1.2 MB list once rather than once per consumer.
+    const waveformStations = createWaveformStationSources();
     const waveforms = createWaveformController({
       onSegment: (segment) => {
         sendToRenderer(mainWindow, 'waveforms:segment', segment);
@@ -395,8 +403,10 @@ app
       onStatus: (status) => {
         sendToRenderer(mainWindow, 'waveforms:status-changed', status);
       },
+      fetchInventory: () => waveformStations.inventory.get(),
     });
     registerWaveformIpcHandlers(waveforms);
+    registerWaveformStationHandlers(waveformStations);
     app.on('will-quit', () => {
       waveforms.dispose();
     });

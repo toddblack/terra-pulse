@@ -29,6 +29,10 @@ import { cmeSimulationIdFromEntityId } from '../layers/cme-arrivals-layer';
 import { celestialBodyIdFromEntityId } from '../layers/planetary-positions-layer';
 import { celestialBodies, type CelestialBodyId } from '../layers/planetary-positions';
 import { createLocationHighlight } from '../layers/location-highlight';
+import { createWaveformStationsOverlay } from '../layers/waveform-stations-overlay';
+import { useAppModeStore } from '../state/useAppModeStore';
+import { useWaveformStore } from '../waveforms/useWaveformStore';
+import { useWaveformSelection } from '../waveforms/useWaveformSelection';
 import { watchSelection } from './selection-sync';
 import { useGlobeLayers } from './useGlobeLayers';
 import { displayWindow, instantOnScreen, LIVE_END_MARGIN_MS } from './display-window';
@@ -150,6 +154,20 @@ export function CesiumViewer() {
   useEffect(() => {
     faultProbeActiveRef.current = faultProbeActive;
   }, [faultProbeActive]);
+
+  /**
+   * And for the waveform mode, where every click is a station pick.
+   *
+   * The viewer stays mounted across modes, so this handler outlives a mode
+   * switch; reading the mode through a ref is what lets one handler serve all
+   * three without being rebuilt on each switch.
+   */
+  const appMode = useAppModeStore((state) => state.mode);
+  const waveformModeRef = useRef(appMode === 'waveforms');
+  useEffect(() => {
+    waveformModeRef.current = appMode === 'waveforms';
+  }, [appMode]);
+  const waveformSelection = useWaveformSelection();
 
   // Escape leaves the antipode view. The mode covers the globe in translucency
   // and a chord, so it needs an exit that doesn't depend on finding a button.
@@ -553,6 +571,37 @@ export function CesiumViewer() {
         };
       };
 
+      // The waveform mode intercepts every click as a station pick, the way the
+      // fault probe does below — a bare-globe click there has nothing else to
+      // mean, since nothing in that mode is selectable.
+      //
+      // **A click on an earthquake centres on its epicentre**, unlike the
+      // probe. At whole-globe zoom a quake dot covers ~50 km of ground, so the
+      // pixel under the pointer can be that far from the event the reader
+      // plainly meant — and "the stations nearest this quake" is the question.
+      if (waveformModeRef.current) {
+        const resolved = resolvePick(movement.position);
+        const event =
+          resolved?.eventId === undefined || resolved.eventId === null
+            ? undefined
+            : eventsRef.current.find((candidate) => candidate.id === resolved.eventId);
+        if (event !== undefined) {
+          useWaveformStore.getState().pickAt({
+            latitude: event.latitude,
+            longitude: event.longitude,
+            label: `M${event.magnitude.toFixed(1)} · ${event.place}`,
+          });
+        } else {
+          const point = groundPoint();
+          // A click into space leaves the current pick alone.
+          if (point) useWaveformStore.getState().pickAt({ ...point, label: null });
+        }
+        // Cesium's own handler has already put the earthquake reticle on any
+        // entity it picked; the picked spot has its own marker.
+        viewer.selectedEntity = undefined;
+        return;
+      }
+
       // Probe mode intercepts the click entirely and reads the *globe surface*
       // rather than whatever entity is under the cursor. "What is mapped here"
       // about a spot that happens to have a dot on it is still a question about
@@ -631,7 +680,12 @@ export function CesiumViewer() {
           // Also suppressed under the fault probe, for the same reason: rotating
           // to find a coastline to click on would otherwise clear the selection
           // you still have open beside it.
-          if (!antipodeActiveRef.current && !faultProbeActiveRef.current) select(null);
+          //
+          // And in the waveform mode, where nothing is selected by clicking, so
+          // a drag would only clear an Explore selection waiting to be returned to.
+          if (!antipodeActiveRef.current && !faultProbeActiveRef.current && !waveformModeRef.current) {
+            select(null);
+          }
           // Latched rather than clearing `dragOrigin`: a single drag deselects
           // once, but `dragOrigin` itself has to survive until LEFT_UP or the
           // branch below falls through to `resolvePick()` — a `scene.pick()`
@@ -695,6 +749,29 @@ export function CesiumViewer() {
       highlight.destroy();
     };
   }, [location, viewerReadyToken]);
+
+  /**
+   * The waveform stations and their picked spot, while that mode is open.
+   *
+   * Drawn here rather than by the waveform panel because this component owns
+   * the viewer; the stations come from the same `useWaveformSelection` the
+   * panel reads, so the markers and the rows cannot disagree. Unmounted with
+   * the mode — the stations mean nothing once their traces are gone.
+   */
+  const waveformStations = appMode === 'waveforms' ? (waveformSelection?.stations ?? null) : null;
+  const waveformPoint =
+    appMode === 'waveforms' && waveformSelection?.kind === 'picked' ? waveformSelection.point : null;
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || waveformStations === null) return;
+
+    const overlay = createWaveformStationsOverlay(viewer);
+    overlay.update(waveformStations, waveformPoint);
+
+    return () => {
+      overlay.destroy();
+    };
+  }, [waveformStations, waveformPoint, viewerReadyToken]);
 
   // Store → Cesium selection, so the reticle follows the store and survives a
   // layer rebuild.
