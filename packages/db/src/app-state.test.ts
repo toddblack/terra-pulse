@@ -1,36 +1,38 @@
+import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
-import { openDatabase } from './client';
-import { readDonkiApiKey, saveDonkiApiKey } from './app-state';
+import { readAppState, readSeenThrough, writeAppState, writeSeenThrough } from './app-state';
+import { runMigrations } from './migrate';
+import { migrations } from './migrations';
 
-describe('DONKI API key storage', () => {
-  it('reads null before anything has been saved', () => {
-    const db = openDatabase(':memory:');
-    expect(readDonkiApiKey(db)).toBeNull();
+describe('app_state', () => {
+  it('reads null for a key never written', () => {
+    const db = new DatabaseSync(':memory:');
+    runMigrations(db);
+    expect(readAppState(db, 'nothing-here')).toBeNull();
+    expect(readSeenThrough(db)).toBeNull();
   });
 
-  it('round-trips a saved key', () => {
-    const db = openDatabase(':memory:');
-    saveDonkiApiKey(db, 'personal-key-123');
-    expect(readDonkiApiKey(db)).toBe('personal-key-123');
+  it('round-trips a value, and a later write replaces an earlier one', () => {
+    const db = new DatabaseSync(':memory:');
+    runMigrations(db);
+    writeSeenThrough(db, '2026-10-01T00:00:00.000Z');
+    writeSeenThrough(db, '2026-10-02T00:00:00.000Z');
+    expect(readSeenThrough(db)).toBe('2026-10-02T00:00:00.000Z');
   });
+});
 
-  it('trims surrounding whitespace before storing', () => {
-    const db = openDatabase(':memory:');
-    saveDonkiApiKey(db, '  personal-key-123  ');
-    expect(readDonkiApiKey(db)).toBe('personal-key-123');
-  });
+describe('migration 14 — forget the DONKI API key', () => {
+  it('deletes a saved key and leaves everything else in app_state alone', () => {
+    // An install from before DONKI moved to its keyless endpoint: migrated up
+    // to 13, with a personal key saved under the key name the app used.
+    const db = new DatabaseSync(':memory:');
+    runMigrations(db, migrations.filter((m) => m.id <= 13));
+    writeAppState(db, 'nasa_donki_api_key', 'personal-key-123');
+    writeSeenThrough(db, '2026-10-02T00:00:00.000Z');
 
-  it('rejects an empty key rather than saving a blank string', () => {
-    const db = openDatabase(':memory:');
-    expect(() => saveDonkiApiKey(db, '')).toThrow();
-    expect(() => saveDonkiApiKey(db, '   ')).toThrow();
-    expect(readDonkiApiKey(db)).toBeNull();
-  });
+    runMigrations(db);
 
-  it('a later save overwrites an earlier one', () => {
-    const db = openDatabase(':memory:');
-    saveDonkiApiKey(db, 'first-key');
-    saveDonkiApiKey(db, 'second-key');
-    expect(readDonkiApiKey(db)).toBe('second-key');
+    expect(readAppState(db, 'nasa_donki_api_key')).toBeNull();
+    expect(readSeenThrough(db)).toBe('2026-10-02T00:00:00.000Z');
   });
 });

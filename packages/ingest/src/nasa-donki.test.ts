@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { flareAtLeast, isDirectImpact } from '@terra-pulse/schema';
 import {
-  DONKI_DEMO_KEY,
+  DONKI_BASE_URL,
+  DONKI_MAX_RANGE_DAYS,
   DonkiRateLimitError,
+  donkiDateWindows,
   fetchSolarFlares,
   parseCmeArrivals,
   parseFlareClass,
@@ -191,7 +193,94 @@ describe('rate limiting', () => {
     });
 
     await expect(
-      fetchSolarFlares(new Date('2026-01-01'), new Date('2026-01-02'), DONKI_DEMO_KEY, fetchImpl),
+      fetchSolarFlares(new Date('2026-01-01'), new Date('2026-01-02'), fetchImpl),
     ).rejects.toBeInstanceOf(DonkiRateLimitError);
+  });
+});
+
+describe('the endpoint', () => {
+  it('is CCMC’s DONKI-API base — the old api.nasa.gov one redirects to a web page since 2026-09-30', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    await fetchSolarFlares(new Date('2026-01-01'), new Date('2026-01-02'), fetchImpl);
+    const url = String(fetchImpl.mock.calls[0]?.[0]);
+    expect(url.startsWith(`${DONKI_BASE_URL}/FLR?`)).toBe(true);
+    expect(DONKI_BASE_URL).toBe('https://ccmc.gsfc.nasa.gov/DONKI-API/get');
+    // The new base takes no key, so none is sent.
+    expect(url).not.toContain('api_key');
+  });
+
+  it('says what arrived, and from where, when a page comes back instead of data', async () => {
+    // What the retired endpoint actually does: a 301 that fetch follows to an
+    // HTML page answering 200 — so `ok` is true and only the type gives it away.
+    const page = new Response('<!DOCTYPE html><html></html>', {
+      status: 200,
+      headers: { 'content-type': 'text/html; charset=utf-8' },
+    });
+    const fetchImpl = vi.fn().mockResolvedValue(page);
+    await expect(
+      fetchSolarFlares(new Date('2026-01-01'), new Date('2026-01-02'), fetchImpl),
+    ).rejects.toThrow(/expected JSON, got text\/html.*has the endpoint moved/);
+  });
+});
+
+describe('the 60-day cap the new endpoint imposes', () => {
+  const DAY = 86_400_000;
+  const days = (w: { startDate: string; endDate: string }) => (Date.parse(w.endDate) - Date.parse(w.startDate)) / DAY;
+
+  it('splits a calendar year — what the backfill asks for — into windows CCMC accepts', () => {
+    const windows = donkiDateWindows(new Date('2026-01-01T00:00:00Z'), new Date('2027-01-01T00:00:00Z'));
+    expect(windows[0]!.startDate).toBe('2026-01-01');
+    expect(windows.at(-1)!.endDate).toBe('2027-01-01');
+    for (const w of windows) expect(days(w)).toBeLessThanOrEqual(DONKI_MAX_RANGE_DAYS);
+    // Both dates are inclusive, so each window starts the day after the last
+    // ended: no day asked for twice, none skipped.
+    for (let i = 1; i < windows.length; i += 1) {
+      expect(Date.parse(windows[i]!.startDate) - Date.parse(windows[i - 1]!.endDate)).toBe(DAY);
+    }
+  });
+
+  it('matches the measured boundary: 60 days is one request, 61 is two', () => {
+    expect(donkiDateWindows(new Date('2024-03-01'), new Date('2024-04-30'))).toEqual([
+      { startDate: '2024-03-01', endDate: '2024-04-30' },
+    ]);
+    expect(donkiDateWindows(new Date('2024-03-01'), new Date('2024-05-01'))).toHaveLength(2);
+  });
+
+  it('leaves a short range — the live poll — as one request', () => {
+    const end = new Date('2026-10-02T18:00:00Z');
+    expect(donkiDateWindows(new Date(end.getTime() - 3 * DAY), end)).toHaveLength(1);
+  });
+
+  it('fetches a year without any request over the cap, and keeps one copy of an event seen twice', async () => {
+    const urls: string[] = [];
+    const fetchImpl = vi.fn((url: string) => {
+      urls.push(url);
+      // Every window returns the same flare: it must come back once.
+      return Promise.resolve(
+        new Response(JSON.stringify([flare()]), { status: 200, headers: { 'content-type': 'application/json' } }),
+      );
+    });
+    const flares = await fetchSolarFlares(
+      new Date('2026-01-01T00:00:00Z'),
+      new Date('2027-01-01T00:00:00Z'),
+      fetchImpl as unknown as typeof fetch,
+    );
+    expect(urls.length).toBeGreaterThan(1);
+    for (const url of urls) {
+      const q = new URL(url).searchParams;
+      expect(days({ startDate: q.get('startDate')!, endDate: q.get('endDate')! })).toBeLessThanOrEqual(DONKI_MAX_RANGE_DAYS);
+    }
+    expect(flares).toHaveLength(1);
+  });
+
+  it('puts the server’s reason in the error — the 400 for this arrived with an empty status text', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      new Response('API Error: Date range cannot exceed 60 days. You requested 365 days.', { status: 400 }),
+    );
+    await expect(
+      fetchSolarFlares(new Date('2026-01-01'), new Date('2026-01-02'), fetchImpl),
+    ).rejects.toThrow(/HTTP 400.*cannot exceed 60 days/);
   });
 });

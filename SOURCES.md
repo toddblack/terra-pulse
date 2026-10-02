@@ -222,11 +222,11 @@ activity*, Space Weather, doi:10.1029/2020SW002641
 
 | | |
 |---|---|
-| **NASA DONKI** — flares and CME arrivals (H1b, H2b) | `api.nasa.gov/DONKI/` |
+| **NASA DONKI** — flares and CME arrivals (H1b, H2b) | `ccmc.gsfc.nasa.gov/DONKI-API/get/` (since 2026-09-30; `api.nasa.gov/DONKI/` now redirects to a web page) |
 | Licence | Public domain (US Government work) |
 | Redistributable | Yes |
-| Credential | **Free personal API key required.** The original design leaned on NASA's shared `DEMO_KEY` as an optional fallback, the same shape as the Kp/Dst credential note above. Real testing turned up `403 Forbidden` on essentially every request, which looked like the shared key being unreliable — the actual cause, found afterwards, was a blank `NASA_DONKI_API_KEY=` in `.env` being resolved as a configured (empty) key rather than as unset, so `DEMO_KEY` was never actually confirmed broken. The app requires a personal key regardless: headroom (2,500/hour vs. 10) and not depending on a resource shared with every DONKI tutorial that hardcodes `DEMO_KEY`. See `packages/ingest/src/nasa-donki.ts`. This narrows standing rule 2, worth being honest about — but it's a free, instant, login-free key request, not an account with credentials, and it's scoped to DONKI alone; every other layer in this app remains fully keyless. |
-| Note | `NASA_DONKI_API_KEY` is a dev-only `.env` fallback; the primary storage is the app's own `app_state` table (`saveDonkiApiKey`/`readDonkiApiKey`), the only mechanism that survives packaging. Keys live in main only — non-negotiable #6. |
+| Credential | **None, since 2026-09-30.** Until then DONKI sat behind NASA's API gateway and the app required a free personal key (it rejected the shared `DEMO_KEY` for headroom and shared-quota reasons, not because it was shown broken) — the one narrowing of standing rule 2. CCMC's own endpoint takes no key, so the requirement, the key-entry modal and the stored key were removed; migration 14 deletes a key already saved. Every source in this app is keyless again. |
+| Endpoint move | CCMC retired `api.nasa.gov/DONKI` and `kauai.ccmc.gsfc.nasa.gov/DONKI/WS/get` on 2026-09-30; both answer 301 to an HTML announcements page. Same parameters and response shape — checked against stored May 2024 data (181/181 flares, 52/52 Earth arrivals, no differences). **The new base needs no key**, so none is sent. **It caps a request at 60 days**, which the announcement does not mention — a year-sized request (what the backfill and lazy query send) answers `400 Date range cannot exceed 60 days`. The adapter splits ranges into ≤60-day windows with no shared boundary day (both dates are inclusive); a full 2024 fetched that way matches the stored copy exactly, 1,132/1,132 flares and 296/296 arrivals. |
 
 ---
 

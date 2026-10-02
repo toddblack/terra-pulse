@@ -42,14 +42,11 @@ function describe(progress: DonkiProgress, nowMs: number): string {
  * the two marker layers show it immediately. This is only for the historical
  * record.
  *
- * Reads `donkiProgress` from the store rather than holding its own state —
- * `LayerPanel` needs `hasApiKey` too, to gate the solar-flares/CME-arrivals
- * toggles, so both are fed by one subscription (`useDonkiStatus`, called once
- * in `App.tsx`) instead of two.
+ * Reads `donkiProgress` from the store, fed by one subscription
+ * (`useDonkiStatus`, called once in `ExploreShell`).
  */
 export function DonkiArchive() {
   const progress = useGlobeStore((state) => state.donkiProgress);
-  const openDonkiKeyModal = useGlobeStore((state) => state.openDonkiKeyModal);
   // Wall clock, for the 'waiting' countdown — same basis as the rest of the
   // app's relative-time labels.
   const nowMs = useNow();
@@ -81,12 +78,9 @@ export function DonkiArchive() {
         </div>
       )}
 
-      {!inProgress && !progress.hasApiKey && (
-        <p className={styles.note}>needs a free NASA API key</p>
-      )}
       {progress.state === 'waiting' && (
         <p className={styles.note}>
-          NASA’s rate limit was hit — resuming automatically, no action needed.
+          DONKI’s rate limit was hit — resuming automatically, no action needed.
         </p>
       )}
       {progress.state === 'failed' && progress.error && (
@@ -114,11 +108,7 @@ export function DonkiArchive() {
             id="donki-start"
             className={`${styles.button} ${styles.buttonPrimary}`}
             onClick={() => {
-              if (progress.hasApiKey) {
-                void window.terraPulse.solarEvents.start();
-              } else {
-                openDonkiKeyModal({ kind: 'download' });
-              }
+              void window.terraPulse.solarEvents.start();
             }}
           >
             {isEmpty(progress) ? 'Download' : 'Resume'}

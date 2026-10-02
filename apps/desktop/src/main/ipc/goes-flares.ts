@@ -19,8 +19,8 @@ import {
  * Three whole mechanisms are absent, and each is absent for a reason rather
  * than as an omission:
  *
- * - **No API key.** NOAA serves these files anonymously, so there is no
- *   `hasApiKey` gate, no key modal, and no "configured?" check before a fetch.
+ * - **No API key.** NOAA serves these files anonymously. (DONKI needed one
+ *   until its 2026-09-30 move to a keyless endpoint; neither does now.)
  * - **No rate limiting.** DONKI's controller wraps its phases in a `for(;;)`
  *   that waits an hour on a 429 and re-enters. Nothing here can return one, so
  *   there is no `'waiting'` state, no `retryAtUtc`, and no wait loop.

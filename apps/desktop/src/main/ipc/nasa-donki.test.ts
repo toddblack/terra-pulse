@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DonkiProgress } from '@terra-pulse/schema';
 import { DONKI_START_YEAR } from '@terra-pulse/schema';
-import { completedDonkiYears, openDatabase, saveDonkiApiKey } from '@terra-pulse/db';
+import { completedDonkiYears, openDatabase } from '@terra-pulse/db';
 import { DonkiRateLimitError } from '@terra-pulse/ingest';
 import {
   createDonkiController,
@@ -44,14 +44,9 @@ beforeEach(() => {
   fetchSolarFlares.mockReset().mockResolvedValue([]);
   fetchCmeArrivals.mockReset().mockResolvedValue([]);
   ipcHandle.mockClear();
-  // A key is configured by default so tests unrelated to key resolution don't
-  // have to think about it — the describe block below overrides this to
-  // exercise the no-key and key-precedence paths specifically.
-  process.env['NASA_DONKI_API_KEY'] = 'test-key';
 });
 
 afterEach(() => {
-  delete process.env['NASA_DONKI_API_KEY'];
   vi.useRealTimers();
 });
 
@@ -65,142 +60,45 @@ describe('donkiBackfillYears', () => {
   });
 });
 
-describe('the API key every request uses', () => {
+describe('no key, since DONKI moved to its keyless endpoint', () => {
   /**
-   * There is no shared-key fallback: NASA's `DEMO_KEY` returned 403 on every
-   * request in real use, so these features now simply require a personal
-   * key rather than silently degrading to one that doesn't work. The
-   * renderer gates Download/Resume and the layer toggles on this; this is
-   * the defensive check for anything that reaches main anyway.
+   * Until 2026-09-30 every path here — backfill, lazy query, live poll — did
+   * nothing without a personal NASA key, and the renderer gated on
+   * `hasApiKey`. CCMC's endpoint takes no key, so none of that exists now.
+   * These pin that the gate is gone rather than merely unused: a stale
+   * `NASA_DONKI_API_KEY` left in someone's `.env` changes nothing either.
    */
-  it('fetches nothing and fails cleanly when no key is configured', async () => {
-    delete process.env['NASA_DONKI_API_KEY'];
+  it('backfills with no key configured, and passes the fetchers no key', async () => {
     const { controller } = setup();
 
     const final = await controller.start();
 
-    expect(fetchSolarFlares).not.toHaveBeenCalled();
-    expect(fetchCmeArrivals).not.toHaveBeenCalled();
-    expect(final.state).toBe('failed');
+    expect(final.state).toBe('complete');
+    expect(fetchSolarFlares).toHaveBeenCalled();
+    for (const call of [...fetchSolarFlares.mock.calls, ...fetchCmeArrivals.mock.calls]) {
+      expect(call).toHaveLength(2);
+    }
   });
 
-  it('status().hasApiKey reflects whether a key is configured', () => {
-    delete process.env['NASA_DONKI_API_KEY'];
-    const { controller } = setup();
-    expect(controller.status().hasApiKey).toBe(false);
-
-    process.env['NASA_DONKI_API_KEY'] = 'a-key';
-    expect(controller.status().hasApiKey).toBe(true);
-  });
-
-  /**
-   * The actual bug this guards against: `NASA_DONKI_API_KEY=` with no value
-   * in `.env` resolves to `''`, not `undefined`. The first version of this
-   * function used a plain `??` chain, which happily returned that empty
-   * string as "the key" — `hasApiKey` reported true, nothing ever gated, and
-   * every request went out with a blank `api_key`, which NASA correctly
-   * rejects with 403. Blank must resolve exactly like unset.
-   */
-  it('treats a blank NASA_DONKI_API_KEY the same as an unset one', async () => {
-    process.env['NASA_DONKI_API_KEY'] = '';
-    const { controller } = setup();
-
-    expect(controller.status().hasApiKey).toBe(false);
-
-    const final = await controller.start();
-    expect(fetchSolarFlares).not.toHaveBeenCalled();
-    expect(final.state).toBe('failed');
-  });
-
-  it('treats a whitespace-only NASA_DONKI_API_KEY the same as an unset one', () => {
-    process.env['NASA_DONKI_API_KEY'] = '   ';
-    const { controller } = setup();
-
-    expect(controller.status().hasApiKey).toBe(false);
-  });
-
-  it('is NASA_DONKI_API_KEY, on every request, when one is set', async () => {
-    process.env['NASA_DONKI_API_KEY'] = 'personal-key-123';
-    const { controller } = setup();
-    await controller.start();
-
-    expect(fetchSolarFlares).toHaveBeenCalledWith(
-      expect.any(Date),
-      expect.any(Date),
-      'personal-key-123',
-    );
-    expect(fetchCmeArrivals).toHaveBeenCalledWith(
-      expect.any(Date),
-      expect.any(Date),
-      'personal-key-123',
-    );
-  });
-
-  /**
-   * The actual bug this guards against: an earlier version of this controller
-   * never read `NASA_DONKI_API_KEY` at all. It was found in the field, not by
-   * a test — a backfill kept failing hours after a personal key was
-   * configured, because it simply was never read.
-   */
-  it('is read at request time, not captured once at import time', async () => {
-    // A module-level `const` evaluated at import would have run before
-    // `main/index.ts`'s own `dotenv.config()` — ES module imports are fully
-    // evaluated before an importing module's own statements run — and
-    // frozen on `undefined` for the life of the process. Setting the env var
-    // only after the controller exists, and before it fetches, proves the
-    // key is resolved lazily instead.
-    delete process.env['NASA_DONKI_API_KEY'];
-    const { controller } = setup();
-    process.env['NASA_DONKI_API_KEY'] = 'late-key';
-
-    await controller.start();
-
-    expect(fetchSolarFlares).toHaveBeenCalledWith(expect.any(Date), expect.any(Date), 'late-key');
-  });
-
-  it('applies to the live poll too, not just the backfill', () => {
-    process.env['NASA_DONKI_API_KEY'] = 'poll-key';
+  it('polls with no key configured', () => {
     const db = openDatabase(':memory:');
 
     // Fires once immediately (see startDonkiPolling's own docs) — the calls
-    // happen synchronously before the returned promises settle, so nothing
-    // needs to be awaited before asserting.
+    // happen synchronously before the returned promises settle.
     const stop = startDonkiPolling(db, () => {}, 999_999_999);
     stop();
 
-    expect(fetchSolarFlares).toHaveBeenCalledWith(expect.any(Date), expect.any(Date), 'poll-key');
-    expect(fetchCmeArrivals).toHaveBeenCalledWith(expect.any(Date), expect.any(Date), 'poll-key');
+    expect(fetchSolarFlares).toHaveBeenCalledTimes(1);
+    expect(fetchCmeArrivals).toHaveBeenCalledTimes(1);
   });
 
-  it('the live poll does nothing, silently, when no key is configured', () => {
-    delete process.env['NASA_DONKI_API_KEY'];
+  it('offers the renderer no way to save a key', () => {
     const db = openDatabase(':memory:');
+    registerDonkiIpcHandlers(db, createDonkiController(db, () => {}, now), now);
 
-    const stop = startDonkiPolling(db, () => {}, 999_999_999);
-    stop();
-
-    expect(fetchSolarFlares).not.toHaveBeenCalled();
-    expect(fetchCmeArrivals).not.toHaveBeenCalled();
-  });
-
-  /**
-   * `app_state` is the only key storage that survives packaging — `.env`
-   * resolves nowhere in a packaged build. It must win over `.env` whenever a
-   * personal key has actually been saved.
-   */
-  it('a saved app_state key beats NASA_DONKI_API_KEY', async () => {
-    process.env['NASA_DONKI_API_KEY'] = 'env-key';
-    const { db, controller } = setup();
-    saveDonkiApiKey(db, 'app-state-key');
-
-    await controller.start();
-
-    expect(fetchSolarFlares).toHaveBeenCalledWith(
-      expect.any(Date),
-      expect.any(Date),
-      'app-state-key',
-    );
-    expect(fetchSolarFlares).not.toHaveBeenCalledWith(expect.any(Date), expect.any(Date), 'env-key');
+    const channels = ipcHandle.mock.calls.map(([channel]) => String(channel));
+    expect(channels).toContain('solar-events:status');
+    expect(channels).not.toContain('solar-events:save-api-key');
   });
 });
 
@@ -259,7 +157,7 @@ describe('rate limiting: waiting and auto-resume', () => {
 describe('lazy, on-demand coverage for the query handlers', () => {
   function register(db: ReturnType<typeof openDatabase>) {
     const controller = createDonkiController(db, () => {}, now);
-    registerDonkiIpcHandlers(db, controller, () => {}, now);
+    registerDonkiIpcHandlers(db, controller, now);
     return controller;
   }
 
@@ -310,55 +208,7 @@ describe('lazy, on-demand coverage for the query handlers', () => {
     expect(fetchSolarFlares).toHaveBeenCalledTimes(1);
   });
 
-  it('does nothing — no fetch, no error — when no key is configured', async () => {
-    delete process.env['NASA_DONKI_API_KEY'];
-    const db = openDatabase(':memory:');
-    register(db);
 
-    const query = handlerFor('solar-events:query-flares');
-    const result = await query(undefined, {
-      startUtc: `${String(DONKI_START_YEAR)}-01-01T00:00:00.000Z`,
-      endUtc: `${String(DONKI_START_YEAR)}-02-01T00:00:00.000Z`,
-    });
-
-    expect(fetchSolarFlares).not.toHaveBeenCalled();
-    expect(result).toEqual([]);
-  });
-});
-
-describe('saving a key', () => {
-  /**
-   * Found in the field: after saving a key from the layer-toggle modal, the
-   * layer stayed blank. `useSolarEvents` had already queried once with no
-   * key configured (a real, empty result, not an error), and nothing else
-   * was going to make it query again — no window change, and the next poll
-   * is up to 30 minutes out. `onUpdated` is the same signal the live poll
-   * already uses to tell the renderer "something's worth re-reading".
-   */
-  it('notifies the renderer, the same way the live poll does, so a query made before the key existed gets retried', () => {
-    delete process.env['NASA_DONKI_API_KEY'];
-    const db = openDatabase(':memory:');
-    const controller = createDonkiController(db, () => {}, now);
-    const onUpdated = vi.fn();
-    registerDonkiIpcHandlers(db, controller, onUpdated, now);
-
-    const saveApiKey = handlerFor('solar-events:save-api-key');
-    saveApiKey(undefined, 'a-fresh-key');
-
-    expect(onUpdated).toHaveBeenCalledTimes(1);
-  });
-
-  it('the returned status already reflects the new key, for a caller that does not wait for onUpdated', () => {
-    delete process.env['NASA_DONKI_API_KEY'];
-    const db = openDatabase(':memory:');
-    const controller = createDonkiController(db, () => {}, now);
-    registerDonkiIpcHandlers(db, controller, () => {}, now);
-
-    const saveApiKey = handlerFor('solar-events:save-api-key');
-    const result = saveApiKey(undefined, 'a-fresh-key') as DonkiProgress;
-
-    expect(result.hasApiKey).toBe(true);
-  });
 });
 
 describe('lazy coverage never records years DONKI does not cover', () => {
@@ -373,7 +223,7 @@ describe('lazy coverage never records years DONKI does not cover', () => {
     // LAZY_FETCH_MAX_MISSING_YEARS and return early for an unrelated reason,
     // so it would pass even with the bug present.
     const db = openDatabase(':memory:');
-    registerDonkiIpcHandlers(db, createDonkiController(db, () => undefined, now), () => undefined, now);
+    registerDonkiIpcHandlers(db, createDonkiController(db, () => undefined, now), now);
 
     await handlerFor('solar-events:query-flares')(undefined, {
       startUtc: '1896-01-01T00:00:00.000Z',
@@ -387,7 +237,7 @@ describe('lazy coverage never records years DONKI does not cover', () => {
   it('still fetches a year that DONKI does cover', async () => {
     // The guard must not be so eager that it breaks the feature it protects.
     const db = openDatabase(':memory:');
-    registerDonkiIpcHandlers(db, createDonkiController(db, () => undefined, now), () => undefined, now);
+    registerDonkiIpcHandlers(db, createDonkiController(db, () => undefined, now), now);
 
     await handlerFor('solar-events:query-flares')(undefined, {
       startUtc: `${String(DONKI_START_YEAR)}-03-01T00:00:00.000Z`,

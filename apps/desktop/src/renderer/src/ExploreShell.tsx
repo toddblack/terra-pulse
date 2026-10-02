@@ -19,7 +19,6 @@ import { useMagnetometers } from './panels/useMagnetometers';
 import { useTec } from './panels/useTec';
 import { useDonkiStatus } from './panels/useDonkiStatus';
 import { LayerGuideModal } from './panels/LayerGuideModal';
-import { DonkiKeyModal } from './panels/DonkiKeyModal';
 import { HistoricalDataPanel } from './panels/HistoricalDataPanel';
 
 /**
@@ -36,7 +35,7 @@ export function ExploreShell() {
   useAurora();
   useMagnetometers();
   useTec();
-  // Keeps hasApiKey current for both the archive panel and the layer toggles.
+  // Keeps the DONKI archive panel's progress current.
   useDonkiStatus();
 
   const load = useEarthquakeStore((state) => state.load);
@@ -145,7 +144,6 @@ export function ExploreShell() {
           must never be occluded by the chrome it passes over. */}
       <HoverTooltip />
       <LayerGuideModal />
-      <DonkiKeyModal />
     </>
   );
 }

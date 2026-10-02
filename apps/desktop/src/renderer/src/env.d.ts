@@ -140,8 +140,6 @@ declare global {
         /** Settles when the whole backfill finishes — follow onProgress instead. */
         start(): Promise<DonkiProgress>;
         cancel(): Promise<DonkiProgress>;
-        /** Never returns the key itself — only ever the resulting status. */
-        saveApiKey(key: string): Promise<DonkiProgress>;
         /** Subscribe to backfill progress; returns an unsubscribe function. */
         onProgress(callback: (progress: DonkiProgress) => void): () => void;
         /** Fires when the live poll stores something new. */

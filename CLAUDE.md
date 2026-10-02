@@ -2440,7 +2440,7 @@ adopts an already-running engine on 127.0.0.1:8787 (the normal dev loop — run
 `pnpm engine:dev` in a second terminal) or spawns one itself; either way,
 failure is a typed status (`python-not-found`, `start-timeout`,
 `contract-mismatch`, `crashed`, ...) pushed to the renderer, never a crash —
-same posture as a missing DONKI key. Analyze mode stays visible even when the
+the posture a missing DONKI key once had. Analyze mode stays visible even when the
 engine is unavailable, because a hidden feature is a second code path nobody
 exercises.
 
@@ -3642,10 +3642,59 @@ a replay harness. **Nothing in the app runs it yet.**
   that matters most. Likely fix: a maximum trigger duration.
 - **~14 s, not ShakeAlert's few seconds, is the station set**: 74 100 Hz stations
   on the public ring within 300 km, so the fourth is often 50-90 km out.
-- **Next, in order**: the stuck-trigger fix, graded on fresh 2026 quakes; then
-  live — ring capacity for ~74 stations, a main-side background watcher, the
-  alert delivered with a pull counterpart (§5.8), the home prompt (Phase 6).
-  The alert threshold (2.5) is provisional pending the user's confirmation.
+- **Next, in order**: replay a selected quake inside the app (the user's ask —
+  archived records through the same detector and rendering, so the detector
+  can be watched); then live — ring capacity for ~74 stations, a main-side
+  background watcher, the alert delivered with a pull counterpart (§5.8), the
+  home prompt (Phase 6). **The user wants alerts for large quakes only,
+  "probably 4.5+"** (2026-10-02) — not built yet; most likely a magnitude
+  floor on top of the home-intensity rule (MyShake's shape: M4.5+ and MMI
+  III+). Confirm that reading, then measure the warning time a floor on the
+  climbing estimate costs before building it.
+
+**Quakes that follow quakes — fixed 2026-10-02, and the cause was not what
+was assumed.** The held-out Lamont miss was put down to "a stuck trigger";
+measuring found a network-wide blind spot, and tracing found it was mostly the
+associator, not the picker.
+
+- **Every station near any quake was blind for over a minute.** Median trigger
+  81-88 s at every magnitude, M4 to M7 (capped by the replay window), and
+  nearly every station within 100 km still triggered 60-90 s after an M4.0. The
+  LTA freezes while triggered, so release needed the coda to fall to twice the
+  *pre-quake* noise. `maxTriggerS` = 20 releases it and re-bases the LTA on
+  the coda.
+- **That alone moved 9 → 10 of 17.** Traced on an M3.9 23 s after an M3.4: the
+  released stations *did* pick it, and the associator filed every pick as the
+  M3.4's coda. A second quake's P lands in the first's coda window at nearly
+  every station. `retriggersMayDeclare` lets such picks compete — and alone it
+  produced **30-48 false alarms**. Three rules, each found from what the false
+  alarms actually were, made it safe: within **30 km** of the quake whose coda
+  the picks are in (fakes sat 35-300 km out), at least **5 s** after it (every
+  remaining false alarm was one quake declared twice), and picks that fit its
+  **S** arrival are its own (a synthetic test found a row of S picks fitting a
+  fake source 26 km away). Parameter docs in `quake-associator.ts` have the
+  sweeps.
+- **New case sets, drawn so the held-out data stays unseen**
+  (`cases-sequence.json`): `sequence` (17 M3.0-3.9 quakes 15-180 s after an M3+
+  within 60 km — M3s are outside the held-out rule), `m3-control` (20 isolated
+  M3s: **20/20 found**, the ceiling), and `fresh` (2026, locked). `--only` filters
+  cases for `--trace`.
+- **Tuning side, frozen settings:** sequence **9 → 11 of 17**, false alarms
+  2 → 0; tuning 22/22, Ridgecrest 2/2, M3 control 20/20, distant and random sets
+  0 false — nothing that was found before is lost, and no false home alerts.
+- **Graded once on 2026 (`fresh --final`):** every isolated quake found,
+  **21/21** including all seven M4+; the four sequence quakes **0/4** — three
+  M3.2-3.4 aftershocks 60-95 s after the Indio M4.9 and one 80 s after a Coso
+  M4.0. Small quakes in a bigger one's coda are probably buried physically: an
+  M3.4's P is about as loud as an M4.9's coda. No home alerts, correctly — no
+  2026 quake reached MMI 2.5 in Burbank (the most reported was 2.4). One false
+  alarm (Piru M3.8), **reproduced under the old rules**: the quake was located
+  32 km off, so its later picks formed a second detection. Pre-existing,
+  recorded, not tuned on.
+- **What remains open:** the case that matters most for the alert — a *larger*
+  quake following a smaller one, foreshock to mainshock — has only a handful of
+  examples in the data (the M3.9-after-M3.4 is now found). And the mislocation →
+  duplicate path above.
 
 **Magnitude from the P wave — built and graded in replay 2026-10-02.**
 `quake-magnitude.ts`: peak P displacement (Pd) → Kuyuk & Allen (2013) eq. 2,
@@ -3787,6 +3836,24 @@ rules come out of it and constrain what may be added:
    doesn't. An optional *API key* with a working fallback is fine; a mandatory
    *account* is not.
 
+**DONKI moved on 2026-09-30 and went keyless, so every source here is
+keyless.** CCMC retired `api.nasa.gov/DONKI`; both old bases now 301 to an HTML
+page, which `fetch` follows — the symptom was `Unexpected token '<'` on every
+poll. The new base (`ccmc.gsfc.nasa.gov/DONKI-API/get`) was checked against
+stored data before switching (May 2024: 181/181 flares, 52/52 arrivals,
+identical) — **but "parameters unchanged" was not the whole story: it caps a
+request at 60 days**, unannounced, and the backfill and lazy query ask for a
+year. Both checks had happened to ask for a month, so the first fix shipped
+with every year fetch answering 400; found by the user opening the app. The
+adapter now splits ranges into ≤60-day windows that share no boundary day
+(both dates are inclusive — measured), and a full 2024 matches the stored copy
+exactly. **Verify a moved endpoint with the request shapes the app actually
+sends, not a convenient sample.** It takes no key, so the personal-key requirement — DONKI's one
+exception to rule 2 — went with it: the key modal, `hasApiKey`, the layer and
+download gates, `app_state` storage (migration 14 deletes a saved key) and
+`api.nasa.gov` on the external-link allowlist. A non-JSON reply now names
+what arrived and from where, because a redirect to a page answers 200.
+
 **SuperMAG was evaluated and rejected on rule 2** despite being the best archive
 source technically (~180 stations, uniform processing, baseline-subtracted). Its
 rules also forbid redistribution outright, so no sample database could ever
@@ -3800,7 +3867,7 @@ and for what INTERMAGNET's attribution obliges.
 | Live quakes | `earthquake.usgs.gov/earthquakes/feed/v1.0/summary/` |
 | Historical quakes | `earthquake.usgs.gov/fdsnws/event/1/query` |
 | Space weather JSON | `services.swpc.noaa.gov/products/` |
-| CME/flare + arrival times | `api.nasa.gov/DONKI/` (free key) |
+| CME/flare + arrival times | `ccmc.gsfc.nasa.gov/DONKI-API/get/` (moved 2026-09-30; no key needed) |
 | Magnetometers | INTERMAGNET, SuperMAG (registration) |
 | Satellite imagery | NASA GIBS (no key) — `BlueMarble_ShadedRelief_Bathymetry` |
 | Bathymetry | GEBCO via BODC WMS, `wms.gebco.net` (no key) |

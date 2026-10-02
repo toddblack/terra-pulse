@@ -444,7 +444,7 @@ app
         mainWindow.webContents.send('solar-events:updated');
       }
     };
-    registerDonkiIpcHandlers(db, solarEvents, notifySolarEventsUpdated);
+    registerDonkiIpcHandlers(db, solarEvents);
 
     const stopDonkiPolling = startDonkiPolling(db, notifySolarEventsUpdated);
     app.on('will-quit', stopDonkiPolling);

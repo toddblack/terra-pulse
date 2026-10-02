@@ -233,25 +233,15 @@ export interface DonkiProgress {
    * `'waiting'` — a rate limit is pausing the run rather than failing it.
    */
   retryAtUtc: string | null;
-  /**
-   * Whether a personal DONKI API key is configured.
-   *
-   * NASA's shared `DEMO_KEY` turned out too unreliable to build on (see
-   * `nasa-donki.ts` in the ingest package) — a key is now required for these
-   * features to fetch anything at all, and this is what the renderer checks
-   * before letting a download start or a layer turn on, without the key
-   * itself ever crossing IPC.
-   */
-  hasApiKey: boolean;
 }
 
 /**
  * What the GOES XRS flare backfill is doing.
  *
  * **Deliberately smaller than `DonkiProgress`**, and the missing fields are the
- * point: there is no `phase` (one source, not two), no `hasApiKey` (NOAA needs
- * no credential), and no `'waiting'` state or `retryAtUtc` (no rate limit to
- * pause for). Reusing `DonkiProgress` would have meant four fields that are
+ * point: there is no `phase` (one source, not two), and no `'waiting'` state
+ * or `retryAtUtc` (no rate limit to pause for). Reusing `DonkiProgress` would
+ * have meant fields that are
  * permanently null and a reader having to know which — the same "field present
  * but silently unused" shape the engine's request contracts are split to avoid.
  *

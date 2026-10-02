@@ -8,8 +8,8 @@ describe('isAllowedExternalUrl', () => {
     ).toBe(true);
   });
 
-  it('allows api.nasa.gov, for the DONKI "get a key" button', () => {
-    expect(isAllowedExternalUrl('https://api.nasa.gov/')).toBe(true);
+  it('no longer allows api.nasa.gov — nothing links there since DONKI went keyless', () => {
+    expect(isAllowedExternalUrl('https://api.nasa.gov/')).toBe(false);
   });
 
   // Every URL below must be REJECTED. If any of these ever starts returning

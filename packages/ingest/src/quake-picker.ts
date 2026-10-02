@@ -37,6 +37,25 @@ export interface PickerParams {
   triggerRatio: number;
   /** Ratio the trigger must fall back below before it can fire again. */
   detriggerRatio: number;
+  /**
+   * Longest a trigger may hold, s, before the station is released and its
+   * LTA re-based on the shaking it is in. `Infinity` disables it.
+   *
+   * **Without it a station near any quake was blind for well over a minute.**
+   * The LTA is frozen while triggered (see `push`), so the coda has to fall
+   * to twice the *pre-quake* noise before release. Measured 2026-10-02 on the
+   * tuning and reference sets: median trigger 81-88 s at every magnitude from
+   * M4 to M7 — and that is capped by the 2-minute replay window — with nearly
+   * every station within 100 km still triggered 60-90 s after even an M4.0.
+   * A second quake in that time could not be picked at all.
+   *
+   * Released, the LTA becomes the current shaking, so a second quake has to
+   * stand out against the first one's coda rather than against quiet ground.
+   * Swept on the `sequence` set with the associator's coda rules on, second
+   * quakes found of 17: 15 s → 10, **20 s → 11**, 25 s → 10, all with no
+   * false alarm. On its own, with those rules off, release moved 9 → 10.
+   */
+  maxTriggerS: number;
 }
 
 /**
@@ -63,6 +82,7 @@ export const DEFAULT_PICKER_PARAMS: PickerParams = {
   ltaSeconds: 20,
   triggerRatio: 8,
   detriggerRatio: 2,
+  maxTriggerS: 20,
 };
 
 /** One station's trigger: the instant its STA/LTA crossed the threshold. */
@@ -98,6 +118,9 @@ export class StationPicker {
   private warm = 0;
   private warmupSamples = 0;
   private triggered = false;
+  /** Samples since the current trigger fired. */
+  private triggeredSamples = 0;
+  private maxTriggerSamples = Number.POSITIVE_INFINITY;
 
   /** Latest sample time this picker has seen, or null before any data. */
   latestSampleMs: number | null = null;
@@ -142,6 +165,8 @@ export class StationPicker {
     this.warm = 0;
     this.warmupSamples = Math.ceil(this.params.ltaSeconds * sampleRateHz);
     this.triggered = false;
+    this.triggeredSamples = 0;
+    this.maxTriggerSamples = this.params.maxTriggerS * sampleRateHz;
   }
 
   push(startTimeMs: number, sampleRateHz: number, samples: ArrayLike<number>): Pick[] {
@@ -175,9 +200,16 @@ export class StationPicker {
       const ratio = this.sta / this.lta;
       if (!this.triggered && ratio >= triggerRatio) {
         this.triggered = true;
+        this.triggeredSamples = 0;
         picks.push({ channelId: this.channelId, timeMs: startTimeMs + i * intervalMs, ratio });
       } else if (this.triggered && ratio < detriggerRatio) {
         this.triggered = false;
+      } else if (this.triggered && (this.triggeredSamples += 1) >= this.maxTriggerSamples) {
+        // Held too long: release, and make the shaking it is in the new
+        // normal. A second quake then has to stand out against this coda
+        // rather than against the quiet ground before the first one.
+        this.triggered = false;
+        this.lta = this.sta;
       }
     }
 
