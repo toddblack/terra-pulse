@@ -924,8 +924,8 @@ something already catalogued: real ground motion, streaming from public seismic
 stations, drawn as scrolling traces. Everything else here draws marks for events
 that already happened; this draws the ground moving.
 
-**Display only, decided explicitly.** No detection, no STA/LTA, no association,
-no alerting. No persistence of any kind — a rolling two-minute in-memory buffer
+**Display only, decided explicitly — and since reversed for detection, by the
+user, on 2026-10-01: see §5.13.** The display itself is unchanged. No persistence of any kind — a rolling two-minute in-memory buffer
 that dies with the component. Region presets for v1, with globe-click station
 picking as a phase 2 the data shapes already accommodate: `waveforms:start`
 takes channels, never a preset id, so a click that produces a channel needs no
@@ -1000,6 +1000,53 @@ Ten further limits ship in the mode's own guide, in the same four-section shape
 every layer uses — chief among them that raw counts are not comparable between
 rows, and that almost anything moving on a trace is ocean microseism rather
 than an earthquake.
+
+### 5.13 Waveform Early Warning — detector validated in replay, not yet live
+
+Requested 2026-10-01: while the app is open, watch the stations around the
+user's home and alert when several of them corroborate an incoming quake. Home
+is Burbank, CA for now (a first-launch prompt is a Phase 6 item). Reverses
+§5.12's "display only" for detection; reopens §11's row for waveforms, not for
+the catalogue feed.
+
+**Built so far: the detector, graded on archived data.** Per-station STA/LTA
+picker (3 Hz high-pass, ratio 8) → grid-search associator requiring four
+stations to agree on one source within ±0.5 s, plus checks that the nearest
+working station fired and that too many nearby stations were not silent →
+replayed against EarthScope's archive with each record released at its last
+sample plus measured transit, so declaration times are what live would have
+achieved. Nothing in the app runs it yet.
+
+**Held-out result** (2026-10-02; settings frozen before it ran):
+
+| set | result |
+|---|---|
+| 21 M4+ quakes within 250 km, 2020-2025 | **20 detected**, median declared **+14.0 s** after origin, most within 5 km |
+| 8 distant M7.5+ quakes (the false-alarm trap) | 1 false alarm |
+| 6 random hours | 0 false alarms |
+
+Warning at Burbank (to S-wave arrival), held-out: none for basin quakes
+(Sylmar −3.9 s, Lennox −0.1 s); 8-25 s for Ojai, Lytle Creek, San Bernardino,
+Grapevine, Bodfish; 29-54 s for Barstow, Trona, Palomar, Anza, Coso, Julian,
+Ocotillo Wells. Ridgecrest M7.1 (reference, not graded): +11.8 s, 40.5 s of
+warning.
+
+**Not yet an alert, and three things stand between:**
+1. **Magnitude.** Detection fires on anything four stations hear; an alert
+   needs a magnitude estimate and a threshold. Needs instrument gains from the
+   station service.
+2. **Stations stuck triggered in aftershock sequences.** The one held-out miss
+   (Lamont M4.6, Aug 2024) came 45 s after other activity, with its nearest
+   stations still mid-trigger. Fix on the tuning set, then grade on fresh 2026
+   quakes — the 2020-2025 held-out set has now been seen.
+3. **Running live**: a background SeedLink connection for ~74 stations (ring
+   capacity unchecked), an alert path with a pull counterpart (§5.8's lesson),
+   and the home-location prompt.
+
+**Why ~14 s and not ShakeAlert's few seconds:** the public ring carries 74
+100 Hz stations within 300 km of Burbank, a fraction of the regional network,
+so the fourth station is often 50-90 km out. That is a data limit, not a
+detector one.
 
 ---
 
@@ -1472,6 +1519,22 @@ server-side proxying of all third-party API calls.
 - C++/Rust Monte Carlo kernel with validation harness
 - Export: figures, CSV, reproducible analysis configs
 - Packaging and code signing
+- **Home location, asked on first launch** (requested 2026-10-01, not built).
+  A one-time prompt for where the user lives — a city or a globe click —
+  stored in `app_state` and changeable later. It is what the planned
+  waveform early-warning alert measures warning time *to* (estimated for
+  Burbank on 2026-10-01: no warning for a quake under the LA basin, ~11 s for
+  the San Andreas at Cajon Pass, ~60 s from Bombay Beach), so it should land
+  before or with that alert, not after.
+  - **Skippable.** Nothing else in the app needs it; a reader who declines
+    loses only the alert, and the prompt must say so rather than implying the
+    app won't work without it.
+  - **And a "home" button on the globe** that flies the camera back to that
+    location at a sensible altitude, for when zooms, rotations and pans get
+    out of hand. Cesium's own `homeButton` stays off — `CLAUDE.md` already
+    says to add a reset to our own chrome, where we control placement, rather
+    than turning that one back on. With no home set it resets to the default
+    whole-globe view.
 
 ---
 
@@ -1634,6 +1697,6 @@ server-side proxying of all third-party API calls.
 | Web app instead of desktop | Cesium in-browser is viable, but desktop enables local caching, offline analysis, and heavier computation without hosting costs. |
 | Infinite historical scrubber | Data volume makes it unusable; window-select is both faster and clearer. |
 | Cesium World Terrain as a basemap | Ion's free tier is non-commercial only. It also needs `enableLighting` (day/night shading) to be visible at all, which conflicts with wanting the whole globe uniformly lit for data visualization — half the quakes would sit on the "night" side. |
-| Earthquake early warning (EEW) | Structurally impossible from this data source, not merely hard. Real EEW detects the P-wave near the source and races the S-wave, buying seconds from sub-second raw waveform streams. Measured on the USGS `all_hour` feed: first publication lags origin by **78 s min / 222 s median**, before this app's poll interval. At ~3.5 km/s the S-wave has covered ~270 km by 78 s and ~780 km by 222 s — the shaking is over before the event exists in the feed. Recorded here so it doesn't get re-proposed. What *is* possible is §5.8 (alerts, after the fact) and §5.9 (aftershock forecasting). **§5.12 now streams raw waveforms and does not reopen this** — it is evidence for the row, not against it. A record ships only once full (measured 2.3-7.2 s at 100 Hz) plus ~2 s transit, so the floor is ~5.5 s before association could even begin, against a P–S gap of 0.118 s/km: nothing is left inside ~50 km. Single-station triggers also cannot separate a quarry blast from an earthquake, which is why ShakeAlert associates four stations. |
+| Earthquake early warning (EEW) | Structurally impossible from this data source, not merely hard. Real EEW detects the P-wave near the source and races the S-wave, buying seconds from sub-second raw waveform streams. Measured on the USGS `all_hour` feed: first publication lags origin by **78 s min / 222 s median**, before this app's poll interval. At ~3.5 km/s the S-wave has covered ~270 km by 78 s and ~780 km by 222 s — the shaking is over before the event exists in the feed. Recorded here so it doesn't get re-proposed. What *is* possible is §5.8 (alerts, after the fact) and §5.9 (aftershock forecasting). **The rejection holds for the catalogue feed only. Waveform-driven warning was reopened 2026-10-01** (§5.13), and this row used to say the opposite — that §5.12's waveforms were "evidence for the row". That overstated its own numbers: a ~5.5 s floor against a 0.118 s/km P–S gap leaves nothing *inside* ~50 km, which means positive warning *beyond* it. And the floor is lower than it said, because a record fills faster in strong shaking (measured: 2.1-2.7 s quiet → 1.03 s once the P wave arrived, Ridgecrest M7.1). Single-station triggers still cannot be trusted alone, which is why §5.13 associates four. |
 | Earthquake prediction (where/when/magnitude in advance) | Not a solved problem, and not one this app is going to solve. Aftershock *forecasting* (§5.9) is a different and legitimate thing: it is a probabilistic rate for a sequence already underway, not a claim that an earthquake is coming. |
 | SpatiaLite (real attempt, not skipped) | `node:sqlite`'s extension loading genuinely works (verified). The blocker is the binary: the only real Windows build available (`spatialite-bin` on npm) is a single unmaintained release bundling GEOS 3.5 (~2016). Its DLL fails its own init routine on a modern system even once the Windows DLL search-path problem is fixed — confirmed with a direct `LoadLibraryEx` call outside of Node entirely, so it's not a Node/SQLite-specific issue. R-Tree (built into SQLite core) covers the bbox/radius queries actually needed; revisit real SpatiaLite if a maintained binary source turns up later. |

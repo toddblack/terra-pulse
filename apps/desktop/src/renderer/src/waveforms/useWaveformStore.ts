@@ -36,6 +36,18 @@ interface WaveformState {
   /** Null until main first answers. */
   catalogue: WaveformStationCatalogue | null;
   setCatalogue: (catalogue: WaveformStationCatalogue) => void;
+  /**
+   * The station whose row the pointer is over, as `waveformStationKey`, so its
+   * globe marker can be picked out. Null when no row is hovered.
+   */
+  hoveredStation: string | null;
+  hoverStation: (key: string) => void;
+  /**
+   * Clears the hover **only if it is still this station's**. A row leaving and
+   * the next row entering can land in either order, and an unconditional clear
+   * arriving second would wipe the highlight the pointer just moved onto.
+   */
+  unhoverStation: (key: string) => void;
 }
 
 export const useWaveformStore = create<WaveformState>((set) => ({
@@ -62,5 +74,12 @@ export const useWaveformStore = create<WaveformState>((set) => ({
       }
       return { catalogue };
     });
+  },
+  hoveredStation: null,
+  hoverStation: (hoveredStation) => {
+    set({ hoveredStation });
+  },
+  unhoverStation: (key) => {
+    set((state) => (state.hoveredStation === key ? { hoveredStation: null } : state));
   },
 }));

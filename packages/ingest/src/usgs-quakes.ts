@@ -58,6 +58,8 @@ export interface FetchRecentEarthquakesOptions {
   startUtc: Date;
   endUtc: Date;
   minMagnitude?: number;
+  /** Only events within this distance of a point — FDSN's own radius filter. */
+  within?: { latitude: number; longitude: number; radiusKm: number };
 }
 
 /**
@@ -79,8 +81,15 @@ export async function fetchRecentEarthquakes(
   if (options.minMagnitude !== undefined) {
     url.searchParams.set('minmagnitude', String(options.minMagnitude));
   }
+  if (options.within !== undefined) {
+    url.searchParams.set('latitude', String(options.within.latitude));
+    url.searchParams.set('longitude', String(options.within.longitude));
+    url.searchParams.set('maxradiuskm', String(options.within.radiusKm));
+  }
 
   const response = await fetch(url);
+  // An empty window is 204 with no body, not an error.
+  if (response.status === 204) return [];
   if (!response.ok) {
     throw new Error(`USGS request failed: ${response.status} ${response.statusText}`);
   }

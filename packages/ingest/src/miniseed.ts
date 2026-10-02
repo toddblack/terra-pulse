@@ -290,6 +290,50 @@ export function parseMiniSeedRecord(bytes: Uint8Array): MiniSeedRecord {
   };
 }
 
+/**
+ * Splits a concatenation of miniSEED records — what an FDSN dataselect request
+ * returns — into one slice per record.
+ *
+ * SeedLink hands records over one at a time at a fixed 512 bytes; an archive
+ * response is just records end to end, and **their lengths are not fixed**: a
+ * data centre may repackage into 4096-byte records, and one response can mix
+ * lengths. Each record's own blockette 1000 is the only thing that says where
+ * the next begins.
+ *
+ * Throws on a record whose length cannot be read, because every later boundary
+ * would be guessed from there — and a mis-split stream decodes as plausible
+ * records with garbage samples. The slices share the input's buffer.
+ */
+export function splitMiniSeedRecords(bytes: Uint8Array): Uint8Array[] {
+  const records: Uint8Array[] = [];
+  let offset = 0;
+  while (offset + FIXED_HEADER_BYTES <= bytes.byteLength) {
+    const remaining = bytes.subarray(offset);
+    const view = new DataView(remaining.buffer, remaining.byteOffset, remaining.byteLength);
+    const littleEndian = guessLittleEndian(view);
+    const { b1000 } = walkBlockettes(
+      view,
+      littleEndian,
+      view.getUint8(39),
+      view.getUint16(46, littleEndian),
+      Math.min(remaining.byteLength, 4096),
+    );
+    if (b1000 === null) {
+      throw new MiniSeedParseError(`record at byte ${String(offset)} has no blockette 1000, so its length is unknown`);
+    }
+    if (b1000.recordLength < FIXED_HEADER_BYTES || b1000.recordLength > remaining.byteLength) {
+      throw new MiniSeedParseError(
+        `record at byte ${String(offset)} declares ${String(b1000.recordLength)} bytes, with ${String(
+          remaining.byteLength,
+        )} remaining`,
+      );
+    }
+    records.push(remaining.subarray(0, b1000.recordLength));
+    offset += b1000.recordLength;
+  }
+  return records;
+}
+
 function decodeSamples(options: {
   view: DataView;
   bytes: Uint8Array;

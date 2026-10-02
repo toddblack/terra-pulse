@@ -84,3 +84,8 @@ coverage/
 
 # Commit messages written for the user to review, not part of the project.
 COMMIT_MSG.txt
+
+# Replay cache for the early-warning detector (scripts/replay-detector.ts):
+# archived waveforms and the frozen station/case lists. Regenerable, and the
+# waveforms run to hundreds of MB.
+.cache/

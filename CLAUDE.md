@@ -3536,14 +3536,116 @@ top.
   panel is not on screen. Cyan triangles (the seismometer symbol, in the traces'
   colour) with a dark casing for the light basemap; the picked spot reuses the
   location reticle in its bare-point white.
+- **Hovering a row picks out its marker** (2026-10-01, the user's idea): it grows
+  16 → 26 px and every other marker and label fades to 30% alpha, while the
+  row's station code turns the same cyan. Hue does not change — cyan means "a
+  streamed station", and a highlight should change *which*, not *what*. The fade
+  does as much work as the growth: markers in one valley overlap, and with depth
+  testing off there is no cheap way to raise one billboard above the others.
+  - **Restyled in place, never rebuilt.** `setHighlighted` writes properties on
+    the existing entities through `waveformOverlayRef`, in its own effect; the
+    hovered key is *read* (not subscribed) when the overlay is built. Keyed into
+    the build effect, every row the pointer crossed would tear down and re-add
+    the whole data source.
+  - **`unhoverStation(key)` clears only if the key still matches.** Crossing
+    between adjacent rows can deliver the new row's enter before the old row's
+    leave; an unconditional clear landing second would leave nothing
+    highlighted under the pointer. A row unmounted while hovered (region switch,
+    new pick) never gets its mouseleave, so the row clears itself on unmount.
 - **Two smaller findings.** `SOURCES.md` had **no entry for the waveform feed at
   all**; it has one now, with the facility acknowledgement EarthScope asks for.
   And the preset vendor script treated any non-empty `EndTime` as retired, but
   ~650 current epochs carry a planned end date (to 2099) — fixed with
-  `endafter=<today>`, **not yet re-run**, so the vendored presets still predate it.
+  `endafter=<today>`, **re-run 2026-10-01** (one SoCal and five Global stations
+  changed).
 - **Both versions were run by the user in the app.** The Burbank screenshot
   that prompted the surround rule came from the first; the surround version was
   confirmed by the user to look right ("a pretty wide spread").
+
+## Waveform early warning — detector validated in replay. 2026-10-02.
+
+`PROJECT_PLAN.md` §5.13. The user's goal: while the app is open, watch the
+stations around home (Burbank) and alert when several corroborate an incoming
+quake. **This reverses §5.12's "display only" for detection, at the user's
+request**, and the §11 row that called §5.12 "evidence for" the EEW rejection
+was wrong on its own numbers — corrected there. Built so far: the detector and
+a replay harness. **Nothing in the app runs it yet.**
+
+- **Pieces**, all in `packages/ingest` because they run in main when live:
+  `quake-picker.ts` (high-pass + recursive STA/LTA per channel),
+  `quake-associator.ts` (grid search: four stations agreeing on one source),
+  `quake-detector.ts` (the two together, fed records *as they arrive*),
+  `fdsn-dataselect.ts` (the permanent archive), `detector-replay.ts` (arrival
+  timing and grading), `splitMiniSeedRecords` in `miniseed.ts`.
+  `scripts/replay-detector.ts` drives it (`pnpm replay:detector`, via `tsx` —
+  new root devDependency, plus root `@types/node` and `scripts/tsconfig.json`
+  so lint can type the script).
+- **The replay is only honest because of `arrivalOrder`**: each record reaches
+  the detector at its last sample plus 2 s measured transit. Fed at start time,
+  every declaration would be flattered by exactly the delay being measured.
+- **The archive does not keep live packaging.** CI/NN/PB/BC archive as 512-byte
+  records like the ring; **LB and SB as 4096-byte**, 7-11 s each. Replayed raw,
+  those stations arrived up to ~8x late. `asLiveRecords` re-cuts them — exact in
+  total, approximate in where the cuts fall.
+- **Records fill faster in strong shaking**: CI.ISA 2.1-2.7 s per record quiet,
+  **1.03 s** once Ridgecrest's P arrived. Live latency shrinks when it matters.
+- **Held-out sets are real and locked.** `cases.json` is drawn by rule and
+  frozen under `.cache/replay/` (gitignored, ~340 MB): Ridgecrest as reference;
+  every M4+ within 250 km 2020-2025 alternating into `tuning`/`heldout`; M7.5+
+  distant quakes split the same way (split recorded in the file, made *before*
+  tuning on them); six seeded random hours. `heldout`/`tele-heldout` refuse to
+  run without `--final`. **Both have now been run once**, so the next round of
+  changes must be graded on fresh quakes (2026 has none in the draw).
+  - Ridgecrest was debugged on heavily and is no longer an unbiased judge;
+    most of that was mechanism bugs, not threshold tuning, but say so.
+- **What the data changed, in order — each found with `--trace`**, which prints
+  every pick near the target and the associator's `AssociationVerdict` for it.
+  Read a trace before touching a threshold:
+  1. **A noisy station's strays outranked real clusters.** The associator tested
+     only the largest cluster; CI.BAK's repeated picks plus strays formed a
+     bigger one placed far outside the network, which failed and blocked the
+     real one. Fixed three ways: the search grid covers only ground within
+     `maxNearestStationKm` of a station; clusters are **anchored on the newest
+     pick**; and the reach check runs per node, inside the search.
+  2. **Beyond ~150 km, Pn arrives before the crustal P the model uses**, so a
+     declared quake's distant picks escaped its absorption window and formed
+     new events — four false alarms inside Ridgecrest M6.4. Absorption now
+     opens at 8 km/s.
+  3. **A station already triggered is not silent.** Ridgecrest M7.1 came 3.5 min
+     after an M5.4; seven near stations still mid-trigger were counted as
+     having heard nothing. `readyThroughMs` is null while triggered.
+  4. **Distant great quakes were the big false-alarm source — 49 in 16.** Every
+     one fired 2-3 times at a 1 Hz high-pass. Swept on the tuning halves: 3 Hz /
+     ratio 8 took it to **0** with 22/22 local quakes still found and no change
+     in median speed. Their P waves have lost the high frequencies a local
+     quake's still carry. Table on `DEFAULT_PICKER_PARAMS`.
+  - **Trying more candidates per pick was measured and rejected**: at 8, one
+    second faster on the M6.4 but 25 km off, and the synthetic distant-sweep
+    test started passing a false cluster. More candidates is more chances for
+    coincidence — `MAX_CANDIDATES` stays 1.
+- **Synthetic tests caught two real holes before any data did**: a source far
+  outside the network fits a distant quake's near-planar sweep
+  (`maxNearestStationKm`), and at ±1 s, fake sources inside the network fit
+  rings of similar-distance stations (±0.5 s, and the nearest ready station
+  must be a member). Each guard was switched off to confirm its test fails.
+  **One case is documented, not covered**: a sweep hitting a tight corner of
+  four stations first is locally indistinguishable from a quake among them.
+- **Held-out result, settings frozen first**: 20/21 local M4+ detected, median
+  **+14.0 s** after origin, most within 5 km; 1 false alarm among 8 distant
+  great quakes; **0 in 6 random hours**. Warning at Burbank: none for basin
+  quakes (Sylmar −3.9 s), 8-25 s for Ojai to Bodfish, 29-54 s for the Mojave
+  and the Salton Trough. Ridgecrest M7.1: +11.8 s, **40.5 s at Burbank**.
+- **The one miss is a real mechanism gap, deliberately not fixed on the
+  held-out data**: Lamont M4.6 (Aug 2024) arrived 45 s after other sequence
+  activity with its near stations still triggered — a trigger that never
+  releases blinds a station to the next quake, which is the sequence case
+  that matters most. Likely fix: a maximum trigger duration.
+- **~14 s, not ShakeAlert's few seconds, is the station set**: 74 100 Hz stations
+  on the public ring within 300 km, so the fourth is often 50-90 km out.
+- **Next, in order**: magnitude from P amplitude (needs gains from the station
+  service) and an alert threshold; the stuck-trigger fix, graded on fresh 2026
+  quakes; then live — ring capacity for ~74 stations, a main-side background
+  watcher, an alert with a pull counterpart (§5.8), the home prompt (Phase 6).
 
 ## Non-negotiables
 

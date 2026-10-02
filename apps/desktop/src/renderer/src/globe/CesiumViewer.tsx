@@ -29,7 +29,10 @@ import { cmeSimulationIdFromEntityId } from '../layers/cme-arrivals-layer';
 import { celestialBodyIdFromEntityId } from '../layers/planetary-positions-layer';
 import { celestialBodies, type CelestialBodyId } from '../layers/planetary-positions';
 import { createLocationHighlight } from '../layers/location-highlight';
-import { createWaveformStationsOverlay } from '../layers/waveform-stations-overlay';
+import {
+  createWaveformStationsOverlay,
+  type WaveformStationsOverlay,
+} from '../layers/waveform-stations-overlay';
 import { useAppModeStore } from '../state/useAppModeStore';
 import { useWaveformStore } from '../waveforms/useWaveformStore';
 import { useWaveformSelection } from '../waveforms/useWaveformSelection';
@@ -168,6 +171,8 @@ export function CesiumViewer() {
     waveformModeRef.current = appMode === 'waveforms';
   }, [appMode]);
   const waveformSelection = useWaveformSelection();
+  const hoveredWaveformStation = useWaveformStore((state) => state.hoveredStation);
+  const waveformOverlayRef = useRef<WaveformStationsOverlay | null>(null);
 
   // Escape leaves the antipode view. The mode covers the globe in translucency
   // and a chord, so it needs an exit that doesn't depend on finding a button.
@@ -767,11 +772,22 @@ export function CesiumViewer() {
 
     const overlay = createWaveformStationsOverlay(viewer);
     overlay.update(waveformStations, waveformPoint);
+    // Read rather than subscribed: a hover must restyle these markers, not
+    // rebuild them. The effect below carries every later change.
+    overlay.setHighlighted(useWaveformStore.getState().hoveredStation);
+    waveformOverlayRef.current = overlay;
 
     return () => {
       overlay.destroy();
+      if (waveformOverlayRef.current === overlay) waveformOverlayRef.current = null;
     };
   }, [waveformStations, waveformPoint, viewerReadyToken]);
+
+  // Hovering a waveform row picks out its marker. Its own effect, so moving
+  // down the rows is a few property writes rather than a teardown and rebuild.
+  useEffect(() => {
+    waveformOverlayRef.current?.setHighlighted(hoveredWaveformStation);
+  }, [hoveredWaveformStation]);
 
   // Store → Cesium selection, so the reticle follows the store and survives a
   // layer rebuild.
