@@ -18,6 +18,7 @@
  * constants for a detector, tuned against archived data — and tuned only on
  * the tuning half of the replay set, never on the half it is graded on.
  */
+import { Biquad } from './biquad';
 
 export interface PickerParams {
   /**
@@ -72,62 +73,8 @@ export interface Pick {
   ratio: number;
 }
 
-/**
- * A second-order Butterworth high-pass section (RBJ cookbook form), direct
- * form I. Kept as plain numbers rather than arrays: this runs per sample on
- * every channel, all the time.
- */
-class HighPassSection {
-  private readonly b0: number;
-  private readonly b1: number;
-  private readonly b2: number;
-  private readonly a1: number;
-  private readonly a2: number;
-  private x1 = 0;
-  private x2 = 0;
-  private y1 = 0;
-  private y2 = 0;
-
-  constructor(cornerHz: number, sampleRateHz: number) {
-    const w0 = (2 * Math.PI * cornerHz) / sampleRateHz;
-    const cos = Math.cos(w0);
-    const alpha = Math.sin(w0) / (2 * Math.SQRT1_2); // Q = 1/sqrt(2): Butterworth
-    const a0 = 1 + alpha;
-    this.b0 = (1 + cos) / 2 / a0;
-    this.b1 = -(1 + cos) / a0;
-    this.b2 = (1 + cos) / 2 / a0;
-    this.a1 = (-2 * cos) / a0;
-    this.a2 = (1 - alpha) / a0;
-  }
-
-  /**
-   * Starts the filter as though the input had been sitting at `x` forever.
-   *
-   * Starting from zero state instead turns a station's DC offset — often tens
-   * of thousands of counts — into a step on the first sample, and a step through
-   * a high-pass is a large decaying transient. That transient is exactly the
-   * shape of an onset.
-   */
-  prime(x: number): void {
-    this.x1 = x;
-    this.x2 = x;
-    this.y1 = 0;
-    this.y2 = 0;
-  }
-
-  step(x: number): number {
-    const y =
-      this.b0 * x + this.b1 * this.x1 + this.b2 * this.x2 - this.a1 * this.y1 - this.a2 * this.y2;
-    this.x2 = this.x1;
-    this.x1 = x;
-    this.y2 = this.y1;
-    this.y1 = y;
-    return y;
-  }
-}
-
 /** Gap allowance: a record starting this many sample intervals off is a gap. */
-const GAP_TOLERANCE_SAMPLES = 1.5;
+export const GAP_TOLERANCE_SAMPLES = 1.5;
 
 /**
  * One channel's streaming trigger.
@@ -142,7 +89,7 @@ export class StationPicker {
   private readonly params: PickerParams;
   private rateHz = 0;
   private expectedNextMs: number | null = null;
-  private sections: [HighPassSection, HighPassSection] | null = null;
+  private sections: [Biquad, Biquad] | null = null;
   private sta = 0;
   private lta = 0;
   private staAlpha = 0;
@@ -183,8 +130,8 @@ export class StationPicker {
   private reset(sampleRateHz: number, firstSample: number): void {
     this.rateHz = sampleRateHz;
     this.sections = [
-      new HighPassSection(this.params.highPassHz, sampleRateHz),
-      new HighPassSection(this.params.highPassHz, sampleRateHz),
+      Biquad.highPass(this.params.highPassHz, sampleRateHz),
+      Biquad.highPass(this.params.highPassHz, sampleRateHz),
     ];
     this.sections[0].prime(firstSample);
     this.sections[1].prime(0);
@@ -207,7 +154,7 @@ export class StationPicker {
       Math.abs(startTimeMs - this.expectedNextMs) <= GAP_TOLERANCE_SAMPLES * intervalMs;
     if (!continuous) this.reset(sampleRateHz, samples[0] ?? 0);
 
-    const [first, second] = this.sections as [HighPassSection, HighPassSection];
+    const [first, second] = this.sections as [Biquad, Biquad];
     const { triggerRatio, detriggerRatio } = this.params;
     const picks: Pick[] = [];
 

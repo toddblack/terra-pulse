@@ -198,6 +198,100 @@ async function fetchRows(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Instrument gains, for the magnitude estimate
+// ---------------------------------------------------------------------------
+
+/**
+ * Sensors whose response falls off below a few hertz — geophones. The Pd
+ * magnitude needs displacement down to ~0.1 Hz, which these cannot deliver
+ * (measured: PB's HS-1-LT stations read 1.25-1.59 magnitude units low). Listed
+ * by name because the band code does not catch them: PB labels its 200 Hz
+ * geophone channels `HHZ`, a code SEED reserves for broadband sensors.
+ */
+const SHORT_PERIOD_SENSOR = /\bHS-?1\b|\bL-?22|\bL-?4[A-Z]?\b|\bGS-?1[13]|geophone/i;
+
+/**
+ * Counts per m/s for a channel-level row, or null when the channel cannot
+ * give ground displacement the Pd relation can use.
+ *
+ * Refused: a gain that is missing or not positive; units other than velocity
+ * (an accelerometer's `m/s**2` would need integrating twice and is not in
+ * the picker's channel list anyway); short-period band codes (`E`, `S`); and
+ * the geophones named above. The service writes units as both `m/s` and `M/S`.
+ */
+export function velocityGainOf(row: FdsnTextRow): number | null {
+  const scale = Number(row.Scale);
+  if (!Number.isFinite(scale) || scale <= 0) return null;
+  if ((row.ScaleUnits ?? '').toLowerCase() !== 'm/s') return null;
+  const band = (row.Channel ?? '').charAt(0);
+  if (band === 'E' || band === 'S') return null;
+  if (SHORT_PERIOD_SENSOR.test(row.SensorDescription ?? '')) return null;
+  return scale;
+}
+
+/** FDSN text times have no zone and up to four fractional digits; they are UTC. */
+function fdsnTimeMs(value: string): number {
+  if (value === '') return Number.POSITIVE_INFINITY;
+  return Date.parse(`${value.replace(/(\.\d{3})\d+$/, '$1')}Z`);
+}
+
+/**
+ * The velocity gain in force for a channel at an instant, from channel-level
+ * rows spanning several epochs. Null if no epoch covers it or that epoch's
+ * sensor cannot be used (`velocityGainOf`).
+ *
+ * **Per epoch, because gains change.** Sensors are swapped and digitisers
+ * replaced; measured on the 74 stations around Burbank, 2019-2026 spans 158
+ * epochs, up to 7 for one station. A replay of 2020 using today's gain would
+ * be wrong by whatever that swap changed, with nothing to show for it.
+ */
+export function velocityGainAt(rows: readonly FdsnTextRow[], channelId: string, atMs: number): number | null {
+  for (const row of rows) {
+    const id = channelIdOf({
+      network: row.Network ?? '',
+      station: row.Station ?? '',
+      location: row.Location === '--' ? '' : (row.Location ?? ''),
+      channel: row.Channel ?? '',
+    });
+    if (id !== channelId) continue;
+    if (atMs >= fdsnTimeMs(row.StartTime ?? '') && atMs < fdsnTimeMs(row.EndTime ?? '')) {
+      return velocityGainOf(row);
+    }
+  }
+  return null;
+}
+
+/**
+ * Every channel-level epoch overlapping [startMs, endMs] for the given
+ * channels, by POST so a long list does not run into a URL limit. Null on any
+ * failure, like the listing.
+ */
+export async function fetchChannelEpochs(
+  channels: readonly Pick<WaveformStation, 'network' | 'station' | 'location' | 'channel'>[],
+  startMs: number,
+  endMs: number,
+  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+): Promise<FdsnTextRow[] | null> {
+  const { fetchImpl = fetch, timeoutMs = STATION_CATALOGUE_TIMEOUT_MS } = options;
+  const iso = (ms: number): string => new Date(ms).toISOString().slice(0, 19);
+  const lines = channels.map(
+    (c) => `${c.network} ${c.station} ${c.location === '' ? '--' : c.location} ${c.channel} ${iso(startMs)} ${iso(endMs)}`,
+  );
+  try {
+    const response = await fetchImpl(STATION_SERVICE_URL, {
+      method: 'POST',
+      body: ['level=channel', 'format=text', 'nodata=404', ...lines].join('\n'),
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { 'accept-encoding': 'identity' },
+    });
+    if (!response.ok) return null;
+    return parseFdsnText(await response.text());
+  } catch {
+    return null;
+  }
+}
+
 /** Both halves of the station service's answer, before the ring join. */
 export interface StationListing {
   channelRows: FdsnTextRow[];

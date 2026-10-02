@@ -55,7 +55,7 @@ describe('asLiveRecords', () => {
 });
 
 function detection(originMs: number, latitude: number, longitude: number, declaredAtMs: number): QuakeDetection {
-  return { id: 0, originMs, latitude, longitude, picks: [], rmsS: 0, missedStations: [], declaredAtMs };
+  return { id: 0, originMs, latitude, longitude, picks: [], rmsS: 0, missedStations: [], declaredAtMs, magnitude: null };
 }
 
 function quake(id: string, originMs: number, latitude: number, longitude: number, magnitude = 3): CatalogueQuake {

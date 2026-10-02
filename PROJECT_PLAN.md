@@ -1031,10 +1031,20 @@ Grapevine, Bodfish; 29-54 s for Barstow, Trona, Palomar, Anza, Coso, Julian,
 Ocotillo Wells. Ridgecrest M7.1 (reference, not graded): +11.8 s, 40.5 s of
 warning.
 
-**Not yet an alert, and three things stand between:**
-1. **Magnitude.** Detection fires on anything four stations hear; an alert
-   needs a magnitude estimate and a threshold. Needs instrument gains from the
-   station service.
+**Magnitude — built 2026-10-02.** Peak P displacement through Kuyuk & Allen's
+(2013) global relation, 10 s window cut at S, broadband stations only (the PB
+geophones read 1.3-1.6 units low), per-epoch gains. Tuning set: final estimate
+0.04 ± 0.28 from the catalogue, 0.27 low at declaration and climbing.
+Ridgecrest M7.1 reads 6.1 at declaration and 7.1 final. Details in `CLAUDE.md`.
+
+**Alert rule — built 2026-10-02:** predicted shaking at home (Atkinson, Worden
+& Wald 2014, California), alert at MMI ≥ 2.5 (rounds to III, MyShake's level;
+provisional), latched. Graded against what Burbank residents reported to DYFI:
+6 of 7 tuning alerts agree. Ridgecrest M7.1 alerts 40.5 s before strong
+shaking; basin quakes alert just after it.
+
+**Not yet a live alert, and two things stand between:**
+1. ~~An alert threshold~~ — done, above.
 2. **Stations stuck triggered in aftershock sequences.** The one held-out miss
    (Lamont M4.6, Aug 2024) came 45 s after other activity, with its nearest
    stations still mid-trigger. Fix on the tuning set, then grade on fresh 2026
