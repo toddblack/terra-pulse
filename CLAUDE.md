@@ -3642,10 +3642,56 @@ a replay harness. **Nothing in the app runs it yet.**
   that matters most. Likely fix: a maximum trigger duration.
 - **~14 s, not ShakeAlert's few seconds, is the station set**: 74 100 Hz stations
   on the public ring within 300 km, so the fourth is often 50-90 km out.
-- **Next, in order**: the stuck-trigger fix, graded on fresh 2026 quakes; then
-  live — ring capacity for ~74 stations, a main-side background watcher, the
-  alert delivered with a pull counterpart (§5.8), the home prompt (Phase 6).
-  The alert threshold (2.5) is provisional pending the user's confirmation.
+- **Next, in order**: replay a selected quake inside the app (the user's ask —
+  archived records through the same detector and rendering, so the detector
+  can be watched); then live — ring capacity for ~74 stations, a main-side
+  background watcher, the alert delivered with a pull counterpart (§5.8), the
+  home prompt (Phase 6). The alert threshold (2.5) is provisional pending the
+  user's confirmation.
+
+**Quakes that follow quakes — fixed 2026-10-02, and the cause was not what
+was assumed.** The held-out Lamont miss was put down to "a stuck trigger";
+measuring found a network-wide blind spot, and tracing found it was mostly the
+associator, not the picker.
+
+- **Every station near any quake was blind for over a minute.** Median trigger
+  81-88 s at every magnitude, M4 to M7 (capped by the replay window), and
+  nearly every station within 100 km still triggered 60-90 s after an M4.0. The
+  LTA freezes while triggered, so release needed the coda to fall to twice the
+  *pre-quake* noise. `maxTriggerS` = 20 releases it and re-bases the LTA on
+  the coda.
+- **That alone moved 9 → 10 of 17.** Traced on an M3.9 23 s after an M3.4: the
+  released stations *did* pick it, and the associator filed every pick as the
+  M3.4's coda. A second quake's P lands in the first's coda window at nearly
+  every station. `retriggersMayDeclare` lets such picks compete — and alone it
+  produced **30-48 false alarms**. Three rules, each found from what the false
+  alarms actually were, made it safe: within **30 km** of the quake whose coda
+  the picks are in (fakes sat 35-300 km out), at least **5 s** after it (every
+  remaining false alarm was one quake declared twice), and picks that fit its
+  **S** arrival are its own (a synthetic test found a row of S picks fitting a
+  fake source 26 km away). Parameter docs in `quake-associator.ts` have the
+  sweeps.
+- **New case sets, drawn so the held-out data stays unseen**
+  (`cases-sequence.json`): `sequence` (17 M3.0-3.9 quakes 15-180 s after an M3+
+  within 60 km — M3s are outside the held-out rule), `m3-control` (20 isolated
+  M3s: **20/20 found**, the ceiling), and `fresh` (2026, locked). `--only` filters
+  cases for `--trace`.
+- **Tuning side, frozen settings:** sequence **9 → 11 of 17**, false alarms
+  2 → 0; tuning 22/22, Ridgecrest 2/2, M3 control 20/20, distant and random sets
+  0 false — nothing that was found before is lost, and no false home alerts.
+- **Graded once on 2026 (`fresh --final`):** every isolated quake found,
+  **21/21** including all seven M4+; the four sequence quakes **0/4** — three
+  M3.2-3.4 aftershocks 60-95 s after the Indio M4.9 and one 80 s after a Coso
+  M4.0. Small quakes in a bigger one's coda are probably buried physically: an
+  M3.4's P is about as loud as an M4.9's coda. No home alerts, correctly — no
+  2026 quake reached MMI 2.5 in Burbank (the most reported was 2.4). One false
+  alarm (Piru M3.8), **reproduced under the old rules**: the quake was located
+  32 km off, so its later picks formed a second detection. Pre-existing,
+  recorded, not tuned on.
+- **What remains open:** the case that matters most for the alert — a *larger*
+  quake following a smaller one, foreshock to mainshock — has only a handful of
+  examples in the data (the M3.9-after-M3.4 is now found). And the mislocation →
+  duplicate path above.
 
 **Magnitude from the P wave — built and graded in replay 2026-10-02.**
 `quake-magnitude.ts`: peak P displacement (Pd) → Kuyuk & Allen (2013) eq. 2,

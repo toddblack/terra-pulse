@@ -8,10 +8,14 @@
  *   pnpm replay:detector --set random           random hours (false-alarm rate)
  *   pnpm replay:detector --set heldout --final  the other half — run once, after tuning
  *   pnpm replay:detector --set tele-heldout --final   likewise for the distant quakes
+ *   pnpm replay:detector --set sequence         M3s that follow another quake within 3 min
+ *   pnpm replay:detector --set m3-control       isolated M3s: the ceiling for the above
+ *   pnpm replay:detector --set fresh --final    2026, drawn before any sequence tuning
  *
  * `--param picker.highPassHz=3` (repeatable) overrides one detector setting,
  * for sweeps. `--min-intensity 3` sets the alert threshold (predicted MMI at
- * home). `--quiet` prints only the summary line.
+ * home). `--only <text>` keeps the cases whose id or label contains it.
+ * `--quiet` prints only the summary line.
  *
  * **Why there is a held-out set and why it is locked.** Every threshold in the
  * detector is an engineering choice that could be nudged until the replay looks
@@ -73,7 +77,19 @@ const DEPTH_KM = 8;
 /** Burbank's residential ZIP codes, for what people there reported feeling. */
 const HOME_ZIPS = new Set(['91501', '91502', '91504', '91505', '91506']);
 
-type SetName = 'reference' | 'tuning' | 'heldout' | 'tele' | 'tele-heldout' | 'random';
+type SetName =
+  | 'reference'
+  | 'tuning'
+  | 'heldout'
+  | 'tele'
+  | 'tele-heldout'
+  | 'random'
+  | 'sequence'
+  | 'm3-control'
+  | 'fresh';
+
+/** Sets graded once, after tuning; `--final` is the deliberate step. */
+const LOCKED_SETS: ReadonlySet<SetName> = new Set(['heldout', 'tele-heldout', 'fresh']);
 
 interface Case {
   id: string;
@@ -240,6 +256,105 @@ async function cases(): Promise<Case[]> {
   writeJson(path, {
     drawnUtc: new Date().toISOString(),
     rule: 'reference: Ridgecrest M6.4/M7.1; tuning/heldout: all M4+ within 250 km of Burbank 2020-2025, alternating by date; tele: M7.5+ 2020-2025 at 25-100 deg; random: 6 seeded hours 2020-2025',
+    cases: out,
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Sequence cases — a second draw, frozen separately
+// ---------------------------------------------------------------------------
+
+/**
+ * Quakes that follow another one closely, which the first draw never tests:
+ * each of its cases is the first quake in its window. Measured 2026-10-02, a
+ * station near any M4+ is still triggered 60-90 s later, so a second quake in
+ * that span is the detector's blind spot — the held-out Lamont M4.6 miss.
+ *
+ * **Drawn so the held-out sets stay unseen.** Their rule covers M4+ only, so
+ * M3.0-3.9 targets from 2020-2025 are data neither half has touched; a window
+ * that overlaps a held-out case is dropped anyway, since it would replay that
+ * quake. `fresh` is all of 2026 to the draw date, which no tuning has seen.
+ *
+ * - `sequence`: an M3.0-3.9 target with an M3+ within 60 km, 15-180 s earlier.
+ *   The window opens 60 s before that earlier quake.
+ * - `m3-control`: M3.0-3.9 with no M3+ within 60 km in the 3 minutes before —
+ *   how often an M3 is found at all, so `sequence` has a ceiling to read
+ *   against. 20, seeded.
+ * - `fresh`: every M3.5+ in 2026 within 250 km, plus 2026's sequence pairs.
+ */
+async function sequenceCases(first: readonly Case[]): Promise<Case[]> {
+  const path = join(CACHE, 'cases-sequence.json');
+  const cached = readJson<{ drawnUtc: string; rule: string; cases: Case[] }>(path);
+  if (cached) return cached.cases;
+
+  const locked = first.filter((c) => LOCKED_SETS.has(c.set));
+  const overlapsLocked = (startMs: number, endMs: number): boolean =>
+    locked.some((c) => startMs < c.endMs && endMs > c.startMs);
+
+  const draw = async (startUtc: string, endUtc: string): Promise<CatalogueQuake[]> =>
+    (
+      await fetchRecentEarthquakes({
+        startUtc: new Date(startUtc),
+        endUtc: new Date(endUtc),
+        minMagnitude: 3,
+        within: { ...HOME, radiusKm: LOCAL_CASE_RADIUS_KM },
+      })
+    )
+      .map(toCatalogueQuake)
+      .sort((a, b) => a.originMs - b.originMs);
+  const precededBy = (all: readonly CatalogueQuake[], q: CatalogueQuake): CatalogueQuake | null => {
+    const prior = all.filter(
+      (p) => p !== q && q.originMs - p.originMs >= 15_000 && q.originMs - p.originMs <= 180_000 && haversineKm(p, q) <= 60,
+    );
+    return prior.sort((a, b) => b.magnitude - a.magnitude)[0] ?? null;
+  };
+  const label = (q: CatalogueQuake, prior: CatalogueQuake | null): string =>
+    `M${q.magnitude.toFixed(1)} ${new Date(q.originMs).toISOString().slice(0, 16)}` +
+    (prior === null ? '' : ` after M${prior.magnitude.toFixed(1)} ${((q.originMs - prior.originMs) / 1000).toFixed(0)} s earlier`);
+  const pairCase = (set: SetName, q: CatalogueQuake, prior: CatalogueQuake): Case => ({
+    id: `${set}-${q.id}`,
+    set,
+    label: label(q, prior),
+    startMs: prior.originMs - 60_000,
+    endMs: q.originMs + 120_000,
+    target: q,
+  });
+
+  const out: Case[] = [];
+  const past = await draw('2020-01-01T00:00:00Z', '2026-01-01T00:00:00Z');
+  const isolated: CatalogueQuake[] = [];
+  for (const q of past) {
+    if (q.magnitude >= 4) continue;
+    const prior = precededBy(past, q);
+    if (prior !== null) {
+      const c = pairCase('sequence', q, prior);
+      if (!overlapsLocked(c.startMs, c.endMs)) out.push(c);
+    } else if (!past.some((p) => p !== q && Math.abs(p.originMs - q.originMs) <= 180_000 && haversineKm(p, q) <= 60)) {
+      isolated.push(q);
+    }
+  }
+  const random = seeded(20261002);
+  for (let k = 0; k < 20 && isolated.length > 0; k += 1) {
+    const q = isolated.splice(Math.floor(random() * isolated.length), 1)[0] as CatalogueQuake;
+    out.push({ id: `m3-control-${q.id}`, set: 'm3-control', label: label(q, null), startMs: q.originMs - 60_000, endMs: q.originMs + 120_000, target: q });
+  }
+
+  const drawnUtc = new Date().toISOString();
+  const recent = await draw('2026-01-01T00:00:00Z', drawnUtc);
+  for (const q of recent) {
+    const prior = precededBy(recent, q);
+    if (prior !== null) out.push(pairCase('fresh', q, prior));
+    else if (q.magnitude >= 3.5) {
+      out.push({ id: `fresh-${q.id}`, set: 'fresh', label: label(q, null), startMs: q.originMs - 60_000, endMs: q.originMs + 120_000, target: q });
+    }
+  }
+
+  writeJson(path, {
+    drawnUtc,
+    rule:
+      'sequence: M3.0-3.9 2020-2025 within 250 km with an M3+ within 60 km 15-180 s earlier, windows overlapping locked cases dropped; ' +
+      'm3-control: 20 seeded M3.0-3.9 2020-2025 with no M3+ within 60 km and 180 s; fresh: 2026 M3.5+ plus 2026 sequence pairs',
     cases: out,
   });
   return out;
@@ -468,10 +583,14 @@ function detectorParams(): DetectorParams {
     if (token !== '--param') return;
     const [path = '', value = ''] = (process.argv[i + 1] ?? '').split('=');
     const [section, key] = path.split('.') as [keyof DetectorParams, string];
-    const target = params[section] as unknown as Record<string, number> | undefined;
-    if (target === undefined || !(key in target) || !Number.isFinite(Number(value))) {
-      throw new Error(`unknown or non-numeric --param ${path}=${value}`);
+    const target = params[section] as unknown as Record<string, number | boolean> | undefined;
+    if (target === undefined || !(key in target)) throw new Error(`unknown --param ${path}`);
+    if (typeof target[key] === 'boolean') {
+      if (value !== 'true' && value !== 'false') throw new Error(`--param ${path} takes true or false`);
+      target[key] = value === 'true';
+      return;
     }
+    if (!Number.isFinite(Number(value))) throw new Error(`non-numeric --param ${path}=${value}`);
     target[key] = Number(value);
   });
   return params;
@@ -522,7 +641,7 @@ function fmt(n: number, digits = 1): string {
 
 async function main(): Promise<void> {
   const set = (arg('set') ?? 'reference') as SetName;
-  if ((set === 'heldout' || set === 'tele-heldout') && !process.argv.includes('--final')) {
+  if (LOCKED_SETS.has(set) && !process.argv.includes('--final')) {
     console.error('The held-out set is graded once, after tuning is finished. Re-run with --final to confirm.');
     process.exit(2);
   }
@@ -532,8 +651,13 @@ async function main(): Promise<void> {
 
   const list = await stations();
   const gains = await gainEpochs(list);
-  const all = await cases();
-  const chosen = all.filter((c) => c.set === set).slice(0, limit);
+  const first = await cases();
+  const all = [...first, ...(await sequenceCases(first))];
+  // --only <text>: just the cases whose id or label contains it, for --trace.
+  const only = arg('only');
+  const chosen = all
+    .filter((c) => c.set === set && (only === null || c.id.includes(only) || c.label.includes(only)))
+    .slice(0, limit);
   console.log(`${String(list.length)} stations within ${String(STATION_RADIUS_KM)} km of ${HOME.label}; ${String(chosen.length)} '${set}' cases\n`);
 
   const results: CaseResult[] = [];
@@ -605,8 +729,13 @@ async function main(): Promise<void> {
     );
     if (warnings.length > 0) console.log(`warning before S at home, alerted quakes: ${warnings.map((w) => fmt(w)).join(', ')} s`);
   }
-  const falseAlerts = results.reduce((n, r) => n + r.alerts.filter((a) => a.eventId !== r.targetMatch?.detection.id).length, 0);
-  console.log(`${String(falseAlerts)} home alert(s) from detections other than the target`);
+  // Only detections the catalogue cannot account for: a real earlier quake in a
+  // sequence window alerting is right, not false.
+  const falseAlerts = results.reduce((n, r) => {
+    const spurious = new Set(r.grade.spurious.map((d) => d.id));
+    return n + r.alerts.filter((a) => spurious.has(a.eventId)).length;
+  }, 0);
+  console.log(`${String(falseAlerts)} home alert(s) from false detections`);
   writeJson(join(CACHE, `results-${set}.json`), results.map((r) => ({ ...r, detections: r.detections.length })));
 }
 

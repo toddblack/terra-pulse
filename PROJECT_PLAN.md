@@ -1045,10 +1045,13 @@ shaking; basin quakes alert just after it.
 
 **Not yet a live alert, and two things stand between:**
 1. ~~An alert threshold~~ — done, above.
-2. **Stations stuck triggered in aftershock sequences.** The one held-out miss
-   (Lamont M4.6, Aug 2024) came 45 s after other activity, with its nearest
-   stations still mid-trigger. Fix on the tuning set, then grade on fresh 2026
-   quakes — the 2020-2025 held-out set has now been seen.
+2. ~~**Stations stuck triggered in aftershock sequences.**~~ Fixed 2026-10-02.
+   Every station near any quake was blind 80-100 s; worse, the associator
+   filed a second quake's picks as the first one's coda. Stations now release
+   after 20 s, and coda picks may form a new event within 30 km and 5 s+ after
+   the first. Quakes following quakes: 9 → 11 of 17, no new false alarms.
+   Graded on 2026: 21/21 isolated quakes, 0/4 small aftershocks inside a larger
+   quake's coda (probably buried). Details in `CLAUDE.md`.
 3. **Running live**: a background SeedLink connection for ~74 stations (ring
    capacity unchecked), an alert path with a pull counterpart (§5.8's lesson),
    and the home-location prompt.

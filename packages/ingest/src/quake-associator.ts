@@ -94,6 +94,48 @@ export interface AssociatorParams {
    * rather than as candidates for a new one.
    */
   codaS: number;
+  /**
+   * Whether a pick inside an earlier event's S/coda window — one that fits
+   * neither that event's P nor its S — may still help locate a *new* event.
+   *
+   * **This, not stuck stations, was the main reason a second quake was
+   * missed.** Traced on a real M3.9 that followed an M3.4 by 23 s: once the
+   * stations were released they *did* pick it, and every pick was filed as
+   * the M3.4's coda. A second quake's P lands exactly in the first one's coda
+   * window at every station farther than a few kilometres.
+   *
+   * Opened alone, it was a disaster: 30-48 false alarms on the `sequence` set
+   * for at most two more detections — the first quake's S waves and coda
+   * bursts lining up into fake sources. The three rules below are what make it
+   * safe; each was found from what the false alarms actually were.
+   */
+  retriggersMayDeclare: boolean;
+  /**
+   * A new event built from any such pick must lie within this distance of the
+   * event whose shaking that pick was in. A genuine second quake mid-coda is
+   * the same sequence; the fakes sat 35-300 km away. 30 km is flat with 20 on
+   * every set and removed the last three that 60 km let through (two near
+   * Malibu, one 35 km along Ridgecrest's M7.1 rupture 6.6 s after it).
+   *
+   * **The price:** for the minute or two of a big quake's coda, a large
+   * aftershock more than 30 km away is missed. Ridgecrest's rupture ran ~50
+   * km, so that can happen. Before this rule, every quake in a coda was.
+   */
+  sequenceRadiusKm: number;
+  /**
+   * ...and must begin at least this long after it, s, or it is the same quake.
+   * Every false alarm left at 30 km was this: a real quake declared twice, 1-3
+   * s apart — two alerts for one earthquake. Flat from 5 to 10 s.
+   */
+  minSequenceGapS: number;
+  /**
+   * A pick this close to an earlier event's predicted S arrival, s, is that
+   * event's S wave and is never offered to a new one. Found by a synthetic
+   * test, not by the replay: a row of S picks plus one stray fitted a fake
+   * source 26 km away and 8 s later, inside both rules above. Flat from 1 to
+   * 2.5 s on the `sequence` set.
+   */
+  sToleranceS: number;
   coarseGridKm: number;
   fineGridKm: number;
 }
@@ -108,6 +150,10 @@ export const DEFAULT_ASSOCIATOR_PARAMS: AssociatorParams = {
   maxNearestStationKm: 50,
   pickRetentionS: 45,
   codaS: 30,
+  retriggersMayDeclare: true,
+  sequenceRadiusKm: 30,
+  minSequenceGapS: 5,
+  sToleranceS: 1.5,
   coarseGridKm: 8,
   fineGridKm: 1,
 };
@@ -138,6 +184,8 @@ export type AssociationVerdict =
   | { kind: 'too-far-outside'; nearestKm: number }
   | { kind: 'nearest-silent'; stations: number }
   | { kind: 'too-many-silent'; stations: number; silent: number }
+  | { kind: 'not-in-sequence'; stations: number }
+  | { kind: 'duplicate'; stations: number }
   | { kind: 'declared'; eventId: number };
 
 interface Located {
@@ -151,6 +199,8 @@ interface Located {
 
 interface PooledPick extends Pick {
   stationIndex: number;
+  /** The event whose S/coda window this pick fell in, if any. */
+  inShakingOf: number | null;
 }
 
 const KM_PER_DEGREE = 111.195;
@@ -267,6 +317,7 @@ export class QuakeAssociator {
     // crustal P this model uses, so distant stations pick *early* against it.
     // Opened at crustal P, those early picks escaped the event and grouped into
     // new ones: four false alarms inside Ridgecrest's M6.4, at 170-300 km.
+    let inShakingOf: number | null = null;
     for (const event of this.events) {
       const station = this.stations[stationIndex] as AssociatorStation;
       const pArrival = event.originMs + 1000 * this.stationTravelS(station, event.latitude, event.longitude, this.params.pVelocityKmS);
@@ -274,21 +325,21 @@ export class QuakeAssociator {
       const sArrival = event.originMs + 1000 * this.stationTravelS(station, event.latitude, event.longitude, this.params.sVelocityKmS);
       const toleranceMs = this.params.toleranceS * 1000;
       if (pick.timeMs >= earliest - toleranceMs && pick.timeMs <= sArrival + this.params.codaS * 1000) {
-        if (
-          Math.abs(pick.timeMs - pArrival) <= toleranceMs &&
-          !event.picks.some((p) => p.channelId === pick.channelId)
-        ) {
-          event.picks.push(pick);
+        const fitsP = Math.abs(pick.timeMs - pArrival) <= toleranceMs;
+        const fitsS = Math.abs(pick.timeMs - sArrival) <= this.params.sToleranceS * 1000;
+        if (fitsP && !event.picks.some((p) => p.channelId === pick.channelId)) event.picks.push(pick);
+        if (fitsP || fitsS || !this.params.retriggersMayDeclare) {
+          this.lastVerdict = { kind: 'absorbed', eventId: event.id };
+          return null;
         }
-        this.lastVerdict = { kind: 'absorbed', eventId: event.id };
-        return null;
+        inShakingOf ??= event.id;
       }
     }
 
-    this.pool.push({ ...pick, stationIndex });
+    this.pool.push({ ...pick, stationIndex, inShakingOf });
     const { candidates, mostStations } = this.locate(this.pool, this.pool.length - 1);
     if (candidates.length === 0) {
-      this.lastVerdict = { kind: 'too-few', stations: mostStations };
+      this.lastVerdict = inShakingOf === null ? { kind: 'too-few', stations: mostStations } : { kind: 'absorbed', eventId: inShakingOf };
       return null;
     }
 
@@ -315,6 +366,16 @@ export class QuakeAssociator {
       ...memberPicks.map((p) => haversineKm(located, this.stations[p.stationIndex] as AssociatorStation)),
     );
     if (nearestKm > this.params.maxNearestStationKm) return { kind: 'too-far-outside', nearestKm };
+    const shaking = new Set(memberPicks.flatMap((p) => (p.inShakingOf === null ? [] : [p.inShakingOf])));
+    if (shaking.size > 0) {
+      const near = this.events.filter(
+        (e) => shaking.has(e.id) && haversineKm(located, e) <= this.params.sequenceRadiusKm,
+      );
+      if (near.length === 0) return { kind: 'not-in-sequence', stations };
+      if (near.some((e) => located.originMs - e.originMs < this.params.minSequenceGapS * 1000)) {
+        return { kind: 'duplicate', stations };
+      }
+    }
     if (!this.nearestReadyStationIsMember(located, memberPicks, readyThroughMs)) return { kind: 'nearest-silent', stations };
     const silent = this.missedStations(located, memberPicks, readyThroughMs).length;
     if (silent / (silent + stations) > this.params.maxMissFraction) return { kind: 'too-many-silent', stations, silent };

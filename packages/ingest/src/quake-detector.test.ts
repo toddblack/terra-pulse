@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { haversineKm } from '@terra-pulse/schema';
-import { StationPicker, type Pick } from './quake-picker';
+import { DEFAULT_PICKER_PARAMS, StationPicker, type Pick } from './quake-picker';
 import { DEFAULT_ASSOCIATOR_PARAMS, QuakeAssociator, type AssociatorStation } from './quake-associator';
 import { QuakeDetector, type QuakeDetection } from './quake-detector';
 import type { MagnitudeEstimate } from './quake-magnitude';
@@ -117,6 +117,27 @@ describe('StationPicker', () => {
       ),
     );
     expect(picks).toHaveLength(1);
+  });
+
+  it('releases a trigger held too long, so a second quake in the coda can still pick', () => {
+    // A big first quake whose coda keeps the ratio above release for minutes
+    // against the frozen pre-quake LTA, then a second one 25 s later. Measured
+    // on real data: near stations stayed triggered 80-100 s after any M4.
+    const samples = signal({
+      seconds: 80,
+      seed: 7,
+      onsets: [
+        { atS: 30, amplitude: 5_000 },
+        { atS: 55, amplitude: 3_000 },
+      ],
+    });
+    const stuck = new StationPicker('XX_A__HHZ', { ...DEFAULT_PICKER_PARAMS, maxTriggerS: Number.POSITIVE_INFINITY });
+    expect(pushAll(stuck, records('XX_A__HHZ', T0, samples))).toHaveLength(1);
+
+    const released = new StationPicker('XX_A__HHZ');
+    const picks = pushAll(released, records('XX_A__HHZ', T0, samples));
+    expect(picks).toHaveLength(2);
+    expect((picks[1]!.timeMs - T0) / 1000).toBeCloseTo(55, 0);
   });
 
   it('cannot pick, and is not ready, until the LTA has warmed up', () => {
@@ -319,6 +340,101 @@ describe('QuakeAssociator', () => {
     expect(declared).toHaveLength(1);
     // Later P picks that fit were attached to it.
     expect(declared[0]!.picks.length).toBeGreaterThan(4);
+  });
+
+  describe('a second quake inside the first one’s coda', () => {
+    /** Every station's P and S for a quake at SOURCE at T0, in time order. */
+    function firstQuake(associator: QuakeAssociator, stations: AssociatorStation[]): number {
+      let declared = 0;
+      const picks = stations
+        .flatMap((station) => [
+          { channelId: station.channelId, timeMs: T0 + travelS(station, SOURCE) * 1000, ratio: 8 },
+          { channelId: station.channelId, timeMs: T0 + travelS(station, SOURCE, P.sVelocityKmS) * 1000, ratio: 8 },
+        ])
+        .sort((a, b) => a.timeMs - b.timeMs);
+      for (const pick of picks) if (associator.addPick(pick, pick.timeMs + 3_000, () => pick.timeMs + 1_000)) declared += 1;
+      return declared;
+    }
+
+    /** P picks from the `count` stations nearest `source`, for a quake at `originMs`. */
+    function pPicks(stations: AssociatorStation[], source: typeof SOURCE, originMs: number, count: number) {
+      return [...stations]
+        .sort((a, b) => haversineKm(a, source) - haversineKm(b, source))
+        .slice(0, count)
+        .map((station) => ({ channelId: station.channelId, timeMs: originMs + travelS(station, source) * 1000, ratio: 9 }))
+        .sort((a, b) => a.timeMs - b.timeMs);
+    }
+
+    function offer(associator: QuakeAssociator, picks: { channelId: string; timeMs: number; ratio: number }[]) {
+      let event = null;
+      // Every station is busy with the first quake's coda, so none is "ready"
+      // to count as silent — the same as stations still triggered.
+      for (const pick of picks) event = associator.addPick(pick, pick.timeMs + 3_000, () => null) ?? event;
+      return event;
+    }
+
+    it('declares it when it lies in the same sequence', () => {
+      const stations = gridStations();
+      const associator = new QuakeAssociator(stations);
+      expect(firstQuake(associator, stations)).toBe(1);
+      const nearby = { latitude: SOURCE.latitude + 0.08, longitude: SOURCE.longitude + 0.05 };
+      const second = offer(associator, pPicks(stations, nearby, T0 + 25_000, 6));
+      expect(second).not.toBeNull();
+      expect(haversineKm(second!, nearby)).toBeLessThan(5);
+      expect(Math.abs(second!.originMs - (T0 + 25_000))).toBeLessThan(500);
+
+      // The rule this replaced: every pick in a coda window was the first
+      // quake's, so the second never had a chance.
+      const old = new QuakeAssociator(stations, { ...P, retriggersMayDeclare: false });
+      firstQuake(old, stations);
+      expect(offer(old, pPicks(stations, nearby, T0 + 25_000, 6))).toBeNull();
+    });
+
+    it('absorbs picks that fit the first quake’s S wave, however well they fit a new source', () => {
+      // Found by this file's own first draft: with S picks left in the pool, a
+      // row of them along one grid column plus one stray fitted a fake source
+      // 26 km from the quake and 8 s after it — inside both sequence guards.
+      // An S pick is the first quake's, full stop.
+      const stations = gridStations();
+      const far = { latitude: 33.7, longitude: -118.4 };
+      const unabsorbed = new QuakeAssociator(stations, { ...P, sToleranceS: 0 });
+      firstQuake(unabsorbed, stations);
+      expect(offer(unabsorbed, pPicks(stations, far, T0 + 20_000, 4))).not.toBeNull();
+    });
+
+    it('refuses a coda cluster far from the quake it is in — the S waves’ own coincidences', () => {
+      // On real data these sat 40-300 km from the real quake with tight fits;
+      // a genuine second quake mid-coda is part of the same sequence.
+      const stations = gridStations();
+      const far = { latitude: 33.7, longitude: -118.4 };
+      expect(haversineKm(far, SOURCE)).toBeGreaterThan(P.sequenceRadiusKm);
+
+      const associator = new QuakeAssociator(stations);
+      firstQuake(associator, stations);
+      expect(offer(associator, pPicks(stations, far, T0 + 20_000, 4))).toBeNull();
+      expect(associator.lastVerdict.kind).toBe('not-in-sequence');
+
+      // Control: the same four picks with no quake in progress are declared,
+      // so it is the sequence rule refusing them and nothing else.
+      expect(offer(new QuakeAssociator(stations), pPicks(stations, far, T0 + 20_000, 4))).not.toBeNull();
+    });
+
+    it('refuses re-locating the first quake from its own coda picks', () => {
+      // Coda picks that fit a source on top of the first quake, 4.5 s later —
+      // on real data, every remaining false alarm was this: one quake, two
+      // alerts. (4.5 s keeps these picks clear of the first quake's S arrivals,
+      // which are absorbed by a rule of their own.)
+      const stations = gridStations();
+      const associator = new QuakeAssociator(stations);
+      firstQuake(associator, stations);
+      expect(offer(associator, pPicks(stations, SOURCE, T0 + 4_500, 4))).toBeNull();
+      expect(associator.lastVerdict.kind).toBe('duplicate');
+
+      // And the guard is what refused it.
+      const unguarded = new QuakeAssociator(stations, { ...P, minSequenceGapS: 0 });
+      firstQuake(unguarded, stations);
+      expect(offer(unguarded, pPicks(stations, SOURCE, T0 + 4_500, 4))).not.toBeNull();
+    });
   });
 });
 
