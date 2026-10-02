@@ -3646,8 +3646,11 @@ a replay harness. **Nothing in the app runs it yet.**
   archived records through the same detector and rendering, so the detector
   can be watched); then live — ring capacity for ~74 stations, a main-side
   background watcher, the alert delivered with a pull counterpart (§5.8), the
-  home prompt (Phase 6). The alert threshold (2.5) is provisional pending the
-  user's confirmation.
+  home prompt (Phase 6). **The user wants alerts for large quakes only,
+  "probably 4.5+"** (2026-10-02) — not built yet; most likely a magnitude
+  floor on top of the home-intensity rule (MyShake's shape: M4.5+ and MMI
+  III+). Confirm that reading, then measure the warning time a floor on the
+  climbing estimate costs before building it.
 
 **Quakes that follow quakes — fixed 2026-10-02, and the cause was not what
 was assumed.** The held-out Lamont miss was put down to "a stuck trigger";
