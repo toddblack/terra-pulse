@@ -43,5 +43,8 @@ export * from './fdsn-stations';
 export * from './fdsn-dataselect';
 export * from './quake-picker';
 export * from './quake-associator';
+export * from './quake-magnitude';
+export * from './shaking-intensity';
+export * from './quake-alert';
 export * from './quake-detector';
 export * from './detector-replay';

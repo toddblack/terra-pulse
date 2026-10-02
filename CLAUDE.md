@@ -3642,10 +3642,93 @@ a replay harness. **Nothing in the app runs it yet.**
   that matters most. Likely fix: a maximum trigger duration.
 - **~14 s, not ShakeAlert's few seconds, is the station set**: 74 100 Hz stations
   on the public ring within 300 km, so the fourth is often 50-90 km out.
-- **Next, in order**: magnitude from P amplitude (needs gains from the station
-  service) and an alert threshold; the stuck-trigger fix, graded on fresh 2026
-  quakes; then live — ring capacity for ~74 stations, a main-side background
-  watcher, an alert with a pull counterpart (§5.8), the home prompt (Phase 6).
+- **Next, in order**: the stuck-trigger fix, graded on fresh 2026 quakes; then
+  live — ring capacity for ~74 stations, a main-side background watcher, the
+  alert delivered with a pull counterpart (§5.8), the home prompt (Phase 6).
+  The alert threshold (2.5) is provisional pending the user's confirmation.
+
+**Magnitude from the P wave — built and graded in replay 2026-10-02.**
+`quake-magnitude.ts`: peak P displacement (Pd) → Kuyuk & Allen (2013) eq. 2,
+`M = 1.23 log Pd + 1.38 log E + 5.39`, averaged over stations. Every detection
+carries the estimate at declaration; `QuakeDetector.magnitudeOf(id)` keeps it
+current as later stations and fuller windows arrive.
+
+- **The constants were read off the paper, not recalled**, and so was the
+  measurement recipe: vertical displacement, causal two-pole 3 Hz low-pass,
+  peak within 4 s of P or up to S. **A published global relation beat fitting
+  our own** because the tuning set is 22 quakes at M4.0-5.5, which cannot pin
+  a slope that has to reach M7 — and the paper found the global fit beat each
+  region's own.
+- **Measured before building, with a throwaway probe on the detector's own
+  picks and location**: tuning set mean residual (catalogue − estimate) +0.13,
+  sd 0.25 with nothing tuned. The paper reports 0.31.
+- **10 s window, not the paper's 4 s.** At 4 s, Ridgecrest M7.1 read **6.38**:
+  the M7 saturation the paper itself reports (4 s is shorter than the rupture).
+  At 10 s it reads **7.1**, and the tuning set is unchanged (0.04 / 0.28).
+  Chosen looking at Ridgecrest, which is the reference case and not the tuning
+  set. **The longer window costs no time**: Pd so far is a lower bound, so the
+  estimate is computed from what has arrived and climbs.
+- **The S-wave cut is kept** — inside ~75 km, S−P is shorter than 10 s, and S
+  would inflate Pd. A test fails if the cut is removed (checked).
+- **Geophones cannot vote.** PB's HS-1-LT stations read **1.25-1.59 units low**:
+  their response falls off below 1-4.5 Hz, where Pd lives. PB labels them `HHZ`,
+  a broadband code, so `velocityGainOf` refuses them **by sensor name** as well
+  as by band. A station with no gain still detects (STA/LTA is a ratio).
+- **Gains are per epoch.** 158 epochs across the 74 stations, 2019-2026, up to 7
+  for one; `velocityGainAt` takes the one in force on the replayed day, frozen in
+  `.cache/replay/gains.json`.
+- **The integration high-pass (0.075 Hz) is not in the paper** and was swept:
+  0.05-0.1 Hz moves the tuning mean 0.03-0.06; at 0.2 Hz the M7.1 drops to 6.76.
+- **`minWindowS` = 1 s, swept on tuning**: a station joining with a fraction of a
+  second of P drags the mean down (Searles M5.5 went 5.3 → 5.0 → 5.9). Bias at
+  declaration 0.41 → 0.27; longer minimums leave quakes with no estimate yet.
+- **Results**, tuning set (catalogue − estimate, mean / sd): **0.27 / 0.44 at
+  declaration, 0.18 / 0.40 five seconds later, 0.04 / 0.28 final.** It
+  *underestimates* early, by construction. Ridgecrest M7.1: **6.1 at
+  declaration** (+11.8 s), 6.3 at +5 s, 7.1 final; M6.4: 5.9 → 6.0 → 6.6.
+  Detection unchanged: 22/22, +14.3 s, 0 false alarms in the tele and random
+  sets. **The held-out sets were not re-run** — they have been seen once.
+
+**The alert: predicted shaking at home — built 2026-10-02, the user's choice
+over a magnitude threshold.** `shaking-intensity.ts` + `quake-alert.ts`. The
+running magnitude and the detector's location go through Atkinson, Worden &
+Wald's (2014) California intensity equation to an MMI at Burbank; the first
+time it reaches `DEFAULT_ALERT_RULE.minIntensity` the event alerts, and it
+**latches** — later estimates update the alert, never withdraw or repeat it.
+
+- **Why intensity, not magnitude:** an M4.5 at 250 km is barely felt at home and
+  an M4.0 under it is. Highland Park M4.4 — below MyShake's M4.5 floor — was
+  reported at 3.8 by **404** Burbank residents. ShakeAlert decides by expected
+  intensity too: MyShake at MMI III+ (with M4.5+), phone emergency alerts at
+  MMI IV+ (with M5+).
+- **The coefficients' provenance is weaker than the paper's, and the code says
+  so.** The 2014 paper was not reachable; they come from Geoscience Australia's
+  OpenQuake implementation and the same author's `mmi_tools.py` (one author, so
+  not independent), with the functional form confirmed by Teng, Baker & Wald
+  (2022).
+- **So it was graded against what people felt, which is the better test.** USGS
+  DYFI reports from Burbank's ZIP codes, tuning + reference quakes: Ridgecrest
+  M7.1 predicted 4.2 vs 4.2 reported (161 reports), Highland Park 3.8 vs 3.8
+  (404), Lamont M5.2 2.8 vs 2.9, Malibu 2.4 vs 2.6. Over all 18 with any report:
+  +0.19 ± 0.42, the bias from quakes with 1-5 reports (DYFI skews high there —
+  people who felt nothing don't write in). The replay now caches each case's
+  DYFI under `.cache/replay/dyfi/` and grades every alert against it.
+- **Threshold 2.5 (anything that rounds to III), provisional, swept on tuning:**
+  2.5 → 7 alerts, 6 agree with Burbank, 1 missed, 1 extra; 3.0 → 5 alerts, only
+  2 agree, 3 extra; 3.5 → later alerts (Ridgecrest M6.4's warning drops 35.8 →
+  23.0 s). **The extra alerts at 3.0 are a magnitude problem, not an intensity
+  one**: every M5+ in the tuning set reads 0.3-0.6 high (Searles M5.5 → 5.9),
+  and with catalogue magnitudes the equation matches the reports. That M4-low /
+  M5-high tilt is the slope of a global relation on our stations; fitting our
+  own slope on 22 quakes was rejected above and is still the wrong fix.
+- **What it means at home:** Ridgecrest M7.1 alerts **40.5 s** before strong
+  shaking, M6.4 35.8 s, Lamont M5.2 15.9 s, Ojai 7.5 s. **Basin quakes alert
+  after the shaking** (El Monte −1.2 s, Highland Park −2.2 s) — physics, not a
+  bug, and the live alert should still fire: "that was an earthquake, M4.4, 10
+  km away" is worth having.
+- **No alert in the distant-quake or random-hour sets at any threshold.**
+- Mean prediction only; the two transcriptions quote sigma as 0.5 and 0.15, so
+  no uncertainty band is drawn from it.
 
 ## Non-negotiables
 

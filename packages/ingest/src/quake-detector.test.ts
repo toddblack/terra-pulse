@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { haversineKm } from '@terra-pulse/schema';
 import { StationPicker, type Pick } from './quake-picker';
 import { DEFAULT_ASSOCIATOR_PARAMS, QuakeAssociator, type AssociatorStation } from './quake-associator';
-import { QuakeDetector } from './quake-detector';
+import { QuakeDetector, type QuakeDetection } from './quake-detector';
+import type { MagnitudeEstimate } from './quake-magnitude';
 import { arrivalOrder } from './detector-replay';
 import type { MiniSeedDataRecord } from './miniseed';
 
@@ -344,5 +345,40 @@ describe('QuakeDetector end to end on synthetic waveforms', () => {
     const fourthArrivalMs = T0 + travelS(byDistance(stations)[3]!, SOURCE) * 1000;
     expect(d.declaredAtMs).toBeGreaterThan(fourthArrivalMs + 2_000);
     expect(d.declaredAtMs).toBeLessThan(fourthArrivalMs + 3_500);
+  });
+
+  it('estimates a magnitude at declaration and keeps it current as P windows fill', () => {
+    const stations = gridStations();
+    const run = (gain: number | null) => {
+      const detector = new QuakeDetector(stations.map((s) => ({ ...s, velocityGain: gain })));
+      const all = stations.flatMap((station, k) =>
+        records(
+          station.channelId,
+          T0 - 60_000,
+          signal({ seconds: 120, seed: 100 + k, onsets: [{ atS: 60 + travelS(station, SOURCE), amplitude: 800 }] }),
+        ),
+      );
+      const detections: QuakeDetection[] = [];
+      let latest: MagnitudeEstimate | null = null;
+      for (const { record, arrivedAtMs } of arrivalOrder(all)) {
+        detections.push(...detector.push(record, arrivedAtMs));
+        if (detections[0]) latest = detector.magnitudeOf(detections[0].id) ?? latest;
+      }
+      return { declared: detections[0]!, latest };
+    };
+
+    const withGains = run(6e8);
+    expect(withGains.declared.magnitude).not.toBeNull();
+    expect(Number.isFinite(withGains.declared.magnitude!.magnitude)).toBe(true);
+    // Stations that triggered after declaration join the estimate, and every
+    // window has filled by the end of the data.
+    expect(withGains.latest!.stations.length).toBeGreaterThan(withGains.declared.magnitude!.stations.length);
+    expect(withGains.latest!.complete).toBe(true);
+
+    // Without gains the quake is still detected; it just has no magnitude.
+    const withoutGains = run(null);
+    expect(withoutGains.declared).toBeDefined();
+    expect(withoutGains.declared.magnitude).toBeNull();
+    expect(withoutGains.latest).toBeNull();
   });
 });

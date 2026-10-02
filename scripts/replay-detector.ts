@@ -10,7 +10,8 @@
  *   pnpm replay:detector --set tele-heldout --final   likewise for the distant quakes
  *
  * `--param picker.highPassHz=3` (repeatable) overrides one detector setting,
- * for sweeps. `--quiet` prints only the summary line.
+ * for sweeps. `--min-intensity 3` sets the alert threshold (predicted MMI at
+ * home). `--quiet` prints only the summary line.
  *
  * **Why there is a held-out set and why it is locked.** Every threshold in the
  * detector is an engineering choice that could be nudged until the replay looks
@@ -33,11 +34,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { channelIdOf, haversineKm, type WaveformStation } from '../packages/schema/src/index';
 import {
+  DEFAULT_ALERT_RULE,
   DEFAULT_DETECTOR_PARAMS,
+  HomeAlerter,
   QuakeDetector,
   arrivalOrder,
   asLiveRecords,
   buildStationCatalogue,
+  fetchChannelEpochs,
   fetchDataselect,
   fetchRecentEarthquakes,
   fetchRingInventory,
@@ -45,8 +49,12 @@ import {
   gradeDetections,
   parseMiniSeedRecord,
   splitMiniSeedRecords,
+  velocityGainAt,
   type CatalogueQuake,
   type DetectorParams,
+  type FdsnTextRow,
+  type HomeAlert,
+  type MagnitudeEstimate,
   type MiniSeedDataRecord,
   type QuakeDetection,
 } from '../packages/ingest/src/index';
@@ -62,6 +70,8 @@ const CACHE = join(import.meta.dirname, '..', '.cache', 'replay');
 const STATIONS_PER_REQUEST = 25;
 const S_VELOCITY_KM_S = 3.6;
 const DEPTH_KM = 8;
+/** Burbank's residential ZIP codes, for what people there reported feeling. */
+const HOME_ZIPS = new Set(['91501', '91502', '91504', '91505', '91506']);
 
 type SetName = 'reference' | 'tuning' | 'heldout' | 'tele' | 'tele-heldout' | 'random';
 
@@ -105,6 +115,21 @@ async function stations(): Promise<WaveformStation[]> {
   const chosen = all.filter((s) => s.sampleRateHz >= 100 && haversineKm(s, HOME) <= STATION_RADIUS_KM);
   writeJson(path, { drawnUtc: new Date().toISOString(), stations: chosen });
   return chosen;
+}
+
+/**
+ * Every channel epoch for the frozen stations across the whole case span,
+ * frozen too. Gains change when sensors are swapped (158 epochs over 74
+ * stations, 2019-2026), so each case looks up the epoch in force on its day.
+ */
+async function gainEpochs(list: WaveformStation[]): Promise<FdsnTextRow[]> {
+  const path = join(CACHE, 'gains.json');
+  const cached = readJson<{ fetchedUtc: string; rows: FdsnTextRow[] }>(path);
+  if (cached) return cached.rows;
+  const rows = await fetchChannelEpochs(list, Date.parse('2019-01-01T00:00:00Z'), Date.parse('2027-01-01T00:00:00Z'));
+  if (rows === null) throw new Error('station service unavailable for channel epochs');
+  writeJson(path, { fetchedUtc: new Date().toISOString(), rows });
+  return rows;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,9 +274,31 @@ interface CaseResult {
   grade: ReturnType<typeof gradeDetections>;
   /** The target quake's match, if it was detected. */
   targetMatch: ReturnType<typeof gradeDetections>['matched'][number] | null;
+  /** The target's magnitude estimate as it climbed, one entry per change. */
+  magnitudeSeries: MagnitudeStep[];
+  /** Every alert raised in the case, for any detection — a false one included. */
+  alerts: HomeAlert[];
+  /** The target's alert, if it raised one. */
+  targetAlert: HomeAlert | null;
+  /** What people at home reported (DYFI), for local targets. */
+  feltAtHome: FeltReport | null;
 }
 
-async function runCase(c: Case, list: WaveformStation[]): Promise<CaseResult> {
+interface FeltReport {
+  /** Response-weighted community intensity across the home ZIPs; null if none reported. */
+  intensity: number | null;
+  reports: number;
+}
+
+interface MagnitudeStep {
+  /** Seconds after the true origin. */
+  afterOriginS: number;
+  magnitude: number;
+  stations: number;
+  complete: boolean;
+}
+
+async function runCase(c: Case, list: WaveformStation[], gains: readonly FdsnTextRow[]): Promise<CaseResult> {
   const records: MiniSeedDataRecord[] = [];
   let badRecords = 0;
   for (const bytes of await waveforms(c, list)) {
@@ -267,7 +314,12 @@ async function runCase(c: Case, list: WaveformStation[]): Promise<CaseResult> {
   }
 
   const detector = new QuakeDetector(
-    list.map((s) => ({ channelId: channelIdOf(s), latitude: s.latitude, longitude: s.longitude })),
+    list.map((s) => ({
+      channelId: channelIdOf(s),
+      latitude: s.latitude,
+      longitude: s.longitude,
+      velocityGain: velocityGainAt(gains, channelIdOf(s), c.startMs),
+    })),
     detectorParams(),
   );
   // --trace: every pick near the target, in the order the detector saw them,
@@ -291,7 +343,27 @@ async function runCase(c: Case, list: WaveformStation[]): Promise<CaseResult> {
       );
     };
   }
-  const detections = arrivalOrder(records).flatMap(({ record, arrivedAtMs }) => detector.push(record, arrivedAtMs));
+  // Every detection's estimate, recorded each time it changes, so the grade
+  // can say what was known at declaration and how far it climbed after.
+  const detections: QuakeDetection[] = [];
+  const estimates = new Map<number, { atMs: number; estimate: MagnitudeEstimate }[]>();
+  const alerter = new HomeAlerter(HOME, { minIntensity: minIntensity() }, { depthKm: DEPTH_KM, sVelocityKmS: S_VELOCITY_KM_S });
+  const alerts: HomeAlert[] = [];
+  for (const { record, arrivedAtMs } of arrivalOrder(records)) {
+    detections.push(...detector.push(record, arrivedAtMs));
+    for (const d of detections) {
+      const estimate = detector.magnitudeOf(d.id);
+      const alert = alerter.evaluate(d, estimate, arrivedAtMs);
+      if (alert !== null) alerts.push(alert);
+      if (estimate === null) continue;
+      const steps = estimates.get(d.id) ?? [];
+      const last = steps[steps.length - 1];
+      if (last?.estimate.magnitude !== estimate.magnitude || last.estimate.complete !== estimate.complete) {
+        steps.push({ atMs: arrivedAtMs, estimate });
+      }
+      estimates.set(d.id, steps);
+    }
+  }
 
   // Cached per case: the window is in the past, and a sweep re-grades the same
   // case many times.
@@ -310,7 +382,73 @@ async function runCase(c: Case, list: WaveformStation[]): Promise<CaseResult> {
   }
   const grade = gradeDetections(detections, catalogue);
   const targetMatch = c.target === null ? null : (grade.matched.find((m) => m.quake.id === c.target?.id) ?? null);
-  return { c, stationsWithData: new Set(records.map((r) => r.channelId)).size, badRecords, detections, grade, targetMatch };
+  const magnitudeSeries: MagnitudeStep[] =
+    targetMatch === null
+      ? []
+      : (estimates.get(targetMatch.detection.id) ?? []).map(({ atMs, estimate }) => ({
+          afterOriginS: (atMs - targetMatch.quake.originMs) / 1000,
+          magnitude: estimate.magnitude,
+          stations: estimate.stations.length,
+          complete: estimate.complete,
+        }));
+  const targetAlert = targetMatch === null ? null : alerter.alertFor(targetMatch.detection.id);
+  const feltAtHome = c.target !== null && !c.set.startsWith('tele') ? await feltReport(c.target.id) : null;
+  return {
+    c,
+    stationsWithData: new Set(records.map((r) => r.channelId)).size,
+    badRecords,
+    detections,
+    grade,
+    targetMatch,
+    magnitudeSeries,
+    alerts,
+    targetAlert,
+    feltAtHome,
+  };
+}
+
+/**
+ * What people at home reported feeling, from the event's DYFI ZIP-code table,
+ * cached per event. The grade for the alert: an alert is right when home felt
+ * it at that level. DYFI skews high where only a handful wrote in — people who
+ * felt nothing rarely report — so the count is always shown beside it.
+ */
+async function feltReport(eventId: string): Promise<FeltReport> {
+  const path = join(CACHE, 'dyfi', `${eventId}.json`);
+  const cached = readJson<FeltReport>(path);
+  if (cached) return cached;
+  const res = await fetch(`https://earthquake.usgs.gov/fdsnws/event/1/query?eventid=${eventId}&format=geojson`);
+  const event = (await res.json()) as { properties: { products?: { dyfi?: { contents: Record<string, { url: string }> }[] } } };
+  const url = event.properties.products?.dyfi?.[0]?.contents['cdi_zip.txt']?.url;
+  let weighted = 0;
+  let reports = 0;
+  if (url !== undefined) {
+    for (const line of (await (await fetch(url)).text()).split('\n')) {
+      if (line.startsWith('#')) continue;
+      // ZIP, CDI, number of responses, ... — the ZIP is quoted.
+      const [zip = '', cdi = '', count = ''] = line.split(',').map((f) => f.trim().replace(/^"|"$/g, ''));
+      if (!HOME_ZIPS.has(zip)) continue;
+      weighted += Number(cdi) * Number(count);
+      reports += Number(count);
+    }
+  }
+  const report: FeltReport = { intensity: reports > 0 ? weighted / reports : null, reports };
+  mkdirSync(join(CACHE, 'dyfi'), { recursive: true });
+  writeJson(path, report);
+  return report;
+}
+
+function minIntensity(): number {
+  const value = Number(arg('min-intensity') ?? DEFAULT_ALERT_RULE.minIntensity);
+  if (!Number.isFinite(value)) throw new Error('--min-intensity must be a number');
+  return value;
+}
+
+/** Warning before strong shaking at home, by the true origin and location. */
+function alertWarningS(r: CaseResult): number | null {
+  if (r.targetAlert === null || r.c.target === null) return null;
+  const sArrivalS = Math.hypot(haversineKm(r.c.target, HOME), DEPTH_KM) / S_VELOCITY_KM_S;
+  return sArrivalS - (r.targetAlert.alertedAtMs - r.c.target.originMs) / 1000;
 }
 
 /** Seconds between the alert and strong (S-wave) shaking reaching home. */
@@ -324,6 +462,7 @@ function detectorParams(): DetectorParams {
   const params: DetectorParams = {
     picker: { ...DEFAULT_DETECTOR_PARAMS.picker },
     associator: { ...DEFAULT_DETECTOR_PARAMS.associator },
+    magnitude: { ...DEFAULT_DETECTOR_PARAMS.magnitude },
   };
   process.argv.forEach((token, i) => {
     if (token !== '--param') return;
@@ -336,6 +475,45 @@ function detectorParams(): DetectorParams {
     target[key] = Number(value);
   });
   return params;
+}
+
+/** "home MMI 3.4, ALERT 12.0 s before S; Burbank reported 3.8 (404)". */
+function alertSummary(r: CaseResult): string {
+  const last = r.magnitudeSeries[r.magnitudeSeries.length - 1];
+  const predicted = last === undefined || r.targetMatch === null ? null : predictedAtHome(r.targetMatch.detection, last.magnitude);
+  const head = `home MMI ${predicted === null ? '-' : fmt(predicted)}`;
+  const warning = alertWarningS(r);
+  const alert = warning === null ? 'no alert' : `ALERT ${fmt(warning)} s before S`;
+  const felt = r.feltAtHome;
+  const reported = felt === null || felt.intensity === null ? 'none reported' : `reported ${fmt(felt.intensity)} (${String(felt.reports)})`;
+  return `${head}, ${alert}; home ${reported}`;
+}
+
+function predictedAtHome(at: { latitude: number; longitude: number }, magnitude: number): number {
+  return new HomeAlerter(HOME, { minIntensity: Number.POSITIVE_INFINITY }, { depthKm: DEPTH_KM, sVelocityKmS: S_VELOCITY_KM_S }).intensityAtHome(at, magnitude);
+}
+
+/** The target's estimate N seconds after declaration (the last change at or before then). */
+function stepAt(r: CaseResult, afterDeclarationS: number): MagnitudeStep | null {
+  if (r.targetMatch === null) return null;
+  const at = r.targetMatch.declaredAfterOriginS + afterDeclarationS;
+  let found: MagnitudeStep | null = null;
+  for (const step of r.magnitudeSeries) if (step.afterOriginS <= at + 1e-9) found = step;
+  return found;
+}
+
+/** "4.1 -> 4.3 -> 4.4": at declaration, 5 s later, final. */
+function magnitudeTrail(r: CaseResult): string {
+  const final = r.magnitudeSeries[r.magnitudeSeries.length - 1] ?? null;
+  return [stepAt(r, 0), stepAt(r, 5), final].map((s) => (s === null ? '-' : fmt(s.magnitude))).join(' -> ');
+}
+
+/** Catalogue minus estimate: mean, sd, and the count it was taken over. */
+function residualSummary(residuals: number[]): string {
+  if (residuals.length === 0) return 'no estimates';
+  const mean = residuals.reduce((a, b) => a + b, 0) / residuals.length;
+  const sd = Math.sqrt(residuals.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, residuals.length - 1));
+  return `residual (catalogue - estimate) mean ${fmt(mean, 2)}, sd ${fmt(sd, 2)}, n=${String(residuals.length)}`;
 }
 
 function fmt(n: number, digits = 1): string {
@@ -353,6 +531,7 @@ async function main(): Promise<void> {
   mkdirSync(CACHE, { recursive: true });
 
   const list = await stations();
+  const gains = await gainEpochs(list);
   const all = await cases();
   const chosen = all.filter((c) => c.set === set).slice(0, limit);
   console.log(`${String(list.length)} stations within ${String(STATION_RADIUS_KM)} km of ${HOME.label}; ${String(chosen.length)} '${set}' cases\n`);
@@ -360,7 +539,7 @@ async function main(): Promise<void> {
   const results: CaseResult[] = [];
   for (const c of chosen) {
     const t = performance.now();
-    const r = await runCase(c, list);
+    const r = await runCase(c, list, gains);
     results.push(r);
     const secs = fmt((performance.now() - t) / 1000);
     const head = `${c.label.padEnd(52).slice(0, 52)} ${String(r.stationsWithData).padStart(3)} stns`;
@@ -368,11 +547,13 @@ async function main(): Promise<void> {
     if (c.set === 'tele' || c.set === 'tele-heldout' || c.set === 'random') {
       verdict = r.grade.spurious.length === 0 ? 'no false alarm' : `${String(r.grade.spurious.length)} FALSE ALARM(S)`;
       verdict += `, ${String(r.grade.matched.length)} small local quakes detected`;
+      if (r.alerts.length > 0) verdict += `; ${String(r.alerts.length)} HOME ALERT(S)`;
     } else if (r.targetMatch) {
       const m = r.targetMatch;
       verdict =
         `declared +${fmt(m.declaredAfterOriginS)} s, ${fmt(m.locationErrorKm, 0)} km off, ` +
-        `${String(m.detection.picks.length)} stns; warning at home ${fmt(warningAtHomeS(m))} s` +
+        `${String(m.detection.picks.length)} stns; warning at home ${fmt(warningAtHomeS(m))} s; ` +
+        `M ${magnitudeTrail(r)} (cat ${fmt(m.quake.magnitude)}); ${alertSummary(r)}` +
         (r.grade.spurious.length > 0 ? `; ${String(r.grade.spurious.length)} false` : '');
     } else {
       verdict = `MISSED${r.grade.spurious.length > 0 ? `; ${String(r.grade.spurious.length)} false` : ''}`;
@@ -397,7 +578,35 @@ async function main(): Promise<void> {
     console.log(
       `${String(hits.length)}/${String(targets.length)} target quakes detected; median declared +${fmt(latencies[Math.floor(latencies.length / 2)] ?? Number.NaN)} s after origin`,
     );
+    const moments: [string, (r: CaseResult) => MagnitudeStep | null][] = [
+      ['at declaration', (r) => stepAt(r, 0)],
+      ['5 s after', (r) => stepAt(r, 5)],
+      ['final', (r) => r.magnitudeSeries[r.magnitudeSeries.length - 1] ?? null],
+    ];
+    for (const [label, pickStep] of moments) {
+      const residuals = hits.flatMap((r) => {
+        const step = pickStep(r);
+        return step === null || r.targetMatch === null ? [] : [r.targetMatch.quake.magnitude - step.magnitude];
+      });
+      console.log(`magnitude ${label.padEnd(15)} ${residualSummary(residuals)}`);
+    }
+
+    // The alert against what home felt. "Felt" means reported at or above the
+    // threshold; a quake with no reports from home counts as not felt there.
+    const threshold = minIntensity();
+    const felt = (r: CaseResult): boolean => (r.feltAtHome?.intensity ?? 0) >= threshold;
+    const alerted = targets.filter((r) => r.targetAlert !== null);
+    const warnings = alerted.map((r) => alertWarningS(r) as number).sort((a, b) => a - b);
+    console.log(
+      `\nalert at predicted MMI >= ${fmt(threshold)} at home: ${String(alerted.length)} alerted; ` +
+        `felt at that level and alerted ${String(alerted.filter(felt).length)}, ` +
+        `felt but not alerted ${String(targets.filter((r) => felt(r) && r.targetAlert === null).length)}, ` +
+        `alerted but not felt ${String(alerted.filter((r) => !felt(r)).length)}`,
+    );
+    if (warnings.length > 0) console.log(`warning before S at home, alerted quakes: ${warnings.map((w) => fmt(w)).join(', ')} s`);
   }
+  const falseAlerts = results.reduce((n, r) => n + r.alerts.filter((a) => a.eventId !== r.targetMatch?.detection.id).length, 0);
+  console.log(`${String(falseAlerts)} home alert(s) from detections other than the target`);
   writeJson(join(CACHE, `results-${set}.json`), results.map((r) => ({ ...r, detections: r.detections.length })));
 }
 
