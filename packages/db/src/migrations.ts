@@ -572,4 +572,20 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    id: 14,
+    name: 'forget_donki_api_key',
+    // Removes a saved NASA DONKI API key.
+    //
+    // DONKI moved to CCMC's own endpoint on 2026-09-30, which takes no key, so
+    // the app stopped asking for one and nothing reads `nasa_donki_api_key`
+    // any more. A credential nobody uses is not worth keeping on disk: left
+    // here it would survive in every `VACUUM INTO` backup for no purpose.
+    //
+    // Deletes only, so the create-copy-drop-rename pattern at the top of this
+    // file doesn't apply.
+    sql: `
+      DELETE FROM app_state WHERE key = 'nasa_donki_api_key';
+    `,
+  },
 ];

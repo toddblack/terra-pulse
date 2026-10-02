@@ -56,14 +56,6 @@ export type LocationSelection = { latitude: number; longitude: number } & (
 );
 
 /**
- * What the DONKI key modal should do once a key is saved — it opens from two
- * places (the archive panel's Download button, and turning on the solar-flares
- * or CME-arrivals layer with no key configured), each wanting a different
- * next step, so the trigger carries which.
- */
-export type DonkiKeyModalTrigger = { kind: 'download' } | { kind: 'enable-layer'; layerId: string };
-
-/**
  * A flare or CME arrival marker the user clicked.
  *
  * Its own slot rather than reusing `LocationSelection`: that one carries a
@@ -90,7 +82,6 @@ const DONKI_IDLE: DonkiProgress = {
   currentYear: null,
   error: null,
   retryAtUtc: null,
-  hasApiKey: false,
 };
 
 interface GlobeState {
@@ -174,18 +165,12 @@ interface GlobeState {
   /**
    * Latest DONKI backfill/poll status, pushed from main.
    *
-   * Centralised here rather than held locally by `DonkiArchive` because the
-   * layer toggles need to read `hasApiKey` too, to gate turning on the
-   * solar-flares/CME-arrivals layers — the same reason `auroraGrid` and
-   * `magnetometerReadings` live here instead of in whichever panel happened
-   * to first need them.
+   * Centralised here because the layer toggles once read it too, to gate the
+   * solar layers on a NASA key. That gate went with the key (DONKI's endpoint
+   * has been keyless since 2026-09-30), so only `DonkiArchive` reads this
+   * now; it stays here because moving it would be churn for no gain.
    */
   donkiProgress: DonkiProgress;
-  /**
-   * Which action the DONKI key modal should take once a key is saved, or
-   * null when the modal is closed. See `DonkiKeyModalTrigger`.
-   */
-  donkiKeyModalTrigger: DonkiKeyModalTrigger | null;
 
   /**
    * Which inspector sections are expanded, by section id.
@@ -226,8 +211,6 @@ interface GlobeState {
   openGuide: (layerId: string) => void;
   closeGuide: () => void;
   setDonkiProgress: (progress: DonkiProgress) => void;
-  openDonkiKeyModal: (trigger: DonkiKeyModalTrigger) => void;
-  closeDonkiKeyModal: () => void;
 }
 
 /**
@@ -266,7 +249,6 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   tecQuantity: 'tec',
   openGuideLayerId: null,
   donkiProgress: DONKI_IDLE,
-  donkiKeyModalTrigger: null,
 
   setActiveBasemap: (id) => set({ activeBasemapId: id }),
 
@@ -304,8 +286,6 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   closeGuide: () => set({ openGuideLayerId: null }),
 
   setDonkiProgress: (donkiProgress) => set({ donkiProgress }),
-  openDonkiKeyModal: (donkiKeyModalTrigger) => set({ donkiKeyModalTrigger }),
-  closeDonkiKeyModal: () => set({ donkiKeyModalTrigger: null }),
 
   /**
    * Absent means collapsed, so the first click on an untouched section opens

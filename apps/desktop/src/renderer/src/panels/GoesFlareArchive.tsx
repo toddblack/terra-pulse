@@ -35,11 +35,11 @@ function describe(progress: GoesFlareProgress): string {
  * earthquake archive, space weather and DONKI. Independent of all three:
  * separate source, separate download, separate failure mode.
  *
- * **Holds its own state rather than using the store**, unlike `DonkiArchive`.
- * That panel shares `donkiProgress` because `LayerPanel` also needs its
- * `hasApiKey` to gate two layer toggles. Nothing outside this panel needs
- * anything from this backfill, so it follows the simpler `ArchivePanel` idiom
- * — one subscription, local state, no store entry.
+ * **Holds its own state rather than using the store**, unlike `DonkiArchive`,
+ * whose store entry dates from a key gate that no longer exists. Nothing
+ * outside this panel needs anything from this backfill, so it follows the
+ * simpler `ArchivePanel` idiom — one subscription, local state, no store
+ * entry.
  *
  * **Why it is a download rather than automatic**: 21 requests and ~2.7 MB is
  * cheap enough to argue either way, but every other historical record in this

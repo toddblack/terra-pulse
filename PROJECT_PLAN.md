@@ -132,7 +132,7 @@ All free, all confirmed available.
 |---|---|---|
 | NOAA SWPC products | `services.swpc.noaa.gov/products/` | JSON: `alerts.json`, `noaa-planetary-k-index.json`, `kyoto-dst.json`, `10cm-flux-30-day.json`, `flares/` |
 | NOAA SWPC event reports | Solar and Geophysical Event Reports | Forecaster-edited flare/event lists, 30-min updates. |
-| NASA DONKI | `api.nasa.gov/DONKI/` | Structured CME/flare records **with predicted Earth-impact timing** — critical for lag analysis. Free API key. |
+| NASA DONKI | `ccmc.gsfc.nasa.gov/DONKI-API/get/` (moved from `api.nasa.gov/DONKI/` 2026-09-30) | Structured CME/flare records **with predicted Earth-impact timing** — critical for lag analysis. No key (one was required until the move). |
 | NOAA solar wind | Real-time solar wind (DSCOVR/ACE/IMAP) | 24h rolling JSON: IMF, plasma. |
 
 ### Geomagnetic — Spatially Resolved
@@ -1146,8 +1146,9 @@ Local-first architecture removes most of the attack surface:
 - **Electron hardening:** `contextIsolation: true`, `nodeIntegration: false`,
   all IPC through an explicit preload bridge with a minimal allowlist
 - **CSP** restricting network access to known data-source domains
-- **API keys** (NASA DONKI, Cesium Ion, Mapbox) stored in the main process, never
-  exposed to the renderer
+- **API keys** (if any source ever needs one again — none does since DONKI went
+  keyless on 2026-09-30) stored in the main process, never exposed to the
+  renderer
 - **Input validation** on all ingested data before it reaches SQLite —
   parameterized queries only
 - **Dependency auditing** in CI
@@ -1188,10 +1189,9 @@ server-side proxying of all third-party API calls.
 
 ### Phase 3 — Solar & Geomagnetic Data
 - ~~NOAA SWPC and NASA DONKI adapters~~ — **shipped, both.** DONKI backfill/poll
-  for solar flares and CME arrivals, gated behind a required personal API key
-  (NASA's shared `DEMO_KEY` turned out unreliable enough in real use — see
-  `packages/ingest/src/nasa-donki.ts` — that the app no longer depends on it at
-  all rather than trying to paper over it).
+  for solar flares and CME arrivals. Gated behind a required personal NASA API
+  key until 2026-09-30, when DONKI moved to CCMC's keyless endpoint; the key,
+  its modal and its storage were removed then, so every source is keyless.
 - ~~Auroral ovals~~ — **shipped.** OVATION Prime, polled every 5 min in main,
   drawn as a transparent raster. Not persisted: it is a forecast of a transient.
 - **Geomagnetic main field (IGRF-14)** — **shipped**, not originally in this

@@ -2440,7 +2440,7 @@ adopts an already-running engine on 127.0.0.1:8787 (the normal dev loop — run
 `pnpm engine:dev` in a second terminal) or spawns one itself; either way,
 failure is a typed status (`python-not-found`, `start-timeout`,
 `contract-mismatch`, `crashed`, ...) pushed to the renderer, never a crash —
-same posture as a missing DONKI key. Analyze mode stays visible even when the
+the posture a missing DONKI key once had. Analyze mode stays visible even when the
 engine is unavailable, because a hidden feature is a second code path nobody
 exercises.
 
@@ -3833,6 +3833,24 @@ rules come out of it and constrain what may be added:
    doesn't. An optional *API key* with a working fallback is fine; a mandatory
    *account* is not.
 
+**DONKI moved on 2026-09-30 and went keyless, so every source here is
+keyless.** CCMC retired `api.nasa.gov/DONKI`; both old bases now 301 to an HTML
+page, which `fetch` follows — the symptom was `Unexpected token '<'` on every
+poll. The new base (`ccmc.gsfc.nasa.gov/DONKI-API/get`) was checked against
+stored data before switching (May 2024: 181/181 flares, 52/52 arrivals,
+identical) — **but "parameters unchanged" was not the whole story: it caps a
+request at 60 days**, unannounced, and the backfill and lazy query ask for a
+year. Both checks had happened to ask for a month, so the first fix shipped
+with every year fetch answering 400; found by the user opening the app. The
+adapter now splits ranges into ≤60-day windows that share no boundary day
+(both dates are inclusive — measured), and a full 2024 matches the stored copy
+exactly. **Verify a moved endpoint with the request shapes the app actually
+sends, not a convenient sample.** It takes no key, so the personal-key requirement — DONKI's one
+exception to rule 2 — went with it: the key modal, `hasApiKey`, the layer and
+download gates, `app_state` storage (migration 14 deletes a saved key) and
+`api.nasa.gov` on the external-link allowlist. A non-JSON reply now names
+what arrived and from where, because a redirect to a page answers 200.
+
 **SuperMAG was evaluated and rejected on rule 2** despite being the best archive
 source technically (~180 stations, uniform processing, baseline-subtracted). Its
 rules also forbid redistribution outright, so no sample database could ever
@@ -3846,7 +3864,7 @@ and for what INTERMAGNET's attribution obliges.
 | Live quakes | `earthquake.usgs.gov/earthquakes/feed/v1.0/summary/` |
 | Historical quakes | `earthquake.usgs.gov/fdsnws/event/1/query` |
 | Space weather JSON | `services.swpc.noaa.gov/products/` |
-| CME/flare + arrival times | `api.nasa.gov/DONKI/` (free key) |
+| CME/flare + arrival times | `ccmc.gsfc.nasa.gov/DONKI-API/get/` (moved 2026-09-30; no key needed) |
 | Magnetometers | INTERMAGNET, SuperMAG (registration) |
 | Satellite imagery | NASA GIBS (no key) — `BlueMarble_ShadedRelief_Bathymetry` |
 | Bathymetry | GEBCO via BODC WMS, `wms.gebco.net` (no key) |

@@ -1,17 +1,20 @@
 import { ipcMain, shell } from 'electron';
 
 /**
- * Hosts the renderer is allowed to ask the OS to open: USGS event pages, and
- * `api.nasa.gov` for the DONKI "get a key" button; anything else is a bug or
- * an attempt.
+ * Hosts the renderer is allowed to ask the OS to open: USGS event pages;
+ * anything else is a bug or an attempt.
  *
- * The URLs in question come from USGS data we fetched ourselves or are a
- * fixed literal in the DONKI key modal, so this isn't guarding against a
- * hostile source so much as making the boundary do its job:
+ * `api.nasa.gov` used to be here too, for the DONKI key modal's "get a key"
+ * button. DONKI went keyless on 2026-09-30 and the modal went with it; a host
+ * nothing links to is only surface, so it was removed rather than left.
+ *
+ * The URLs in question come from USGS data we fetched ourselves, so this
+ * isn't guarding against a hostile source so much as making the boundary do
+ * its job:
  * `shell.openExternal` hands a string to the operating system, and an
  * unvalidated one can carry non-http schemes that launch local programs.
  */
-const ALLOWED_HOSTS = new Set(['earthquake.usgs.gov', 'api.nasa.gov']);
+const ALLOWED_HOSTS = new Set(['earthquake.usgs.gov']);
 
 export function isAllowedExternalUrl(rawUrl: string): boolean {
   let url: URL;

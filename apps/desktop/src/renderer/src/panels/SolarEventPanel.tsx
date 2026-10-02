@@ -20,11 +20,10 @@ function formatUtc(iso: string): string {
  * reusing the coordinate-driven panel (it would run a fault/recurrence lookup
  * against wherever the Sun happened to be overhead, which answers nothing).
  *
- * No link out to DONKI's own record — `main/ipc/external-links.ts`'s
- * allowlist covers `api.nasa.gov`, but the `link` field these payloads carry
- * points at `webtools.ccmc.gsfc.nasa.gov`, a different host. Widening the
- * allowlist for one field in a brand-new panel is its own decision; left out
- * rather than shipping a button that silently does nothing.
+ * No link out to DONKI's own record — the `link` field these payloads carry
+ * points at `webtools.ccmc.gsfc.nasa.gov`, which `main/ipc/external-links.ts`
+ * does not allow. Widening the allowlist for one field is its own decision;
+ * left out rather than shipping a button that silently does nothing.
  */
 export function SolarEventPanel() {
   const selection = useGlobeStore((state) => state.selectedSolarEvent);

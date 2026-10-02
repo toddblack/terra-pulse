@@ -9,9 +9,7 @@ import {
   insertSolarFlares,
   queryCmeArrivals,
   querySolarFlares,
-  readDonkiApiKey,
   recordDonkiChunk,
-  saveDonkiApiKey,
   type DonkiSource,
 } from '@terra-pulse/db';
 
@@ -26,8 +24,9 @@ const CHUNK_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 1_000;
 
 /**
- * A minute of slack past NASA's documented hourly window, since the exact
- * reset semantics for the shared key aren't documented.
+ * How long a 429 pauses the backfill. Set when DONKI sat behind NASA's API
+ * gateway, which documented an hourly window; CCMC's keyless endpoint
+ * documents no limit at all, so this is only a polite wait if one appears.
  */
 const RATE_LIMIT_RETRY_DELAY_MS = 61 * 60_000;
 
@@ -39,49 +38,6 @@ const LAZY_FETCH_MAX_MISSING_YEARS = 2;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * The key a DONKI request would use — `null` when none is configured.
- *
- * **There is no shared-key fallback, by product decision, not because
- * `DEMO_KEY` was proven broken.** Real testing did turn up `403 Forbidden` on
- * every request, which looked at first like the shared key being unreliable
- * — but the actual cause was this function: `NASA_DONKI_API_KEY=` with no
- * value in `.env` resolves to `''`, not `undefined`, and the original `??`
- * chain happily returned that empty string as "the key", sending a blank
- * `api_key` to NASA. **That is what a 403 looks like for a bad credential —
- * every 403 seen so far is fully explained by this, and DEMO_KEY was never
- * actually confirmed broken.** The fix below treats blank the same as unset.
- * Independent of that bug, the product decision stands: these features
- * require a personal key rather than the shared one, for headroom (2,500
- * requests/hour instead of 10) and to not depend on a resource shared with
- * every other tutorial and demo that hardcodes `DEMO_KEY`. Every call site
- * below checks for `null` and does nothing rather than substituting a key
- * nobody asked for.
- *
- * `app_state` wins over `.env` because it's the only mechanism that survives
- * packaging — `dotenv.config()`'s path resolves relative to the main process
- * bundle's own location, which only lands on the repo's `.env` in dev.
- *
- * Read **inside** this function, called at request time, rather than cached
- * as a module-level constant: `main/index.ts` calls `dotenv.config()` in its
- * own top-level body, but ES module imports are fully evaluated before an
- * importing module's own statements run — so a constant here, evaluated at
- * import time, would have read `process.env` before `.env` was loaded and
- * silently frozen on `undefined` for the life of the process.
- */
-function donkiApiKey(db: DatabaseSync): string | null {
-  const saved = readDonkiApiKey(db);
-  if (saved !== null) return saved;
-
-  // `??` alone isn't enough here: `NASA_DONKI_API_KEY=` with no value in
-  // `.env` makes this `''`, not `undefined` — an empty string that `??`
-  // would happily return as "the key", sending a blank `api_key` to NASA
-  // (a 403, correctly) while `hasApiKey` reported true and nothing ever
-  // gated. Blank and unset must resolve the same way: no key.
-  const fromEnv = process.env['NASA_DONKI_API_KEY']?.trim();
-  return fromEnv ? fromEnv : null;
 }
 
 export class DonkiCancelledError extends Error {
@@ -112,8 +68,8 @@ function isYearFinal(year: number, now: Date): boolean {
  * callers.
  *
  * Keyed by `${source}:${year}` so a bulk backfill and an on-demand query
- * wanting the same year don't double-spend the shared key's rate limit — the
- * second caller just awaits the first's in-flight promise. Module-level
+ * wanting the same year don't fetch it twice — the second caller just awaits
+ * the first's in-flight promise. Module-level
  * because both the backfill controller and the lazy query handlers below
  * need to share it.
  */
@@ -124,17 +80,16 @@ async function fetchAndStoreYear(
   year: number,
   source: DonkiSource,
   canRecord: boolean,
-  apiKey: string,
 ): Promise<void> {
   const startUtc = new Date(`${String(year)}-01-01T00:00:00.000Z`);
   const endUtc = new Date(`${String(year + 1)}-01-01T00:00:00.000Z`);
 
   if (source === 'flares') {
-    const flares = await fetchSolarFlares(startUtc, endUtc, apiKey);
+    const flares = await fetchSolarFlares(startUtc, endUtc);
     insertSolarFlares(db, flares);
     if (canRecord) recordDonkiChunk(db, year, source, flares.length);
   } else {
-    const arrivals = await fetchCmeArrivals(startUtc, endUtc, apiKey);
+    const arrivals = await fetchCmeArrivals(startUtc, endUtc);
     insertCmeArrivals(db, arrivals);
     if (canRecord) recordDonkiChunk(db, year, source, arrivals.length);
   }
@@ -145,13 +100,12 @@ function fetchYearOnce(
   year: number,
   source: DonkiSource,
   canRecord: boolean,
-  apiKey: string,
 ): Promise<void> {
   const key = `${source}:${String(year)}`;
   const existing = inFlightYearFetches.get(key);
   if (existing) return existing;
 
-  const promise = fetchAndStoreYear(db, year, source, canRecord, apiKey).finally(() => {
+  const promise = fetchAndStoreYear(db, year, source, canRecord).finally(() => {
     inFlightYearFetches.delete(key);
   });
   inFlightYearFetches.set(key, promise);
@@ -176,7 +130,7 @@ export interface DonkiController {
  * here the way it very nearly failed to for OMNI).
  *
  * Flares first: the smaller, cheaper fetch, and useful sooner if the run is
- * interrupted or the shared key's rate limit is hit partway through.
+ * interrupted or rate-limited partway through.
  */
 export function createDonkiController(
   db: DatabaseSync,
@@ -208,7 +162,6 @@ export function createDonkiController(
       currentYear,
       error,
       retryAtUtc,
-      hasApiKey: donkiApiKey(db) !== null,
     };
   }
 
@@ -229,19 +182,11 @@ export function createDonkiController(
    * upsert makes a refetch harmless.
    */
   async function runYear(year: number, source: DonkiSource, canRecord: boolean): Promise<void> {
-    // Not transient, so not retried — same reasoning as the rate-limit branch
-    // below. The renderer gates Download/Resume on having a key at all, so
-    // this is a defensive check rather than an expected path.
-    const apiKey = donkiApiKey(db);
-    if (apiKey === null) {
-      throw new Error('No personal DONKI API key configured');
-    }
-
     let lastError: unknown;
     for (let attempt = 1; attempt <= CHUNK_ATTEMPTS; attempt++) {
       if (signal.aborted) throw new DonkiCancelledError();
       try {
-        await fetchYearOnce(db, year, source, canRecord, apiKey);
+        await fetchYearOnce(db, year, source, canRecord);
         return;
       } catch (caught: unknown) {
         if (caught instanceof DonkiRateLimitError) throw caught;
@@ -395,11 +340,6 @@ function yearsInRange(startUtc: string, endUtc: string): number[] {
  * a background fetch failing must never break "just show me the layer", the
  * same way a magnetometer station with no reading draws as absent rather
  * than as an error.
- *
- * With no key configured this is a silent no-op — an unconfigured feature
- * isn't a failure, so it logs nothing. The layer just shows whatever's
- * already cached (usually nothing); the layer-toggle gate in the renderer is
- * what actually tells the user a key is needed.
  */
 async function ensureCoverage(
   db: DatabaseSync,
@@ -408,9 +348,6 @@ async function ensureCoverage(
   endUtc: string,
   at: Date,
 ): Promise<void> {
-  const apiKey = donkiApiKey(db);
-  if (apiKey === null) return;
-
   const done = completedDonkiYears(db, source);
   const missing = yearsInRange(startUtc, endUtc).filter((year) => !done.has(year));
 
@@ -418,7 +355,7 @@ async function ensureCoverage(
 
   await Promise.all(
     missing.map((year) =>
-      fetchYearOnce(db, year, source, isYearFinal(year, at), apiKey).catch((caught: unknown) => {
+      fetchYearOnce(db, year, source, isYearFinal(year, at)).catch((caught: unknown) => {
         console.error(`DONKI lazy fetch failed for ${source} ${String(year)} (will retry later)`, caught);
       }),
     ),
@@ -428,7 +365,6 @@ async function ensureCoverage(
 export function registerDonkiIpcHandlers(
   db: DatabaseSync,
   controller: DonkiController,
-  onUpdated: () => void,
   now: () => Date = () => new Date(),
 ): void {
   ipcMain.handle(
@@ -453,20 +389,6 @@ export function registerDonkiIpcHandlers(
     return controller.status();
   });
 
-  // Never receives an existing key back — only `hasApiKey` crosses IPC for
-  // that, so there is nothing to mask. Saving switches subsequent requests
-  // (poll, lazy fetch and backfill alike) onto the personal key.
-  ipcMain.handle('solar-events:save-api-key', (_event, key: unknown): DonkiProgress => {
-    if (typeof key !== 'string') throw new Error('DONKI API key must be a string');
-    saveDonkiApiKey(db, key);
-    // A query made before a key existed came back empty and has no reason to
-    // run again on its own — `useSolarEvents` only re-queries on a window
-    // change or this same signal, which is otherwise just the 30-minute
-    // poll. Without this, a layer enabled right after saving a key would sit
-    // blank until one of those happens to fire.
-    onUpdated();
-    return controller.status();
-  });
 }
 
 /**
@@ -488,18 +410,14 @@ export function startDonkiPolling(
 
   const tick = () => {
     if (inFlight) return;
-    // Nothing to poll with — a silent skip, not a failed poll. Retried next
-    // interval automatically once a key exists; no error to log.
-    const apiKey = donkiApiKey(db);
-    if (apiKey === null) return;
 
     inFlight = true;
     const endUtc = new Date();
     const startUtc = new Date(endUtc.getTime() - POLL_WINDOW_MS);
 
     void Promise.allSettled([
-      fetchSolarFlares(startUtc, endUtc, apiKey),
-      fetchCmeArrivals(startUtc, endUtc, apiKey),
+      fetchSolarFlares(startUtc, endUtc),
+      fetchCmeArrivals(startUtc, endUtc),
     ]).then((results) => {
       inFlight = false;
       if (stopped) return;

@@ -16,8 +16,6 @@ export {
   writeSeenThrough,
   readAppState,
   writeAppState,
-  readDonkiApiKey,
-  saveDonkiApiKey,
 } from './app-state';
 export type { CatalogSignature } from './queries';
 export {
