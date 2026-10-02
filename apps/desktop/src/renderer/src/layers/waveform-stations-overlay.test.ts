@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type * as Cesium from 'cesium';
-import { createWaveformStationsOverlay, waveformStationEntityId } from './waveform-stations-overlay';
+import { JulianDate } from 'cesium';
+import {
+  createWaveformStationsOverlay,
+  waveformStationEntityId,
+  waveformStationKey,
+} from './waveform-stations-overlay';
 
 /**
  * The markers are drawn to canvases, and the node environment has none — the
@@ -71,6 +76,62 @@ describe('waveform stations overlay', () => {
     overlay.update([RATT, ADO], null);
     overlay.update([RATT], null);
     expect(added[0]!.entities.values).toHaveLength(1);
+  });
+
+  describe('highlighting a hovered row', () => {
+    const now = new JulianDate();
+    function look(source: Cesium.CustomDataSource, station: typeof RATT) {
+      const entity = source.entities.getById(waveformStationEntityId(station))!;
+      return {
+        width: entity.billboard!.width!.getValue(now) as number,
+        alpha: (entity.billboard!.color!.getValue(now) as Cesium.Color).alpha,
+        labelAlpha: (entity.label!.fillColor!.getValue(now) as Cesium.Color).alpha,
+      };
+    }
+
+    it('grows the hovered marker and fades the others', () => {
+      const { viewer, added } = createFakeViewer();
+      const overlay = createWaveformStationsOverlay(viewer);
+      overlay.update([RATT, ADO], null);
+      overlay.setHighlighted(waveformStationKey(RATT));
+
+      const hovered = look(added[0]!, RATT);
+      const other = look(added[0]!, ADO);
+      expect(hovered.width).toBeGreaterThan(other.width);
+      expect(hovered.alpha).toBe(1);
+      expect(other.alpha).toBeLessThan(1);
+      // The label fades with its marker, or a dimmed triangle keeps a loud name.
+      expect(other.labelAlpha).toBeLessThan(1);
+    });
+
+    it('restores every marker when the hover clears', () => {
+      const { viewer, added } = createFakeViewer();
+      const overlay = createWaveformStationsOverlay(viewer);
+      overlay.update([RATT, ADO], null);
+      const before = look(added[0]!, ADO);
+      overlay.setHighlighted(waveformStationKey(RATT));
+      overlay.setHighlighted(null);
+
+      expect(look(added[0]!, RATT)).toEqual(before);
+      expect(look(added[0]!, ADO)).toEqual(before);
+    });
+
+    it('restyles in place rather than rebuilding the markers', () => {
+      const { viewer, added } = createFakeViewer();
+      const overlay = createWaveformStationsOverlay(viewer);
+      overlay.update([RATT, ADO], null);
+      const entity = added[0]!.entities.getById(waveformStationEntityId(RATT));
+      overlay.setHighlighted(waveformStationKey(RATT));
+      expect(added[0]!.entities.getById(waveformStationEntityId(RATT))).toBe(entity);
+    });
+
+    it('keeps the highlight across an update of the stations', () => {
+      const { viewer, added } = createFakeViewer();
+      const overlay = createWaveformStationsOverlay(viewer);
+      overlay.setHighlighted(waveformStationKey(ADO));
+      overlay.update([RATT, ADO], null);
+      expect(look(added[0]!, ADO).width).toBeGreaterThan(look(added[0]!, RATT).width);
+    });
   });
 
   it('removes and destroys its data source on destroy (non-negotiable #5)', async () => {

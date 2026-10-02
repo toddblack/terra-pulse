@@ -1,0 +1,241 @@
+/**
+ * Per-station P-wave trigger: a high-pass filter, then a recursive STA/LTA.
+ *
+ * The first stage of the early-warning detector (see `quake-detector.ts`). It
+ * answers one question per station — "did the ground just start moving much
+ * harder than it has been?" — and reports the instant it did. Whether that was
+ * an earthquake is not its call: a passing truck, a door slam or a data glitch
+ * all trigger one station, and it is the associator's job to require several
+ * stations to agree before anything is believed.
+ *
+ * **Raw counts are fine here, and that is why STA/LTA is the right tool for a
+ * first pass.** It is a ratio of a signal's energy to its own recent energy,
+ * so the instrument gain cancels: a broadband at ~20,000 counts per µm/s and a
+ * short-period at ~400 trigger on the same relative change. Magnitude needs
+ * real units and will need the gains; detection does not.
+ *
+ * Nothing here is a registered analysis parameter. These are engineering
+ * constants for a detector, tuned against archived data — and tuned only on
+ * the tuning half of the replay set, never on the half it is graded on.
+ */
+
+export interface PickerParams {
+  /**
+   * High-pass corner, Hz. Removes ocean microseism (0.1-0.5 Hz), which
+   * dominates a quiet broadband and says nothing about a local quake — and,
+   * set high enough, the low-frequency P waves of distant great quakes too,
+   * which was the larger effect on real data (see the defaults). Two cascaded
+   * second-order sections make it 4th order.
+   */
+  highPassHz: number;
+  /** Short-term average window, seconds: how fast the trigger reacts. */
+  staSeconds: number;
+  /** Long-term average window, seconds: what "normal" means for this station. */
+  ltaSeconds: number;
+  /** STA/LTA ratio that declares a pick. */
+  triggerRatio: number;
+  /** Ratio the trigger must fall back below before it can fire again. */
+  detriggerRatio: number;
+}
+
+/**
+ * **3 Hz and a ratio of 8, chosen by sweep on the replay's tuning halves**
+ * (2026-10-02; 22 local M4+ quakes and 8 distant M7.5+ ones):
+ *
+ *   corner  ratio  local found  false (local set)  false (distant quakes)
+ *   1 Hz    5      21/22        3                  27
+ *   1 Hz    8      22/22        0                  21
+ *   2 Hz    8      22/22        0                   1
+ *   3 Hz    8      22/22        0                   0
+ *   5 Hz    8      22/22        1                   0
+ *
+ * The distant-quake column is the one that moved, and the physics says why:
+ * a great quake's P wave crossing thousands of kilometres has lost its high
+ * frequencies, while a local quake's has not. At 1 Hz every one of the
+ * distant quakes produced false alarms; at 3 Hz none did. Median declaration
+ * time was ~14.3 s in every row, so none of this cost speed. 3/8 sits inside a
+ * good region rather than on its edge — both neighbours are nearly as good.
+ */
+export const DEFAULT_PICKER_PARAMS: PickerParams = {
+  highPassHz: 3,
+  staSeconds: 0.5,
+  ltaSeconds: 20,
+  triggerRatio: 8,
+  detriggerRatio: 2,
+};
+
+/** One station's trigger: the instant its STA/LTA crossed the threshold. */
+export interface Pick {
+  channelId: string;
+  timeMs: number;
+  /** STA/LTA at the moment of the pick — how decisively it fired. */
+  ratio: number;
+}
+
+/**
+ * A second-order Butterworth high-pass section (RBJ cookbook form), direct
+ * form I. Kept as plain numbers rather than arrays: this runs per sample on
+ * every channel, all the time.
+ */
+class HighPassSection {
+  private readonly b0: number;
+  private readonly b1: number;
+  private readonly b2: number;
+  private readonly a1: number;
+  private readonly a2: number;
+  private x1 = 0;
+  private x2 = 0;
+  private y1 = 0;
+  private y2 = 0;
+
+  constructor(cornerHz: number, sampleRateHz: number) {
+    const w0 = (2 * Math.PI * cornerHz) / sampleRateHz;
+    const cos = Math.cos(w0);
+    const alpha = Math.sin(w0) / (2 * Math.SQRT1_2); // Q = 1/sqrt(2): Butterworth
+    const a0 = 1 + alpha;
+    this.b0 = (1 + cos) / 2 / a0;
+    this.b1 = -(1 + cos) / a0;
+    this.b2 = (1 + cos) / 2 / a0;
+    this.a1 = (-2 * cos) / a0;
+    this.a2 = (1 - alpha) / a0;
+  }
+
+  /**
+   * Starts the filter as though the input had been sitting at `x` forever.
+   *
+   * Starting from zero state instead turns a station's DC offset — often tens
+   * of thousands of counts — into a step on the first sample, and a step through
+   * a high-pass is a large decaying transient. That transient is exactly the
+   * shape of an onset.
+   */
+  prime(x: number): void {
+    this.x1 = x;
+    this.x2 = x;
+    this.y1 = 0;
+    this.y2 = 0;
+  }
+
+  step(x: number): number {
+    const y =
+      this.b0 * x + this.b1 * this.x1 + this.b2 * this.x2 - this.a1 * this.y1 - this.a2 * this.y2;
+    this.x2 = this.x1;
+    this.x1 = x;
+    this.y2 = this.y1;
+    this.y1 = y;
+    return y;
+  }
+}
+
+/** Gap allowance: a record starting this many sample intervals off is a gap. */
+const GAP_TOLERANCE_SAMPLES = 1.5;
+
+/**
+ * One channel's streaming trigger.
+ *
+ * Feed it records in time order; it returns any picks they contain. A gap, an
+ * overlap or a change of sample rate resets it, because every piece of state
+ * here — filter memory, both averages — describes a continuous signal, and
+ * carrying it across a break would compare the ground now against the ground
+ * before an outage.
+ */
+export class StationPicker {
+  private readonly params: PickerParams;
+  private rateHz = 0;
+  private expectedNextMs: number | null = null;
+  private sections: [HighPassSection, HighPassSection] | null = null;
+  private sta = 0;
+  private lta = 0;
+  private staAlpha = 0;
+  private ltaAlpha = 0;
+  /** Samples since the last reset; no pick until the LTA means something. */
+  private warm = 0;
+  private warmupSamples = 0;
+  private triggered = false;
+
+  /** Latest sample time this picker has seen, or null before any data. */
+  latestSampleMs: number | null = null;
+
+  /**
+   * How far this channel's data reaches *as evidence that it could have
+   * picked*: the latest sample, once warmed up and while not already
+   * triggered. Null otherwise, because silence from a station that could not
+   * have fired means nothing:
+   *
+   * - **warming up** after a start or a gap, its LTA is not yet meaningful;
+   * - **already triggered**, it cannot fire again until the shaking subsides.
+   *   Found replaying Ridgecrest's M7.1, which came 3.5 minutes after an M5.4:
+   *   seven nearby stations still mid-trigger from the foreshock were counted
+   *   as having heard nothing, and held the declaration back. A station that
+   *   is busy shaking is the opposite of silent.
+   */
+  get readyThroughMs(): number | null {
+    if (this.sections === null || this.warm < this.warmupSamples || this.triggered) return null;
+    return this.latestSampleMs;
+  }
+
+  constructor(
+    readonly channelId: string,
+    params: PickerParams = DEFAULT_PICKER_PARAMS,
+  ) {
+    this.params = params;
+  }
+
+  private reset(sampleRateHz: number, firstSample: number): void {
+    this.rateHz = sampleRateHz;
+    this.sections = [
+      new HighPassSection(this.params.highPassHz, sampleRateHz),
+      new HighPassSection(this.params.highPassHz, sampleRateHz),
+    ];
+    this.sections[0].prime(firstSample);
+    this.sections[1].prime(0);
+    this.staAlpha = 1 / (this.params.staSeconds * sampleRateHz);
+    this.ltaAlpha = 1 / (this.params.ltaSeconds * sampleRateHz);
+    this.sta = 0;
+    this.lta = 0;
+    this.warm = 0;
+    this.warmupSamples = Math.ceil(this.params.ltaSeconds * sampleRateHz);
+    this.triggered = false;
+  }
+
+  push(startTimeMs: number, sampleRateHz: number, samples: ArrayLike<number>): Pick[] {
+    if (samples.length === 0) return [];
+    const intervalMs = 1000 / sampleRateHz;
+    const continuous =
+      this.sections !== null &&
+      this.expectedNextMs !== null &&
+      sampleRateHz === this.rateHz &&
+      Math.abs(startTimeMs - this.expectedNextMs) <= GAP_TOLERANCE_SAMPLES * intervalMs;
+    if (!continuous) this.reset(sampleRateHz, samples[0] ?? 0);
+
+    const [first, second] = this.sections as [HighPassSection, HighPassSection];
+    const { triggerRatio, detriggerRatio } = this.params;
+    const picks: Pick[] = [];
+
+    for (let i = 0; i < samples.length; i += 1) {
+      const filtered = second.step(first.step(samples[i] ?? 0));
+      const energy = filtered * filtered;
+      this.sta += (energy - this.sta) * this.staAlpha;
+      // The LTA is frozen while triggered. Left running, it climbs toward the
+      // earthquake's own energy and the trigger releases mid-shaking — and
+      // then fires again on the S wave as though it were a new event.
+      if (!this.triggered) this.lta += (energy - this.lta) * this.ltaAlpha;
+      if (this.warm < this.warmupSamples) {
+        this.warm += 1;
+        continue;
+      }
+      if (this.lta <= 0) continue;
+
+      const ratio = this.sta / this.lta;
+      if (!this.triggered && ratio >= triggerRatio) {
+        this.triggered = true;
+        picks.push({ channelId: this.channelId, timeMs: startTimeMs + i * intervalMs, ratio });
+      } else if (this.triggered && ratio < detriggerRatio) {
+        this.triggered = false;
+      }
+    }
+
+    this.expectedNextMs = startTimeMs + samples.length * intervalMs;
+    this.latestSampleMs = this.expectedNextMs - intervalMs;
+    return picks;
+  }
+}

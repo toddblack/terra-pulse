@@ -40,3 +40,8 @@ export * from './steim';
 export * from './miniseed';
 export * from './seedlink';
 export * from './fdsn-stations';
+export * from './fdsn-dataselect';
+export * from './quake-picker';
+export * from './quake-associator';
+export * from './quake-detector';
+export * from './detector-replay';

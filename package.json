@@ -10,12 +10,15 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "engine:dev": "engine/.venv/Scripts/python -m terra_pulse_engine --port 8787",
     "engine:test": "engine/.venv/Scripts/python -m pytest engine/tests",
-    "engine:bundle": "node scripts/bundle-engine.mjs"
+    "engine:bundle": "node scripts/bundle-engine.mjs",
+    "replay:detector": "tsx scripts/replay-detector.ts"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.9.6",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",
     "vitest": "^4.1.10"

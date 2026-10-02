@@ -1,8 +1,10 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { WaveformChannelStatus } from '@terra-pulse/schema';
 import type { ChannelBuffer } from './waveform-buffer';
 import { layoutWaveform, polylinePoints } from './waveform-trace';
 import { compassPoint, formatDistanceKm, type DisplayStation } from './station-pick';
+import { useWaveformStore } from './useWaveformStore';
+import { waveformStationKey } from '../layers/waveform-stations-overlay';
 import styles from './WaveformShell.module.css';
 
 interface StationTraceProps {
@@ -47,6 +49,19 @@ export function StationTrace({
     [buffer.segments, windowStartMs, windowEndMs, columns],
   );
 
+  // Hovering the row picks out its marker on the globe.
+  const stationKey = waveformStationKey(channel);
+  const hoverStation = useWaveformStore((store) => store.hoverStation);
+  const unhoverStation = useWaveformStore((store) => store.unhoverStation);
+  // A row unmounted under the pointer — a region switch, a new pick — never
+  // receives its mouseleave, and its marker would stay picked out.
+  useEffect(
+    () => () => {
+      unhoverStation(stationKey);
+    },
+    [stationKey, unhoverStation],
+  );
+
   const state = status?.state ?? 'connecting';
   const hasData = layout.spans.length > 0;
 
@@ -76,7 +91,15 @@ export function StationTrace({
   })();
 
   return (
-    <li className={styles.row}>
+    <li
+      className={styles.row}
+      onMouseEnter={() => {
+        hoverStation(stationKey);
+      }}
+      onMouseLeave={() => {
+        unhoverStation(stationKey);
+      }}
+    >
       <div className={styles.rowLabel}>
         <span className={styles.station}>
           {channel.network} {channel.station}

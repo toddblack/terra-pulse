@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MiniSeedParseError, parseMiniSeedRecord, sampleRateFrom } from './miniseed';
+import { MiniSeedParseError, parseMiniSeedRecord, sampleRateFrom, splitMiniSeedRecords } from './miniseed';
 import { MiniSeedIntegrityError } from './steim';
 
 /**
@@ -191,6 +191,47 @@ function buildRecord(spec: RecordSpec = {}): Uint8Array {
   });
   return bytes;
 }
+
+describe('splitMiniSeedRecords', () => {
+  function concat(...parts: Uint8Array[]): Uint8Array {
+    const out = new Uint8Array(parts.reduce((n, p) => n + p.byteLength, 0));
+    let at = 0;
+    for (const p of parts) {
+      out.set(p, at);
+      at += p.byteLength;
+    }
+    return out;
+  }
+
+  it('splits concatenated records at each one’s declared length', () => {
+    const a = buildRecord({ samples: [1, 2, 3] });
+    const b = realRecord('CI_ADO_HHZ');
+    const c = buildRecord({ samples: [7], littleEndian: true });
+    const parts = splitMiniSeedRecords(concat(a, b, c));
+    expect(parts.map((p) => p.byteLength)).toEqual([512, b.byteLength, 512]);
+    const first = parseMiniSeedRecord(parts[0]!);
+    const last = parseMiniSeedRecord(parts[2]!);
+    if (first.kind !== 'data' || last.kind !== 'data') throw new Error('expected data');
+    expect(Array.from(first.samples)).toEqual([1, 2, 3]);
+    expect(Array.from(last.samples)).toEqual([7]);
+  });
+
+  it('honours a non-512 record length, as an archive may repackage', () => {
+    const big = new Uint8Array(4096);
+    big.set(buildRecord({ samples: [5, 6] }));
+    big[54] = 12; // 2^12 = 4096
+    const parts = splitMiniSeedRecords(concat(big, buildRecord()));
+    expect(parts.map((p) => p.byteLength)).toEqual([4096, 512]);
+  });
+
+  it('refuses a record with no stated length rather than guessing every later boundary', () => {
+    expect(() => splitMiniSeedRecords(buildRecord({ includeB1000: false }))).toThrow(MiniSeedParseError);
+  });
+
+  it('refuses a truncated final record', () => {
+    expect(() => splitMiniSeedRecords(buildRecord().subarray(0, 300))).toThrow(MiniSeedParseError);
+  });
+});
 
 describe('parseMiniSeedRecord on synthetic records', () => {
   it('reads a big-endian INT32 record', () => {
