@@ -21,6 +21,9 @@ import type {
   HypothesisId,
   HypothesisSummary,
   MissedEvents,
+  QuakeReplay,
+  QuakeReplayProgress,
+  QuakeReplayRequest,
   RegionalRecurrence,
   SolarFlare,
   WaveformChannel,
@@ -356,6 +359,25 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.on('goes-flares:progress', listener);
       return () => {
         ipcRenderer.removeListener('goes-flares:progress', listener);
+      };
+    },
+  },
+  /**
+   * Replaying a past quake through the early-warning detector. Main fetches the
+   * archive and runs the detector; the renderer only plays the result back.
+   */
+  quakeReplay: {
+    start: (request: QuakeReplayRequest): Promise<QuakeReplay> =>
+      ipcRenderer.invoke('quake-replay:start', request),
+    cancel: (): Promise<void> => ipcRenderer.invoke('quake-replay:cancel'),
+
+    onProgress: (callback: (progress: QuakeReplayProgress) => void): (() => void) => {
+      const listener = (_event: unknown, progress: QuakeReplayProgress) => {
+        callback(progress);
+      };
+      ipcRenderer.on('quake-replay:progress', listener);
+      return () => {
+        ipcRenderer.removeListener('quake-replay:progress', listener);
       };
     },
   },

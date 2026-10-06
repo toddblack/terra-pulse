@@ -3850,6 +3850,76 @@ time it reaches `DEFAULT_ALERT_RULE.minIntensity` the event alerts, and it
 - Mean prediction only; the two transcriptions quote sigma as 0.5 and 0.15, so
   no uncertainty band is drawn from it.
 
+**Replay a quake in the app — shipped 2026-10-06, branch `quake-replay`.** The
+first time the detector is visible anywhere but the script. The inspector shows
+a **Replay** button for M4.5+ within 250 km of Burbank or M7+ anywhere
+(`replayEligibility`, schema; the user's "large quakes only, probably 4.5+").
+It plays in the dock's waveform tab, with the live stream still running
+underneath.
+
+- **One loop, two callers.** `runDetectorReplay` (`packages/ingest/src/replay-run.ts`)
+  is the script's loop lifted out unchanged, and the script now calls it.
+  **Oracle: `--set tuning` and `--set reference` printed identically before and
+  after**, apart from run times. Two copies would drift, and the app would then
+  be showing a detector that was never graded.
+- **Main computes everything; the renderer only plays it back**
+  (`main/ipc/quake-replay.ts`). Main:
+  - takes the home network from the waveform picker's shared, hour-cached station list;
+  - fetches gains and archived records;
+  - runs the detector;
+  - `buildQuakeReplay` hands over one timeline: rows, each record with its arrival instant, picks, magnitude steps, the alert.
+
+  A newer start supersedes one in flight, and the last 5 replays are cached in
+  memory. Measured: Ridgecrest is 3.3 MB from 63 of 74 stations in ~6 s; the
+  detector takes 0.3 s.
+- **The window must be the graded one: 60 s of lead, 180 s total.** The first
+  version led by 30 s, and Ridgecrest M7.1 came back declared **11.5 s *before*
+  its origin**, unmatched. The picker's 20 s LTA warms up on whatever it is
+  given: in the M5.4 foreshock's aftershocks, a 20 s baseline let the next small
+  one trip four stations at once. At 60 s it reproduces the graded run exactly:
+  - declared +11.8 s;
+  - M6.1 → 7.1;
+  - MMI 4.2 at Burbank;
+  - 40.9 s of warning, against 40.5 graded. The difference is that the app counts from the detector's own location.
+- **Rows: first to trigger, counted from each station's predicted P arrival.**
+  A bare "after the origin" rule ranked a station 179 km out third, from a
+  noise pick 0.3 s *before* the origin, about 29 s ahead of any wave. If too
+  few stations triggered, the remaining rows prefer stations that recorded
+  anything (Tohoku 2011 found **9 of 74** with data), then the nearest.
+- **Arrival time is the replay's clock.** A record appears only once the
+  playhead passes its arrival instant, and a pick only once the record carrying
+  it has arrived (`replay-playback.ts`, pure and tested). That is the script's
+  honesty rule, made visible.
+- **The alert sound plays on playback crossing the alert, forward only.** A
+  scrub across it stays silent. Going back and playing through it again
+  re-arms it (`crossedForward` plus the store's `lastMove`).
+  - The banner is labelled REPLAY on its face, and the replay's colour is amber
+    throughout, never the live cyan.
+  - The user chose the real sound over a silent banner, accepting the risk of
+    hearing the chime as "probably a replay".
+- **P and S rings** (`layers/replay-waves-overlay.ts`):
+  - They are polylines on `CallbackProperty` positions, cached by radius, built
+    once (the magnetopause rule). An ellipse outline is 1 px on most GPUs.
+  - Radius = √((v·t)² − depth²), with the detector's own 6.2 / 3.6 km/s and 8 km depth.
+  - Local replays only: crustal speeds across the mantle would draw nonsense.
+- **The camera frames the replay, for the chrome rather than the viewport.** At
+  whole-globe zoom the rings were a few pixels under the reticle. The first
+  framing then put Burbank behind the inspector, the one place it must be seen
+  as the S ring arrives. The frame now extends west and south over the panels.
+  Like magnetopause, it is not undone on close.
+- **`teleseismicPSeconds` gained a regional branch below 20°.** Below its first
+  row, the table extrapolated 130 s for a quake 500 km out (real: ~65 s), which
+  would aim a distant replay window past its own P wave. Frozen script cases
+  stored their windows, so nothing graded moved.
+- `HOME_LOCATION` is now one definition in the schema, read by the script, main
+  and the renderer. `bearingDeg` moved there too, because main's rows need it.
+- **Verified in the running app over CDP**, on an isolated build with a copy of
+  the real database:
+  - Ridgecrest replayed and its status was sampled through the quake.
+  - Screenshots at +23 s and +55.7 s showed the rings on screen and Burbank in the clear.
+  - At +55.7 s the S ring had just passed Burbank and the banner read "strong shaking reached home — 40.9 s of warning".
+  - The distant pipeline was checked on Tohoku: no declaration, no false alarm.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

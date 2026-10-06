@@ -1012,7 +1012,7 @@ every layer uses — chief among them that raw counts are not comparable between
 rows, and that almost anything moving on a trace is ocean microseism rather
 than an earthquake.
 
-### 5.13 Waveform Early Warning — detector validated in replay, not yet live
+### 5.13 Waveform Early Warning — detector validated, replayable in the app, not yet live
 
 Requested 2026-10-01: while the app is open, watch the stations around the
 user's home and alert when several of them corroborate an incoming quake. Home
@@ -1053,6 +1053,19 @@ Ridgecrest M7.1 reads 6.1 at declaration and 7.1 final. Details in `CLAUDE.md`.
 provisional), latched. Graded against what Burbank residents reported to DYFI:
 6 of 7 tuning alerts agree. Ridgecrest M7.1 alerts 40.5 s before strong
 shaking; basin quakes alert just after it.
+
+**Replay in the app — built 2026-10-06.** Any M4.5+ within 250 km of home, or
+M7+ anywhere, has a Replay button in the inspector. It runs the graded detector
+over that quake's archived records and plays the result back in the waveform
+dock:
+- records appear when they would have arrived live
+- trigger ticks on the rows, the declaration, and the magnitude climbing
+- a REPLAY alert banner with the real sound, counting down to strong shaking at home
+- P and S rings on the globe
+
+Main runs the same loop the script grades (`runDetectorReplay`, now shared).
+Ridgecrest M7.1 in the app reproduces the graded run: declared +11.8 s, M6.1 →
+7.1, MMI 4.2 at Burbank, 40.9 s of warning.
 
 **Not yet a live alert, and two things stand between:**
 1. ~~An alert threshold~~ — done, above.

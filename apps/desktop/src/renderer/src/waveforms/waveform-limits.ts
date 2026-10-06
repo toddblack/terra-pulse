@@ -19,10 +19,45 @@ import type { LayerGuide } from '../panels/layer-guides';
  * an entry with no layer behind it would fail `layer-guides.test.ts`.
  */
 export const WAVEFORM_GUIDE_ID = 'waveforms';
+/** The quake replay's guide, in the same namespace. */
+export const WAVEFORM_REPLAY_GUIDE_ID = 'waveform-replay';
 
 export function waveformGuideFor(id: string): LayerGuide | undefined {
-  return id === WAVEFORM_GUIDE_ID ? WAVEFORM_GUIDE : undefined;
+  if (id === WAVEFORM_GUIDE_ID) return WAVEFORM_GUIDE;
+  if (id === WAVEFORM_REPLAY_GUIDE_ID) return WAVEFORM_REPLAY_GUIDE;
+  return undefined;
 }
+
+/**
+ * A replay is the most persuasive display in the app — it shows a warning
+ * arriving before the shaking — so its limits have to be as visible as the
+ * warning. The detector shown is the graded one; what is *not* the graded
+ * situation is today's network, the archive's packaging and a clean path.
+ */
+export const WAVEFORM_REPLAY_GUIDE: LayerGuide = {
+  title: 'Quake replay',
+  shows:
+    'What the early-warning detector would have done, had it been running when this quake happened. The app fetches what the stations around home recorded from the permanent archive, then plays it back with each record appearing at the moment it could have reached us live. The detector, its magnitude estimate and the alert are the same code the replay grading runs.',
+  reading: [
+    'The rows are the first stations to trigger, in the order they did, so the P wave visibly sweeps down the panel. Amber ticks are where each station triggered; the dashed line is when the quake began, by the USGS catalogue.',
+    'The detector declares once four stations agree on one source. The line under the controls says when, how far from USGS it placed the quake, and the magnitude as it stood at that moment. The magnitude climbs as more of the P wave arrives — it starts low by design and is final about ten seconds later.',
+    'The alert is decided on predicted shaking at home (MMI 2.5 or more, roughly "felt indoors"), not on magnitude. When playback reaches the moment it would have fired, the banner and the alert sound play, and the banner counts down to the strong (S-wave) shaking reaching home.',
+    'On the globe, the expanding rings are the P wave (fast, first) and the S wave (slower, the strong shaking), drawn from the catalogue epicentre at the speeds the detector assumes. Home is marked. The gap between the alert and the S ring reaching home is the warning time.',
+    'The scrub bar marks the origin, the declaration, the alert, and the P and S waves reaching home. Real time is the default because the waiting is the point; 2× and 5× are for re-watching.',
+  ],
+  limits: [
+    'It runs today\'s stations, not the network that existed then. Stations come and go, so an older quake was heard by fewer of them — the footer says how many had data — and a 2005 replay can look worse than the detector would do now, or better than it did then.',
+    'Timing is modelled, not recorded. The archive keeps every sample but not when it reached anyone, so each record is released at its last sample plus 2 seconds of transit, as measured live. A ring outage, a slow link or a station clock fault on the day would not show here.',
+    'Some networks archive larger records than they send live; those are cut back to live size, which keeps the average delay right but not the exact moment each record would have arrived.',
+    'The detector assumes one P-wave speed and a fixed 8 km depth. That is why it places quakes a few kilometres off, and why the rings are circles — real wavefronts are shaped by the ground they cross.',
+    'The predicted shaking at home is an average relation for California, checked against what people in Burbank reported (USGS "Did You Feel It?") but carrying real scatter. Basin and site effects can make the same quake feel quite different a few streets apart.',
+    'For a quake within a few tens of kilometres of home, strong shaking can arrive before any alert — the waves are already there while the fourth station is still waiting. In the graded replays the basin quakes (Highland Park, El Monte) alerted one to two seconds after the shaking. A replay shows that honestly; it is physics, not a fault.',
+    'A replay is not evidence that live would do the same. It is one quake, replayed once, on a clean path. The detector was graded on dozens of quakes it had not been tuned on; that grading is the measure, and a single replay is an illustration of it.',
+    'A distant replay shows what the home network heard. The rings are not drawn for it — crustal wave speeds mean nothing across the mantle — and the expected answer is that the detector stays quiet.',
+  ],
+  source:
+    'Archived waveforms from the EarthScope FDSN dataselect service (service.earthscope.org), station calibrations from its station service, and quake locations from the USGS catalogue. Data were accessed from the NSF NGF data archive operated by EarthScope Consortium. Each network, such as CI (Caltech/USGS), declares its own licence and citation at fdsn.org/networks.',
+};
 
 export const WAVEFORM_GUIDE: LayerGuide = {
   title: 'Live waveforms',

@@ -48,3 +48,4 @@ export * from './shaking-intensity';
 export * from './quake-alert';
 export * from './quake-detector';
 export * from './detector-replay';
+export * from './replay-run';

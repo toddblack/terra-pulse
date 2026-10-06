@@ -1,4 +1,4 @@
-import { WAVEFORM_MAX_CHANNELS, haversineKm, type WaveformStation } from '@terra-pulse/schema';
+import { WAVEFORM_MAX_CHANNELS, bearingDeg, haversineKm, type WaveformStation } from '@terra-pulse/schema';
 
 /**
  * "Click a spot, get its stations" — the rule that turns a point into a set of
@@ -75,19 +75,8 @@ export interface DisplayStation extends WaveformStation {
   bearingDeg: number | null;
 }
 
-/** Initial great-circle bearing from `a` to `b`, in degrees clockwise from north. */
-export function bearingDeg(
-  a: { latitude: number; longitude: number },
-  b: { latitude: number; longitude: number },
-): number {
-  const toRad = Math.PI / 180;
-  const dLon = (b.longitude - a.longitude) * toRad;
-  const lat1 = a.latitude * toRad;
-  const lat2 = b.latitude * toRad;
-  const y = Math.sin(dLon) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-  return ((Math.atan2(y, x) / toRad) % 360 + 360) % 360;
-}
+/** Moved to `@terra-pulse/schema` so main's quake replay can use it too. */
+export { bearingDeg };
 
 /** Which 45° sector a bearing falls in, 0 = centred on north. */
 function sectorOf(bearing: number): number {

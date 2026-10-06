@@ -117,6 +117,25 @@ export function haversineKm(
 }
 
 /**
+ * Initial great-circle bearing from `a` to `b`, in degrees clockwise from
+ * north. Beside `haversineKm` because both sides need it: the renderer's
+ * station picker and main's quake replay describe a station by distance *and*
+ * direction from a point.
+ */
+export function bearingDeg(
+  a: { latitude: number; longitude: number },
+  b: { latitude: number; longitude: number },
+): number {
+  const toRad = Math.PI / 180;
+  const dLon = (b.longitude - a.longitude) * toRad;
+  const lat1 = a.latitude * toRad;
+  const lat2 = b.latitude * toRad;
+  const y = Math.sin(dLon) * Math.cos(lat2);
+  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+  return ((Math.atan2(y, x) / toRad) % 360 + 360) % 360;
+}
+
+/**
  * R-Tree search boxes covering a circle of `radiusKm` around a point.
  *
  * Returns **one or two** boxes, and the two-box case is not an edge case worth
