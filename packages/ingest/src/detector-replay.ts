@@ -76,6 +76,34 @@ export function asLiveRecords(record: MiniSeedDataRecord, recordBytes: number): 
   return out;
 }
 
+/**
+ * Approximate P travel time for a surface source, seconds, by distance in
+ * degrees (IASP91, rounded). Only used to aim a replay window at a distant
+ * quake's P arrival at home; an error of 20 s here costs nothing, since the
+ * window has 30 s of lead. Beyond 100° the direct P is lost in the core shadow,
+ * so the last entry stands in.
+ *
+ * **Below 20° it is a regional Pn line, not the table.** The table was written
+ * for the replay script's distant great quakes, all well past 20°, and below
+ * its first row it extrapolated: a Baja M7 500 km out came to 130 s against a
+ * real ~65 s, which would aim the app's replay window past the P wave
+ * entirely. ~8 km/s plus a few seconds of crust meets the table at 20° within
+ * 6 s. The script's frozen distant cases stored their windows when drawn, so
+ * this changes nothing already graded.
+ */
+export function teleseismicPSeconds(deltaDeg: number): number {
+  if (deltaDeg < 20) return (deltaDeg * 111.19) / 8 + 5;
+  const table: [number, number][] = [
+    [20, 277], [30, 372], [40, 461], [50, 537], [60, 601], [70, 660], [80, 714], [90, 766], [100, 818],
+  ];
+  for (let i = 1; i < table.length; i += 1) {
+    const [d1, t1] = table[i] as [number, number];
+    const [d0, t0] = table[i - 1] as [number, number];
+    if (deltaDeg <= d1) return t0 + ((deltaDeg - d0) / (d1 - d0)) * (t1 - t0);
+  }
+  return 818;
+}
+
 export interface CatalogueQuake {
   id: string;
   originMs: number;

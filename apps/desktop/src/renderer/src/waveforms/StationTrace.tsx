@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import type { WaveformChannelStatus } from '@terra-pulse/schema';
 import type { ChannelBuffer } from './waveform-buffer';
-import { layoutWaveform, polylinePoints } from './waveform-trace';
+import { layoutWaveform, markX, polylinePoints, type TraceMark } from './waveform-trace';
 import { compassPoint, formatDistanceKm, type DisplayStation } from './station-pick';
 import { useWaveformStore } from './useWaveformStore';
 import { waveformStationKey } from '../layers/waveform-stations-overlay';
@@ -17,6 +17,8 @@ interface StationTraceProps {
   /** Wall clock, for the age readout. The window ends before this — see `displayLagMs`. */
   nowMs: number;
   columns: number;
+  /** Replay only: where this station triggered, and the quake's origin. */
+  marks?: readonly TraceMark[];
 }
 
 /** Compact count label: 1,200 → "1.2k", 250,000 → "250k". */
@@ -43,6 +45,7 @@ export function StationTrace({
   windowEndMs,
   nowMs,
   columns,
+  marks,
 }: StationTraceProps) {
   const layout = useMemo(
     () => layoutWaveform(buffer.segments, windowStartMs, windowEndMs, columns),
@@ -151,6 +154,24 @@ export function StationTrace({
               vectorEffect="non-scaling-stroke"
             />
           ))}
+          {/* Drawn over the trace: a pick is what the detector heard, and it
+              should read as a statement about the ink beneath it. */}
+          {marks?.map((mark, index) => {
+            const x = markX(mark.timeMs, windowStartMs, windowEndMs);
+            if (x === null) return null;
+            return (
+              <line
+                // Marks have no identity beyond their position in the list.
+                key={index}
+                className={mark.kind === 'pick' ? styles.markPick : styles.markOrigin}
+                x1={x}
+                x2={x}
+                y1="0"
+                y2="100"
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })}
         </svg>
         {note !== null && <span className={styles.note}>{note}</span>}
       </div>

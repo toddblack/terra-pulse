@@ -228,6 +228,23 @@ function sampleRange(segment: WaveformSegment, startMs: number, endMs: number): 
   return [first, last];
 }
 
+/** A vertical marker on a row: a pick, or the catalogue origin. */
+export interface TraceMark {
+  timeMs: number;
+  kind: 'pick' | 'origin';
+}
+
+/**
+ * Where an instant falls across the row, 0-100, or null outside the window —
+ * the same mapping the "awaiting" shading uses, so a mark and the ink it marks
+ * cannot disagree about where an instant is.
+ */
+export function markX(timeMs: number, windowStartMs: number, windowEndMs: number): number | null {
+  const span = windowEndMs - windowStartMs;
+  if (!(span > 0) || timeMs < windowStartMs || timeMs > windowEndMs) return null;
+  return ((timeMs - windowStartMs) / span) * 100;
+}
+
 /**
  * A span as an SVG polyline `points` attribute, in a 0-100 × 0-100 viewBox
  * with the mean on the centre line — the convention `tidal-stress-track.ts`

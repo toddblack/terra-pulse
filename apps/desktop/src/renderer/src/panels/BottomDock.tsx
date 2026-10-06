@@ -3,6 +3,8 @@ import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { useGlobeStore } from '../state/useGlobeStore';
 import { useNow } from '../globe/useNow';
 import { WaveformPanel } from '../waveforms/WaveformPanel';
+import { ReplayPanel } from '../waveforms/ReplayPanel';
+import { selectReplayOpen, useReplayStore } from '../waveforms/useReplayStore';
 import { useWaveformBackground } from '../waveforms/useWaveformBackground';
 import type { WaveformStream } from '../waveforms/useWaveformStream';
 import { isDockShowing, type DockTab } from './dock-state';
@@ -109,6 +111,7 @@ export function BottomDock() {
   const toggleDock = useGlobeStore((state) => state.toggleDock);
 
   const background = useWaveformBackground(dock.waveformsStarted);
+  const replayOpen = useReplayStore(selectReplayOpen);
   const health = streamHealth(dock.waveformsStarted, background.stream);
 
   const tabs: readonly { id: DockTab; label: string; icon: ReactNode }[] = [
@@ -171,7 +174,9 @@ export function BottomDock() {
       </div>
 
       {isDockShowing(dock, 'timeline') && <TimeScrubber />}
-      {isDockShowing(dock, 'waveforms') && <WaveformPanel {...background} />}
+      {/* A replay takes the waveform tab while it is open; the live stream
+          keeps running underneath, so closing it lands on a full window. */}
+      {isDockShowing(dock, 'waveforms') && (replayOpen ? <ReplayPanel /> : <WaveformPanel {...background} />)}
     </div>
   );
 }

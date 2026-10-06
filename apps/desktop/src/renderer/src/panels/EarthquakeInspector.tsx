@@ -11,6 +11,8 @@ import { RegionalRecurrenceBody } from './RegionalRecurrence';
 import { hasSequencePanel } from './useAftershockSequence';
 import { useNow } from '../globe/useNow';
 import { useWaveformStore } from '../waveforms/useWaveformStore';
+import { useReplayStore } from '../waveforms/useReplayStore';
+import { replayEligibility } from '@terra-pulse/schema';
 import { formatAgoFrom } from './time-labels';
 import styles from './EarthquakeInspector.module.css';
 
@@ -42,6 +44,8 @@ export function EarthquakeInspector() {
   const antipodeActive = event !== null && antipodeEventId === event.id;
   const pickWaveformSpot = useWaveformStore((state) => state.pickAt);
   const showDockTab = useGlobeStore((state) => state.showDockTab);
+  const startReplay = useReplayStore((state) => state.start);
+  const closeReplay = useReplayStore((state) => state.close);
   // Wall clock, not the playhead — the same basis as the event list and the
   // hover tooltip, so the three cannot disagree about one event's age.
   const nowMs = useNow();
@@ -49,6 +53,7 @@ export function EarthquakeInspector() {
   if (selectedEventId === null || event === null) return null;
 
   const age = formatAgoFrom(event.timeUtc, nowMs);
+  const replay = replayEligibility(event);
 
   const openUsgsPage = () => {
     void window.terraPulse.shell.openExternal(event.url);
@@ -245,6 +250,35 @@ export function EarthquakeInspector() {
           </p>
         )}
 
+        {/* Its own row, above the others: for an eligible quake it is the
+            headline action, not a peer of Recenter. Offered only where the
+            detector has something to say — see `replayEligibility`. */}
+        {replay.eligible && (
+          <button
+            id="inspector-replay"
+            type="button"
+            className={styles.replayButton}
+            title={
+              replay.kind === 'local'
+                ? 'Replay what the stations around home recorded, through the early-warning detector'
+                : 'A distant quake: replay what your home network heard when its waves arrived'
+            }
+            onClick={() => {
+              startReplay({
+                eventId: event.id,
+                originMs: Date.parse(event.timeUtc),
+                latitude: event.latitude,
+                longitude: event.longitude,
+                magnitude: event.magnitude,
+                place: event.place,
+              });
+              showDockTab('waveforms');
+            }}
+          >
+            ▶ {replay.kind === 'local' ? 'Replay through the early-warning detector' : 'Replay what home heard'}
+          </button>
+        )}
+
         <div className={styles.actions}>
           <button
             id="inspector-antipode"
@@ -280,6 +314,8 @@ export function EarthquakeInspector() {
             className={styles.actionButton}
             title="Stream the seismometers surrounding this quake"
             onClick={() => {
+              // An open replay would hide the stations behind it.
+              closeReplay();
               pickWaveformSpot({
                 latitude: event.latitude,
                 longitude: event.longitude,
