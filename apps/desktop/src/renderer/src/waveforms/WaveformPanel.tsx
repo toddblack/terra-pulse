@@ -1,59 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { WAVEFORM_WINDOW_MS, channelIdOf, type WaveformChannel } from '@terra-pulse/schema';
+import { WAVEFORM_WINDOW_MS, channelIdOf } from '@terra-pulse/schema';
 import { StationTrace } from './StationTrace';
 import { EMPTY_CHANNEL_BUFFER } from './waveform-buffer';
 import { displayLagMs } from './waveform-trace';
 import { WAVEFORM_GUIDE_ID } from './waveform-limits';
-import { LayerGuideModal } from '../panels/LayerGuideModal';
 import { useGlobeStore } from '../state/useGlobeStore';
-import { WAVEFORM_REGIONS, channelsOf } from './waveform-regions';
+import { WAVEFORM_REGIONS } from './waveform-regions';
 import { PICKED_REGION_ID, useWaveformStore } from './useWaveformStore';
-import { useWaveformSelection } from './useWaveformSelection';
 import type { WaveformSelection } from './waveform-selection';
+import type { WaveformBackground } from './useWaveformBackground';
 import {
   WAVEFORM_PICK_MIN_SEPARATION_KM,
   azimuthalGapDeg,
   formatDistanceKm,
   formatPickCoordinates,
 } from './station-pick';
-import { useWaveformStream } from './useWaveformStream';
-import styles from './WaveformShell.module.css';
-
-/**
- * Pulls the picker's station list when the mode mounts.
- *
- * Every mount asks, and main answers from its own hour-long cache, so this is a
- * ~300 KB clone rather than a fetch. Asking each time is what lets a failed
- * list recover by leaving the mode and coming back — and the Retry button does
- * the same thing without the detour.
- */
-function useStationCatalogue(): () => void {
-  const setCatalogue = useWaveformStore((state) => state.setCatalogue);
-  const [attempt, setAttempt] = useState(0);
-
-  useEffect(() => {
-    let live = true;
-    window.terraPulse.waveforms.stations().then(
-      (catalogue) => {
-        if (live) setCatalogue(catalogue);
-      },
-      (cause: unknown) => {
-        if (!live) return;
-        setCatalogue({
-          status: 'unavailable',
-          reason: cause instanceof Error ? cause.message : String(cause),
-        });
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [setCatalogue, attempt]);
-
-  return useCallback(() => {
-    setAttempt((count) => count + 1);
-  }, []);
-}
+import styles from './WaveformPanel.module.css';
 
 /** The sentence under the tabs: what this set of rows is, and what it is not. */
 function describeSelection(selection: WaveformSelection | null): string {
@@ -62,7 +24,7 @@ function describeSelection(selection: WaveformSelection | null): string {
 
   switch (selection.state) {
     case 'awaiting-click':
-      return 'Click anywhere on the globe — or on an earthquake — to stream the stations surrounding it.';
+      return 'Click bare globe to stream the stations surrounding that spot — or open an earthquake and choose “Stations near this quake”.';
     case 'loading':
       return 'Loading the station list…';
     case 'unavailable':
@@ -83,36 +45,25 @@ function describeSelection(selection: WaveformSelection | null): string {
 }
 
 /**
- * Live waveforms — the app's third mode.
+ * Live waveforms — the dock's second tab.
  *
- * **A panel over the globe, not a full-screen surface.** The globe stays
- * visible above it, and clicking it is how a reader picks their own stations:
- * every click in this mode is a pick, the way every click under the fault
- * probe is a probe. See `CesiumViewer`.
+ * This was a whole app mode until the dock existed, and the mode cost too much:
+ * entering it unmounted Explore, so the earthquakes stayed drawn while nothing
+ * about them could be hovered or inspected. As a tab it sits beside all of
+ * that, and a click on bare globe while it is showing still picks a spot for
+ * stations — a click on a quake opens the inspector instead. See
+ * `globe/click-route.ts`.
  *
- * Nothing here persists. The connection opens when this mounts and closes when
- * it unmounts, so leaving the mode genuinely stops the stream.
+ * **It renders the stream; it does not own it.** The dock does, through
+ * `useWaveformBackground`, so this panel can unmount while minimised without
+ * the connection closing or the buffers emptying.
  */
-export function WaveformShell() {
+export function WaveformPanel({ selection, channels, stream, retryCatalogue }: WaveformBackground) {
   const openGuide = useGlobeStore((state) => state.openGuide);
   const regionId = useWaveformStore((state) => state.regionId);
   const setRegionId = useWaveformStore((state) => state.setRegionId);
-  const selection = useWaveformSelection();
-  const retryCatalogue = useStationCatalogue();
   const stations = useMemo(() => selection?.stations ?? [], [selection]);
-
-  /**
-   * The channels to stream, **keyed on their ids rather than on an array**.
-   *
-   * This list is the stream effect's dependency, so a new identity tears the
-   * connection down and rebuilds it. The station list landing ~3 s after mount,
-   * or an hourly refresh of it, re-runs the selection and hands out new arrays
-   * for the very same stations — keying on content means only a real change of
-   * stations restarts the stream.
-   */
-  const channelKey = JSON.stringify(channelsOf(stations));
-  const channels = useMemo(() => JSON.parse(channelKey) as WaveformChannel[], [channelKey]);
-  const { status, buffers, error } = useWaveformStream(channels);
+  const { status, buffers, error } = stream;
 
   /**
    * A 1 Hz clock, so traces scroll between arrivals rather than jumping when a
@@ -120,9 +71,8 @@ export function WaveformShell() {
    *
    * Deliberately local and deliberately not `useNow`, which ticks every 30 s
    * for the whole app: this is the only thing in the app that needs a
-   * per-second clock, and it runs only while this mode is mounted. Redrawing
-   * eight polyline strings a second is microseconds of work, so it needs no
-   * animation frame.
+   * per-second clock, and it runs only while this panel is on screen — a
+   * minimised dock unmounts it, so a background stream costs no redraws.
    */
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -192,21 +142,6 @@ export function WaveformShell() {
   return (
     <section className={styles.panel} aria-label="Live seismic waveforms">
       <header className={styles.header}>
-        <div className={styles.titleRow}>
-          <h2 className={styles.title}>Live waveforms</h2>
-          <button
-            type="button"
-            className={styles.guideButton}
-            onClick={() => {
-              openGuide(WAVEFORM_GUIDE_ID);
-            }}
-            aria-label="What this shows, and what it cannot tell you"
-          >
-            ?
-          </button>
-          <span className={styles.connection}>{connectionText}</span>
-        </div>
-
         <div className={styles.tabRow}>
           <div className={styles.regions} role="tablist" aria-label="Stations">
             {tabs.map((tab) => (
@@ -224,7 +159,18 @@ export function WaveformShell() {
               </button>
             ))}
           </div>
-          <span className={styles.pickHint}>or click the globe to pick a spot</span>
+          <span className={styles.pickHint}>or click bare globe to pick a spot</span>
+          <span className={styles.connection}>{connectionText}</span>
+          <button
+            type="button"
+            className={styles.guideButton}
+            onClick={() => {
+              openGuide(WAVEFORM_GUIDE_ID);
+            }}
+            aria-label="What this shows, and what it cannot tell you"
+          >
+            ?
+          </button>
         </div>
 
         <p className={styles.note}>
@@ -265,10 +211,6 @@ export function WaveformShell() {
         ship only once full, and the slowest station on screen sets the delay. The figure at each
         row&rsquo;s right is how old that station&rsquo;s newest sample is.
       </footer>
-
-      {/* Explore's copy is not mounted in this mode, so this one serves the
-          `?` above. The modal resolves layer, track and waveform guide ids. */}
-      <LayerGuideModal />
     </section>
   );
 }

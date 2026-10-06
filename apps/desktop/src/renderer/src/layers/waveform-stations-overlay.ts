@@ -6,9 +6,8 @@ import { POINT_COLOR, RETICLE_PX, reticleImage } from './location-highlight';
  * spot they were picked around.
  *
  * Not a registry layer, deliberately, for the same reasons `location-highlight`
- * is not: it is not something a reader turns on, it exists only while the
- * waveform mode is mounted, and the layer panel it would be listed in is not
- * on screen in that mode.
+ * is not: it is not something a reader turns on — it exists exactly while the
+ * dock's waveform tab is showing, and its rows are its legend.
  *
  * - **Stations are triangles**, the map symbol seismology uses for a
  *   seismometer, in the traces' own cyan — the colour is what ties a marker to

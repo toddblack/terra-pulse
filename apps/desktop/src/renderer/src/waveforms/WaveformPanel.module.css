@@ -1,23 +1,20 @@
-/* The waveform mode's panel.
+/* The dock's waveform tab. `BottomDock` places it and sizes its width.
 
-   Docked to the bottom and spanning the width, the way the scrubber does in
-   Explore — traces need horizontal room, and the globe stays visible above
-   rather than being covered. That is deliberate: the stations being drawn are
-   places, and clicking them on the globe is the planned next step.
-
-   `max-height` keeps the globe visible at small window heights; the rows
-   scroll inside it rather than the panel growing off screen. */
+   **The height cap is the timeline's own full height, and it is load-bearing.**
+   The inspector is vertically centred beside the selected mark, so it can only
+   use twice the distance from the screen centre to the top of the dock — every
+   rem this panel grows costs the inspector two. The panel this replaced was up
+   to 32rem tall, which on a 1000px window would have left the inspector with
+   nothing. At 23rem (what the timeline measures with all six rows) the
+   inspector's budget is no worse than it already was; rows beyond that scroll
+   inside the panel rather than the panel growing. */
 .panel {
-  position: absolute;
-  right: 1rem;
-  bottom: 1rem;
-  left: 1rem;
   display: flex;
   flex-direction: column;
-  max-height: min(32rem, calc(100vh - 8rem));
-  padding: 0.75rem 1rem 0.6rem;
+  max-height: min(23rem, calc(100vh - 16rem));
+  padding: 0.6rem 0.875rem 0.5rem;
   border-radius: 0.5rem;
-  background-color: rgb(15 23 42 / 92%);
+  background-color: rgb(15 23 42 / 88%);
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 30%);
   color: rgb(203 213 225);
   font-size: 0.8125rem;
@@ -25,20 +22,6 @@
 
 .header {
   flex: none;
-}
-
-.titleRow {
-  display: flex;
-  gap: 0.5rem;
-  align-items: baseline;
-  margin-bottom: 0.5rem;
-}
-
-.title {
-  margin: 0;
-  color: rgb(226 232 240);
-  font-size: 0.9375rem;
-  font-weight: 600;
 }
 
 /* Matches the `?` on the layer panel and the legend — same affordance, so it
@@ -62,7 +45,8 @@
 }
 
 /* Operational status, so colour is allowed here — unlike a disclosure state,
-   which stays neutral. It says whether the socket is up, nothing more. */
+   which stays neutral. It says whether the socket is up, nothing more. Pushes
+   itself and the `?` after it to the right end of the row. */
 .connection {
   margin-left: auto;
   color: rgb(148 163 184);
@@ -209,9 +193,11 @@
   white-space: nowrap;
 }
 
+/* 2rem rather than the mode's 2.5rem: the dock's height cap (see `.panel`)
+   would otherwise show only five of ten rows before scrolling. */
 .plot {
   position: relative;
-  height: 2.5rem;
+  height: 2rem;
   border-radius: 0.2rem;
   background-color: rgb(2 6 23 / 60%);
 }

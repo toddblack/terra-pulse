@@ -35,17 +35,17 @@
      The arithmetic, because it is not guessable: the panel is centred
      (`top: 50%` + `translateY(-50%)`), so its bottom edge sits at
      `(100vh + height) / 2` and **every rem of height costs only half a rem of
-     clearance** — which is why the scrubber's height is subtracted *twice*,
-     as is its own `bottom: 1rem` and the 0.75rem gap left between them.
+     clearance** — which is why the dock's height is subtracted *twice*, as are
+     its own `bottom: 3rem` and the 0.75rem gap left between them.
 
-     `--scrubber-height` is published by `TimeScrubber` from its own measured
-     box; see the long note there. The fallback applies on the first paint and
-     while Analyze has the scrubber unmounted, and is the measured height with
-     every track row shown, so the un-measured frame errs toward too little
-     room rather than an overlap. */
+     `--dock-height` is published by `BottomDock` from its own measured box —
+     timeline, waveforms or minimised to its tab strip; see `published-size.ts`.
+     The fallback applies on the first paint, and is the timeline's measured
+     height with every track row shown, so the un-measured frame errs toward
+     too little room rather than an overlap. */
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 2 * var(--scrubber-height, 22.25rem) - 3.5rem);
+  max-height: calc(100vh - 2 * var(--dock-height, 22.25rem) - 7.5rem);
   border-radius: 0.5rem;
   background-color: rgb(15 23 42 / 88%);
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 40%);

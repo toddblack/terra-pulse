@@ -5,7 +5,7 @@ import { layoutWaveform, polylinePoints } from './waveform-trace';
 import { compassPoint, formatDistanceKm, type DisplayStation } from './station-pick';
 import { useWaveformStore } from './useWaveformStore';
 import { waveformStationKey } from '../layers/waveform-stations-overlay';
-import styles from './WaveformShell.module.css';
+import styles from './WaveformPanel.module.css';
 
 interface StationTraceProps {
   /** Carries its distance from the pick, or null for a preset. */

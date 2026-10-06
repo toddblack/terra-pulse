@@ -21,23 +21,28 @@ import {
 } from '@terra-pulse/schema';
 
 /**
- * Live seismic waveforms: one SeedLink connection, held open only while the
- * waveform mode is on screen.
+ * Live seismic waveforms: one SeedLink connection, opened only once someone
+ * asks for it.
  *
  * ## Why this is not modelled on the pollers
  *
  * Every other feed here is a poller that starts at launch and runs forever
  * (`startAuroraPolling`, the magnetometer poll). This is the app's only
- * **persistent outbound connection**, so its lifetime is the *mode's* — the
- * renderer calls `start` when the mode mounts and `stop` when it unmounts,
- * the same shape as `createArchiveController` (start/cancel, never automatic)
- * and `useTec` (fetches only while visible). A launch never opens a socket.
+ * **persistent outbound connection**, so the renderer decides its lifetime:
+ * `start` the first time Explore's dock shows its waveform tab, and `stop`
+ * when Explore unmounts (Analyze is selected). It keeps running while the dock
+ * is minimised or on the timeline, so reopening shows a full window. Same
+ * shape as `createArchiveController` (start/cancel, never automatic) and
+ * `useTec` (fetches only once wanted). A launch never opens a socket.
+ *
+ * Main knows none of that and doesn't need to: it runs until told to stop, the page
+ * reloads or is destroyed, or the app quits.
  *
  * ## What main holds, and what it does not
  *
- * Status only — never samples. The renderer is the only consumer, the mode is
- * genuinely unmounted when inactive so its buffer dies with it, and at ~3 KB/s
- * there is no transfer cost to amortise. Each record is decoded here (so the
+ * Status only — never samples. The renderer is the only consumer, its buffer
+ * dies with Explore's dock, and at ~3 KB/s there is no transfer cost to
+ * amortise. Each record is decoded here (so the
  * renderer never sees a raw miniSEED byte, non-negotiable #7) and pushed as a
  * `WaveformSegment` straight away.
  */

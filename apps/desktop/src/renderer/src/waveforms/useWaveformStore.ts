@@ -11,13 +11,13 @@ import type { WaveformPickPoint } from './station-pick';
 export const PICKED_REGION_ID = 'picked';
 
 /**
- * Which stations the waveform mode is showing, and the list a pick draws from.
+ * Which stations the waveform tab is showing, and the list a pick draws from.
  *
- * Module-level, so it survives the mode being switched away from and back —
- * a reader who picked the Pacific Northwest should not land on Southern
- * California every time they glance at the globe. The *data* does not survive:
- * the buffer lives in the component and dies with it, because nothing here is
- * a record worth keeping.
+ * Module-level, so it survives Explore being switched away from and back — a
+ * reader who picked the Pacific Northwest should not land on Southern
+ * California every time they glance at Analyze. The *data* does not survive
+ * that: the buffer lives in the dock and dies with Explore, because nothing
+ * here is a record worth keeping. (Minimising the dock keeps it.)
  *
  * The pick point survives the same way, and for the same reason. Switching to a
  * preset keeps it, so the "Picked spot" tab still returns to it.
@@ -29,7 +29,7 @@ export const PICKED_REGION_ID = 'picked';
 interface WaveformState {
   regionId: string;
   setRegionId: (regionId: string) => void;
-  /** The last globe click in this mode, or null before the first. */
+  /** The last spot picked — a bare-globe click or the inspector's Stations — or null. */
   pickPoint: WaveformPickPoint | null;
   /** Records a click and switches to the picked set — the click is the request. */
   pickAt: (point: WaveformPickPoint) => void;

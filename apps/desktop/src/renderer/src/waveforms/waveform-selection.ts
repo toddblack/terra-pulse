@@ -3,7 +3,7 @@ import { pickStationsNear, type DisplayStation, type WaveformPickPoint } from '.
 import type { WaveformRegion } from './waveform-regions';
 
 /**
- * What the waveform mode is showing, resolved from the store.
+ * What the waveform tab is showing, resolved from the store.
  *
  * Pure, and shared by the panel and the globe overlay: both need the same
  * stations, and computing them in one place is what keeps the rows and the

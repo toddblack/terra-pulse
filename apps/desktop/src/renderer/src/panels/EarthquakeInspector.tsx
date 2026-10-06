@@ -10,6 +10,7 @@ import { NearestFaultBody } from './NearestFault';
 import { RegionalRecurrenceBody } from './RegionalRecurrence';
 import { hasSequencePanel } from './useAftershockSequence';
 import { useNow } from '../globe/useNow';
+import { useWaveformStore } from '../waveforms/useWaveformStore';
 import { formatAgoFrom } from './time-labels';
 import styles from './EarthquakeInspector.module.css';
 
@@ -39,6 +40,8 @@ export function EarthquakeInspector() {
   const hideAntipode = useEarthquakeStore((state) => state.hideAntipode);
   const antipodeEventId = useEarthquakeStore((state) => state.antipodeEventId);
   const antipodeActive = event !== null && antipodeEventId === event.id;
+  const pickWaveformSpot = useWaveformStore((state) => state.pickAt);
+  const showDockTab = useGlobeStore((state) => state.showDockTab);
   // Wall clock, not the playhead — the same basis as the event list and the
   // hover tooltip, so the three cannot disagree about one event's age.
   const nowMs = useNow();
@@ -266,6 +269,26 @@ export function EarthquakeInspector() {
             onClick={() => requestFocus(event.id)}
           >
             Recenter
+          </button>
+          {/* Clicking a quake used to re-aim the waveform stations in the old
+              waveform mode; in Explore a click inspects instead, so re-aiming
+              is asked for here. Centred on the epicentre, not the click: at
+              whole-globe zoom a dot covers ~50 km of ground. */}
+          <button
+            id="inspector-stations"
+            type="button"
+            className={styles.actionButton}
+            title="Stream the seismometers surrounding this quake"
+            onClick={() => {
+              pickWaveformSpot({
+                latitude: event.latitude,
+                longitude: event.longitude,
+                label: `M${event.magnitude.toFixed(1)} · ${event.place}`,
+              });
+              showDockTab('waveforms');
+            }}
+          >
+            Stations
           </button>
           {/* Not an <a href> — that would navigate the Electron window itself.
               Goes through main, which validates the URL and hands it to the OS. */}
