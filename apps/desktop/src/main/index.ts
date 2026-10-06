@@ -383,9 +383,10 @@ app
     app.on('will-quit', stopMagnetometerPolling);
 
     // Live seismic waveforms — the app's only persistent outbound connection.
-    // Nothing starts here: the waveform mode calls `waveforms:start` when it
-    // mounts and `:stop` when it unmounts, so a launch never opens a socket.
-    // The quit handler exists for a mode left open when the app closes.
+    // Nothing starts here: Explore's dock calls `waveforms:start` the first
+    // time its waveform tab is shown, and `:stop` when Explore unmounts, so a
+    // launch never opens a socket. The stream keeps running while the dock is
+    // minimised, so the quit handler is the usual way it ends.
     //
     // These two use `sendToRenderer` rather than the `mainWindow.isDestroyed()`
     // check every other push here uses, and the difference is load-bearing:
@@ -393,8 +394,9 @@ app
     // event, so `onStatus` fires *during* teardown, when the WebContents is
     // already gone but the window is not. See `renderer-send.ts`.
     //
-    // The ring inventory is shared with the picker's station list, so entering
-    // the mode fetches the 1.2 MB list once rather than once per consumer.
+    // The ring inventory is shared with the picker's station list, so first
+    // opening the waveform tab fetches the 1.2 MB list once rather than once
+    // per consumer.
     const waveformStations = createWaveformStationSources();
     const waveforms = createWaveformController({
       onSegment: (segment) => {

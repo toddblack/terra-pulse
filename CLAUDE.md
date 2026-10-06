@@ -3282,6 +3282,11 @@ stillborn.
 
 ## Live seismic waveforms — a third mode. Shipped 2026-09-11.
 
+**No longer a mode: a tab in Explore's bottom dock since 2026-10-06** — see
+"Waveforms joined Explore" at the end of this section. Entries below that say
+"the mode" describe the original shape; the stream, buffer and rendering they
+describe are unchanged.
+
 `PROJECT_PLAN.md` §5.12. Ground motion streaming from EarthScope's public
 SeedLink ring, eight stations at a time, as scrolling traces. The first thing
 here that is not a record of something already catalogued.
@@ -3561,6 +3566,72 @@ top.
 - **Both versions were run by the user in the app.** The Burbank screenshot
   that prompted the surround rule came from the first; the surround version was
   confirmed by the user to look right ("a pretty wide spread").
+
+**Waveforms joined Explore as a dock tab — 2026-10-06, on branch
+`explore-dock`.** The user's call, and the reason is one sentence: entering the
+mode unmounted `ExploreShell`, so the quakes stayed drawn while the tooltip,
+inspector and range controls were all gone. (Hover itself never stopped — the
+handler in `CesiumViewer` runs in every mode; `HoverTooltip` just wasn't
+mounted.) Replay of a selected quake, next, starts from the inspector, so it
+needed both at once.
+
+- **`BottomDock` replaces the free-standing `TimeScrubber`**: Timeline and
+  Waveforms tabs on top, one showing at a time, a press on the showing tab or
+  the ▾ minimises to the strip. Rules in `panels/dock-state.ts`, pure and
+  tested. Not persisted, so a launch never opens a socket.
+- **Tabs, not a permanent playhead bar with the tabs on it — the user's
+  choice**, and it costs the scrubber whenever Waveforms shows or the dock is
+  minimised. Playback keeps running regardless (`usePlayback` lives in
+  `CesiumViewer`), so a **playhead chip** stands in on the strip — "Live" or the
+  date — or the globe could be drawing 1989 with nothing saying so. The win:
+  live traces never sit over a past playhead, and a replay can own the dock's
+  transport instead of stacking a second play bar.
+- **The dock owns the stream, the panel only draws it** (`useWaveformBackground`).
+  Started by a latch the first time the tab shows (`waveformsStarted`), kept
+  while minimised or on Timeline so reopening shows a full window, stopped when
+  Explore unmounts. The dock re-renders on every segment, which is why
+  `TimeScrubber` is `memo` — it takes no props, so it skips all of them. The
+  1 Hz clock is inside `WaveformPanel`, so a hidden panel redraws nothing.
+- **Clicks: `globe/click-route.ts`.** Probe wins, until switched off; anything
+  with a panel opens it; a click that would only deselect *also* picks stations
+  while the dock is on its waveform tab. A quake click no longer re-aims the
+  stations — inspecting Japan must not tear down a stream from home — so the
+  inspector has a **Stations** button for that. Drag-deselect is normal again.
+  Station markers draw only while the tab shows; the stream keeps running
+  without them. Two rules added after the user used it:
+  - **A fault or boundary click opens its panel *and* picks there.** Around
+    Burbank at regional zoom nearly every pixel is a GEM trace, so "bare globe
+    only" barely picked where it matters most. Both answers are already about
+    the clicked point, never the feature's centroid.
+  - **Minimised on Waveforms, a bare click picks and reopens the dock**, so the
+    new cluster lands on screen. On the Timeline tab clicks are plain Explore.
+- **A stale click handler looks exactly like a routing bug.** The user's first
+  test showed bare clicks doing "nothing at all" with the tab open. A fresh
+  build driven over CDP picked correctly on the first click. The handler is
+  registered once per viewer, so a dev session that hot-reloaded the panels
+  but not `CesiumViewer`'s effect keeps the *old* handler — which only picked
+  in a mode that no longer exists. Restart `pnpm dev` fully after touching it.
+- **Sized between the columns, measured.** `ExploreShell` publishes
+  `--left-column-width` / `--right-column-width`; the dock fills the gap. The
+  right column is measured whole, event list included, because the list can
+  reach down beside a dock taller than the legend. `published-size.ts` is the
+  old scrubber-height ref callback, generalised; `--scrubber-height` is now
+  `--dock-height` and also bounds `.topCentreColumn`, which had a hard-coded
+  `100vh - 11rem` that ignored the scrubber entirely.
+- **Two height decisions, both forced by the centred inspector**, which can only
+  use twice the space between screen centre and the dock's top:
+  - The waveform panel is capped at **23rem** — the timeline's own full height —
+    not the mode's 32rem, which would leave a 1000px window's inspector nothing.
+    Plots went 2.5 → 2rem so more rows fit before scrolling.
+  - The dock sits at **`bottom: 3rem`**, level with both side columns (the
+    right column's bottom went 1rem → 3rem, lifting the legend to match, as the
+    user asked). Not only
+    looks: Cesium's attribution strip — a licence condition — runs up to 28rem
+    in from the left at the bottom edge, and a dock starting right after the
+    left column at 1rem would cover it. The old centred scrubber never reached
+    it. Cost: 4rem of inspector height while the dock is open.
+- The guide lost "and cannot become one" from its early-warning line — §5.13
+  made that false — and no longer says clicking a quake re-aims the stations.
 
 ## Waveform early warning — detector validated in replay. 2026-10-02.
 

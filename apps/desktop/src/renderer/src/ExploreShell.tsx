@@ -6,7 +6,8 @@ import { LayerPanel } from './panels/LayerPanel';
 import { RangeControls } from './panels/RangeControls';
 import { FaultProbeToggle } from './panels/FaultProbeToggle';
 import { DepthLegend } from './panels/DepthLegend';
-import { TimeScrubber } from './panels/TimeScrubber';
+import { BottomDock } from './panels/BottomDock';
+import { publishSize } from './panels/published-size';
 import { EarthquakeInspector } from './panels/EarthquakeInspector';
 import { LocationPanel } from './panels/LocationPanel';
 import { SolarEventPanel } from './panels/SolarEventPanel';
@@ -20,6 +21,16 @@ import { useTec } from './panels/useTec';
 import { useDonkiStatus } from './panels/useDonkiStatus';
 import { LayerGuideModal } from './panels/LayerGuideModal';
 import { HistoricalDataPanel } from './panels/HistoricalDataPanel';
+
+/**
+ * The side columns' widths, for `BottomDock` to fit between. Measured because
+ * both change at runtime — the left with the archive panel, the right with the
+ * event list and the legend's sections — and a dock sized by a guess overlaps
+ * them. The right column is measured whole, event list included: the list can
+ * reach down beside the dock whenever the legend is shorter than it.
+ */
+const publishLeftColumnWidth = publishSize('--left-column-width', 'width');
+const publishRightColumnWidth = publishSize('--right-column-width', 'width');
 
 /**
  * Everything that isn't the globe itself or the Explore/Analyze switch.
@@ -120,7 +131,7 @@ export function ExploreShell() {
           `bottom: 3rem`, which is where it used to collide with the archive
           above it on a short screen. `margin-top: auto` keeps it at the
           bottom; the archive is what shrinks. See App.module.css. */}
-      <div className={styles.leftColumn}>
+      <div className={styles.leftColumn} ref={publishLeftColumnWidth}>
         <RangeControls />
         <HistoricalDataPanel />
         <FaultProbeToggle />
@@ -134,8 +145,11 @@ export function ExploreShell() {
         <LocationPanel />
         <SolarEventPanel />
       </div>
-      <TimeScrubber />
-      <div className={styles.rightColumn}>
+      {/* The timeline and the live waveforms, one at a time, between the two
+          columns. Before it existed, waveforms were a mode of their own that
+          unmounted all of the above. */}
+      <BottomDock />
+      <div className={styles.rightColumn} ref={publishRightColumnWidth}>
         <EventListPanel />
         <DepthLegend />
       </div>

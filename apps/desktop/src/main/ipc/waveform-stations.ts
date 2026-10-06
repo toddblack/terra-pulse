@@ -9,12 +9,12 @@ import type { WaveformStation, WaveformStationCatalogue } from '@terra-pulse/sch
 
 /**
  * The station list behind the waveform picker, and the ring inventory it is
- * built from — both cached here so that opening the mode costs one fetch of
- * each rather than one per asker.
+ * built from — both cached here so that first opening the waveform tab costs
+ * one fetch of each rather than one per asker.
  *
  * The inventory has two consumers: the stream controller (to mark absent
  * channels `rejected`) and the catalogue (to keep only stations the ring
- * carries). Without sharing it, entering the mode would pull the same 1.2 MB
+ * carries). Without sharing it, starting the stream would pull the same 1.2 MB
  * list twice, in parallel.
  */
 
@@ -32,7 +32,7 @@ export interface CachedLoader<T> {
  * Two properties carry the weight, and both come from `tec.ts`'s cache:
  *
  * - **One in-flight load is shared** between every caller that arrives while it
- *   runs. StrictMode double-mounts the mode, so "two at once" is the normal case
+ *   runs. StrictMode double-mounts every effect, so "two at once" is the normal case
  *   in development, not an edge.
  * - **A failure is not cached.** One dropped connection must not look like a
  *   permanent absence for the next hour; the next caller simply tries again.
@@ -78,9 +78,9 @@ export interface WaveformStationSourceOptions {
  *
  * **The two fetches run side by side** and meet only at the join: measured
  * ~3.1 s for the ring's list and ~2.8 s for the station service, so in sequence
- * the picker had nothing for ~6 s after the mode opened, and together ~3 s. On
- * entering the mode the controller has usually already started the inventory
- * fetch, and this joins that one rather than starting another.
+ * the picker had nothing for ~6 s after the stream started, and together ~3 s.
+ * When the stream starts the controller has usually already started the
+ * inventory fetch, and this joins that one rather than starting another.
  *
  * The catalogue says *which* half failed, because the two fail for different
  * reasons and point at different services: the ring's list comes from the
@@ -134,11 +134,13 @@ export function createWaveformStationSources(
 }
 
 /**
- * `waveforms:stations`. Pulled by the renderer when the mode mounts — nothing
- * fetches this at launch, for the same reason nothing opens the socket then.
+ * `waveforms:stations`. Pulled by the renderer once the waveform stream is
+ * first asked for — nothing fetches this at launch, for the same reason nothing
+ * opens the socket then.
  *
- * ~3,200 stations is ~300 KB of structured clone, once per mount; the fetch
- * itself is cached above, so switching modes back and forth costs only that.
+ * ~3,200 stations is ~300 KB of structured clone, once per Explore mount; the
+ * fetch itself is cached above, so switching modes back and forth costs only
+ * that.
  */
 export function registerWaveformStationHandlers(sources: WaveformStationSources): void {
   ipcMain.handle('waveforms:stations', (): Promise<WaveformStationCatalogue> => sources.catalogue());

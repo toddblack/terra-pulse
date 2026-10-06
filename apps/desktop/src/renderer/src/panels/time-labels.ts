@@ -59,6 +59,36 @@ export function formatAgo(millis: number): string {
   return `${formatDuration(millis)} ago`;
 }
 
+/**
+ * The playhead: a clock time plus how far back that is, because "14:20" alone
+ * doesn't say which of the last four days it belongs to.
+ *
+ * Shared by the scrubber and the dock's playhead chip, which stands in for the
+ * scrubber whenever the timeline tab isn't showing — the two describe one
+ * instant and must say it the same way.
+ */
+export function formatPlayhead(playheadMs: number, nowMs: number): string {
+  const clock = new Date(playheadMs).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const elapsed = nowMs - playheadMs;
+  if (elapsed <= 0) return `${clock} · now`;
+
+  // Past a week the clock time stops meaning anything — nobody is tracking
+  // 14:20 on a day in 1974 — so the date replaces it.
+  if (elapsed >= WEEK_MS) {
+    const date = new Date(playheadMs).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+    return `${date} · ${formatAgo(elapsed)}`;
+  }
+
+  return `${clock} · ${formatAgo(elapsed)}`;
+}
+
 /** How long ago an ISO instant was, or null if it can't be parsed. */
 export function formatAgoFrom(iso: string | null, nowMs: number): string | null {
   if (iso === null) return null;

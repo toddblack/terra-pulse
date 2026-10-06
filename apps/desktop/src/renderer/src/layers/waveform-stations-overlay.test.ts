@@ -143,8 +143,8 @@ describe('waveform stations overlay', () => {
   });
 
   it('cleans up a source that finishes attaching after it was destroyed', async () => {
-    // Leaving the mode can unmount this before `dataSources.add` resolves;
-    // without the guard the markers would stay on the globe in Explore.
+    // Minimising the dock can unmount this before `dataSources.add` resolves;
+    // without the guard the markers would stay on the globe with no rows.
     const { viewer, raw, added, finishAdd } = createFakeViewer({ addPending: true });
     const overlay = createWaveformStationsOverlay(viewer);
     overlay.destroy();

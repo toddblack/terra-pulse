@@ -67,7 +67,9 @@
   position: absolute;
   top: 1rem;
   right: 1rem;
-  bottom: 1rem;
+  /* The left column's 3rem, so the legend and the layer panel end on one line
+     with the bottom dock between them. */
+  bottom: 3rem;
   display: flex;
   flex-direction: column;
   /* Keeps each panel its own width instead of stretching both to the widest. */
@@ -123,10 +125,12 @@
      stretching to the widest — they range from 18rem to 22rem. */
   align-items: center;
   gap: 0.5rem;
-  /* Bounded so a full stack shrinks instead of running past the time
-     scrubber. Children opt into shrinking below; each already scrolls
-     internally. */
-  max-height: calc(100vh - 11rem);
+  /* Bounded so a full stack shrinks instead of running onto the bottom dock:
+     this column's own 4rem top, the dock's measured height and `bottom: 3rem`,
+     and a 0.75rem gap. The dock's height was a guess baked into a constant
+     here until it was published. Children opt into shrinking below; each
+     already scrolls internally. */
+  max-height: calc(100vh - 7.75rem - var(--dock-height, 22.25rem));
   transform: translateX(-50%);
   pointer-events: none;
 }

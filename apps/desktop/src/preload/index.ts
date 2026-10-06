@@ -201,8 +201,8 @@ contextBridge.exposeInMainWorld('terraPulse', {
      * already running. Main validates every code before it reaches a command
      * line — the renderer is not trusted to have done so.
      *
-     * The mode calls this on mount and `stop` on unmount. A launch never opens
-     * the connection.
+     * Explore's dock calls this the first time its waveform tab is shown, and
+     * `stop` when Explore unmounts. A launch never opens the connection.
      */
     start: (channels: readonly WaveformChannel[]): Promise<WaveformStreamStatus> =>
       ipcRenderer.invoke('waveforms:start', { channels }),
@@ -211,15 +211,15 @@ contextBridge.exposeInMainWorld('terraPulse', {
 
     /**
      * Current status, pulled once on mount before subscribing — the `aurora`
-     * two-step, so a mode that mounts just after a state change is not blank
+     * two-step, so a panel that mounts just after a state change is not blank
      * until the next one.
      */
     status: (): Promise<WaveformStreamStatus> => ipcRenderer.invoke('waveforms:status'),
 
     /**
      * Every station the picker can choose from, with coordinates — or why the
-     * list is unavailable. Pulled when the mode mounts; main caches it for an
-     * hour and shares one fetch between askers.
+     * list is unavailable. Pulled once the waveform stream is first asked for;
+     * main caches it for an hour and shares one fetch between askers.
      */
     stations: (): Promise<WaveformStationCatalogue> => ipcRenderer.invoke('waveforms:stations'),
 

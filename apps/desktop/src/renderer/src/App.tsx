@@ -2,17 +2,16 @@ import type { ComponentType } from 'react';
 import { CesiumViewer } from './globe/CesiumViewer';
 import { ExploreShell } from './ExploreShell';
 import { AnalyzeShell } from './analyze/AnalyzeShell';
-import { WaveformShell } from './waveforms/WaveformShell';
 import { ModeSwitch } from './panels/ModeSwitch';
 import { useAppModeStore, type AppMode } from './state/useAppModeStore';
 import styles from './App.module.css';
 
 /**
- * Explore, Analyze and Waveforms (non-negotiable #1). `mode` decides which
- * shell mounts — **genuinely unmounted, not hidden**, so nothing Explore-side
- * is on screen, subscribed, or polling while another mode is active, nothing
- * Analyze-side exists at all until asked for, and the waveform mode's socket
- * closes the moment you leave it.
+ * Explore and Analyze (non-negotiable #1). `mode` decides which shell mounts —
+ * **genuinely unmounted, not hidden**, so nothing Explore-side is on screen,
+ * subscribed, or polling while Analyze is active (the live waveform stream in
+ * Explore's dock included), and nothing Analyze-side exists at all until asked
+ * for.
  *
  * `CesiumViewer` stays mounted across the switch regardless — there is
  * nothing to destroy (non-negotiable #5 is untouched), and remounting it
@@ -26,7 +25,6 @@ import styles from './App.module.css';
 const SHELLS: Record<AppMode, ComponentType> = {
   explore: ExploreShell,
   analyze: AnalyzeShell,
-  waveforms: WaveformShell,
 };
 
 export default function App() {

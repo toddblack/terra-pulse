@@ -1,17 +1,10 @@
-/* Bottom-centre, the one edge not already occupied: range controls sit
-   top-left, layers bottom-left, legend bottom-right. Centred on the viewport
-   rather than between the side panels so the playhead track stays symmetrical
-   as the window resizes. */
+/* Placed by `BottomDock`, which sits it under its tab strip and sizes it to
+   the gap between the side columns. Only the panel's own surface lives here. */
 .scrubber {
-  position: absolute;
-  bottom: 1rem;
-  left: 50%;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  width: min(30rem, calc(100vw - 26rem));
   padding: 0.625rem 0.875rem;
-  transform: translateX(-50%);
   border-radius: 0.5rem;
   background-color: rgb(15 23 42 / 80%);
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 30%);

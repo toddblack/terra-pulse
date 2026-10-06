@@ -1,11 +1,11 @@
 import type { LayerGuide } from '../panels/layer-guides';
 
 /**
- * What this mode can and cannot tell you.
+ * What the dock's waveform tab can and cannot tell you.
  *
  * Reuses `LayerGuide`'s four sections — what it shows, how to read it, what it
- * can't tell you, where it came from — because a mode owes a reader exactly
- * what a layer does. The third section is the reason the shape exists: a
+ * can't tell you, where it came from — because a panel this easy to over-read
+ * owes a reader exactly what a layer does. The third section is the reason the shape exists: a
  * scrolling seismogram is the most naturally over-read display in this app.
  * Almost everything moving on it is the ocean, and nothing on it is a warning.
  *
@@ -27,11 +27,12 @@ export function waveformGuideFor(id: string): LayerGuide | undefined {
 export const WAVEFORM_GUIDE: LayerGuide = {
   title: 'Live waveforms',
   shows:
-    'Ground motion as it is recorded, streamed from public seismic stations. Each row is one station\'s vertical component over the last two minutes, scrolling right to left. This is the only part of the app showing the ground actually moving rather than marks for events already catalogued. Pick a preset region, or click anywhere on the globe — or on an earthquake — to stream up to ten stations surrounding that spot.',
+    'Ground motion as it is recorded, streamed from public seismic stations. Each row is one station\'s vertical component over the last two minutes, scrolling right to left. This is the only part of the app showing the ground actually moving rather than marks for events already catalogued. Pick a preset region, click bare globe while this tab is showing, or open an earthquake and choose Stations, to stream up to ten stations surrounding that spot. Once started, the stream keeps running while the panel is minimised or the timeline is showing.',
   reading: [
-    'The stations being streamed are marked on the globe as cyan triangles, labelled with the code each row carries. A picked spot is marked with a white bracket.',
+    'The stations being streamed are marked on the globe as cyan triangles, labelled with the code each row carries, while this tab is showing. A picked spot is marked with a white bracket.',
+    'Clicking an earthquake opens it in the inspector as usual — it does not move the stations. A click on bare globe picks a new spot, and so does a click on a fault or plate boundary, which also opens its panel. If the panel is minimised, a pick reopens it. While the fault probe is on, clicks belong to the probe instead.',
     'A picked spot is surrounded rather than just neighboured: the nearest station in each of eight compass directions within 150 km, then the nearest of the rest. Each row says how far that station is from where you clicked and in which direction, nearest first. A wave arriving from a side with no station reaches every row late, so the note above the rows gives the widest direction left uncovered — on a coast that is usually the sea.',
-    'No two picked stations are within 25 km of each other, so each row is a different place rather than one site counted twice. Clicking an earthquake centres the pick on its epicentre, not on the pixel you clicked.',
+    'No two picked stations are within 25 km of each other, so each row is a different place rather than one site counted twice. Choosing Stations on an earthquake centres the pick on its epicentre.',
     'Each trace is the envelope of the recorded samples: the vertical extent of a column is the range the ground covered in that slice of time, so a brief sharp arrival stays visible rather than being skipped over.',
     'The centre line is that station\'s own average over the window, removed — a seismometer sits on an arbitrary offset of tens of thousands of counts, which would otherwise push every trace off its row.',
     'The vertical scale is per station and steps in a 1-2-5 sequence, so it changes visibly rather than drifting. The number beside each row is what full height currently means.',
@@ -40,15 +41,15 @@ export const WAVEFORM_GUIDE: LayerGuide = {
   ],
   limits: [
     'It is not real time, and cannot be. A station ships a record only once it is full, which takes about 2 to 7 seconds at 100 Hz and 5 to 25 seconds on the slower global stations, plus about 2 seconds in transit. The newest sample on screen is therefore seconds old — and a quiet station lags more than a busy one, because quiet ground compresses better and so takes longer to fill a record. Because the rows share one clock, the slowest station on screen sets how far behind live the whole view sits.',
-    'This is not an earthquake warning and cannot become one. It reports motion that has already happened, at stations that may be thousands of kilometres from you. See the project notes on why early warning is out of scope.',
+    'This is not an earthquake warning. It reports motion that has already happened, at stations that may be thousands of kilometres from you.',
     'Almost anything moving on a trace is not an earthquake. Ocean microseism is always present and is usually the largest thing on a quiet record; wind, traffic and the instrument itself account for most of the rest. There is no detector here, deliberately — a single station cannot tell a quarry blast from an earthquake.',
     'The vertical axis has no units. These are raw instrument counts with no response removed, so amplitudes cannot be compared between rows: a sensitive broadband sensor and a short-period one differ by roughly fifty times for the same ground motion.',
     'Only vertical motion is shown. Horizontal shaking, which is what damages buildings, is not.',
-    'Nothing is kept. Two minutes are held in memory while this mode is open, and discarded when you leave it. There is no history to scroll back through.',
+    'Nothing is kept. Two minutes are held in memory from the first time you open this tab — they keep filling while it is minimised — and are discarded when you switch to Analyze or quit. There is no history to scroll back through.',
     'A blank row does not mean still ground — it means no packets arrived. The status beside each station separates never-connected from stopped-delivering, but nothing here can tell a dead station from a dead network path.',
     'These are whichever stations happen to be on a public ring, not a designed network. Coverage is wildly uneven: about 3,200 stations, more than half of them in the contiguous United States, while Northern California publishes none here at all. So the nearest station to a pick is often far away — 74 km from Tokyo, over 2,000 km from the middle of the Pacific — and the distance on each row is the honest measure of how much it says about the spot you clicked.',
     'A picked set can mix instruments: 100 Hz broadband, slower 20-40 Hz broadband, and short-period sensors, chosen per station in that order of preference. A slow station on screen pushes the whole view further behind live, and a short-period trace looks different from a broadband one for reasons that have nothing to do with the ground.',
-    'A station near an earthquake you clicked shows what is arriving now, not what that earthquake did. By the time an event is catalogued, its waves have usually passed every nearby station, and nothing here goes back to fetch them.',
+    'A station near an earthquake you chose Stations for shows what is arriving now, not what that earthquake did. By the time an event is catalogued, its waves have usually passed every nearby station, and nothing here goes back to fetch them.',
     'Timing is each station\'s own clock. A station with a bad clock draws its trace in the wrong place, and nothing here can detect that from a single channel.',
   ],
   source:

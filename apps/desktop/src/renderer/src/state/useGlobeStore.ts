@@ -19,6 +19,14 @@ import type { HoverTarget } from '../globe/hover-target';
 import type { FaultRecord } from '../layers/fault-association';
 import { defaultTrackVisibility, isTrackVisible, type TrackRowId } from '../panels/track-rows';
 import {
+  INITIAL_DOCK,
+  pressDockTab,
+  showDockTab,
+  toggleDockOpen,
+  type DockState,
+  type DockTab,
+} from '../panels/dock-state';
+import {
   DEFAULT_RECURRENCE_FLOOR,
   DEFAULT_RECURRENCE_RADIUS_KM,
   type BackdropTone,
@@ -103,6 +111,15 @@ interface GlobeState {
    * row added later still draws for someone whose stored map predates it.
    */
   visibleTracks: Record<string, boolean>;
+
+  /**
+   * The bottom dock: timeline or waveforms, open or minimised. See
+   * `dock-state.ts` for the rules.
+   *
+   * Not persisted, deliberately: a remembered "waveforms open" would open a
+   * live connection at launch, which nothing here does on its own.
+   */
+  dock: DockState;
 
   /**
    * Whether clicking the globe asks "what fault is here?" instead of selecting.
@@ -196,6 +213,9 @@ interface GlobeState {
   toggleLayer: (id: string) => void;
   setLayerVisible: (id: string, visible: boolean) => void;
   toggleTrack: (id: string) => void;
+  pressDockTab: (tab: DockTab) => void;
+  showDockTab: (tab: DockTab) => void;
+  toggleDock: () => void;
   toggleFaultProbe: () => void;
   selectLocation: (selection: LocationSelection | null) => void;
   selectSolarEvent: (selection: SolarEventSelection | null) => void;
@@ -233,6 +253,7 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   activeBasemapId: DEFAULT_BASEMAP_ID,
   layerVisibility: defaultOverlayVisibility(),
   visibleTracks: defaultTrackVisibility(),
+  dock: INITIAL_DOCK,
   faultProbeActive: false,
   location: null,
   selectedSolarEvent: null,
@@ -251,6 +272,10 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   donkiProgress: DONKI_IDLE,
 
   setActiveBasemap: (id) => set({ activeBasemapId: id }),
+
+  pressDockTab: (tab) => set((state) => ({ dock: pressDockTab(state.dock, tab) })),
+  showDockTab: (tab) => set((state) => ({ dock: showDockTab(state.dock, tab) })),
+  toggleDock: () => set((state) => ({ dock: toggleDockOpen(state.dock) })),
 
   /**
    * Leaving probe mode drops a probed *point* with it, but leaves a clicked

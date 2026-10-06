@@ -26,8 +26,9 @@
 :global(.cesium-viewer-bottom) {
   bottom: 0.375rem;
   left: 0.5rem;
-  /* Stops a long provider string running under the time scrubber; it wraps
-     within the cap instead, and the cap fits the two lines that produces. */
+  /* Stops a long provider string running far across the bottom edge; it wraps
+     within the cap instead, and the cap fits the two lines that produces. The
+     bottom dock sits at `bottom: 3rem` partly to stay clear of this. */
   max-width: min(28rem, calc(100vw - 34rem));
   /* Paired with the offset in LayerPanel.module.css — raise one, raise both. */
   max-height: 2rem;
