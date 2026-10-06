@@ -919,7 +919,8 @@ earthquakes arriving.
 
 ### 5.12 Live Seismic Waveforms — shipped
 
-The app's **third mode**, and the first thing in it that is not a record of
+Shipped as the app's **third mode** (now a tab in Explore's bottom dock — see
+the end of this section), and the first thing in it that is not a record of
 something already catalogued: real ground motion, streaming from public seismic
 stations, drawn as scrolling traces. Everything else here draws marks for events
 that already happened; this draws the ground moving.
@@ -944,6 +945,16 @@ FDSN station service and joined to the ring's own list, rather than vendored.
 Prediction held: main's stream path, the buffer and the trace rendering did not
 change. Clicking individual stations remains possible on top of this, since the
 stations are already drawn on the globe.
+
+**No longer a mode, since 2026-10-06 — a tab in Explore's bottom dock.** As a
+mode it unmounted Explore, so the earthquakes stayed drawn while nothing about
+them could be hovered or inspected, and the user wanted both at once — and the
+next step, replaying a selected quake through the §5.13 detector, starts from
+the inspector. The dock holds the timeline and the waveforms one at a time under
+a tab strip, and minimises to that strip. The stream starts the first time the
+tab is shown and keeps running while minimised; a bare-globe click picks
+stations while the tab shows, a quake click inspects, and the inspector's
+**Stations** button re-aims at a quake. The app is two modes again.
 
 **Transport is SeedLink v3.1 over a single TCP connection** to EarthScope's
 ring, demultiplexed by each record's own header. Records are miniSEED, decoded

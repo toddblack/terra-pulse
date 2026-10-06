@@ -2,22 +2,21 @@ import { useAppModeStore, type AppMode } from '../state/useAppModeStore';
 import styles from './ModeSwitch.module.css';
 
 /**
- * Explore, Analyze and Waveforms. Top-centre, the one region of the chrome
- * nothing else claims — the left column, right column and scrubber are all
- * already spoken for.
+ * Explore and Analyze. Top-centre, the one region of the chrome nothing else
+ * claims — the left column, right column and bottom dock are all already
+ * spoken for.
  *
  * Always visible, in every mode — it's how you get back.
  *
  * **List-driven, like `layers/registry.ts` and `panels/track-rows.ts`.** It
- * was two hardcoded buttons; adding a third meant either a third copy of the
- * same markup or this. The switch grows *horizontally* as modes are added
- * (~180px for two, ~270px for three), which still sits comfortably inside
- * `MIN_WIDTH` (1000px, see `main/index.ts`).
+ * held three modes for a while; Waveforms became a tab in Explore's bottom
+ * dock instead, which is why there are two again. The switch grows
+ * *horizontally* as modes are added (~180px for two, ~270px for three), well
+ * inside `MIN_WIDTH` (1000px, see `main/index.ts`).
  */
 const MODES: readonly { id: AppMode; label: string }[] = [
   { id: 'explore', label: 'Explore' },
   { id: 'analyze', label: 'Analyze' },
-  { id: 'waveforms', label: 'Waveforms' },
 ];
 
 export function ModeSwitch() {

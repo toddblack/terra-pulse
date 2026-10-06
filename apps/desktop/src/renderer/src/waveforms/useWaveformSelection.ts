@@ -9,7 +9,7 @@ import { resolveWaveformSelection, type WaveformSelection } from './waveform-sel
  * Memoised on the three store fields it reads. That bounds the work, but it is
  * **not** what keeps the stream up: the station list landing ~3 s after mount
  * re-runs this and hands out new arrays for unchanged stations. The stream's
- * channel list is keyed on the channel ids instead — see `WaveformShell`.
+ * channel list is keyed on the channel ids instead — see `useWaveformBackground`.
  */
 export function useWaveformSelection(): WaveformSelection | null {
   const regionId = useWaveformStore((state) => state.regionId);
