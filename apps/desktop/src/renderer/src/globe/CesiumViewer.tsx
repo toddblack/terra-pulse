@@ -37,6 +37,8 @@ import {
 } from '../layers/waveform-stations-overlay';
 import { useAppModeStore } from '../state/useAppModeStore';
 import { useWaveformStore } from '../waveforms/useWaveformStore';
+import { selectReplayOpen, useReplayStore } from '../waveforms/useReplayStore';
+import { createReplayWavesOverlay } from '../layers/replay-waves-overlay';
 import { useWaveformSelection } from '../waveforms/useWaveformSelection';
 import { watchSelection } from './selection-sync';
 import { useGlobeLayers } from './useGlobeLayers';
@@ -174,10 +176,16 @@ export function CesiumViewer() {
   const dockShowsWaveforms = useGlobeStore((state) => isDockShowing(state.dock, 'waveforms'));
   const dockOnWaveforms = useGlobeStore((state) => state.dock.tab === 'waveforms');
   const waveformsShowing = appMode === 'explore' && dockShowsWaveforms;
-  const waveformsPickingRef = useRef(appMode === 'explore' && dockOnWaveforms);
+  // A replay holds the waveform tab: a bare click there must not quietly
+  // re-aim the live stream sitting out of sight underneath it.
+  const replayOpen = useReplayStore(selectReplayOpen);
+  const waveformsPicking = appMode === 'explore' && dockOnWaveforms && !replayOpen;
+  const waveformsPickingRef = useRef(waveformsPicking);
   useEffect(() => {
-    waveformsPickingRef.current = appMode === 'explore' && dockOnWaveforms;
-  }, [appMode, dockOnWaveforms]);
+    waveformsPickingRef.current = waveformsPicking;
+  }, [waveformsPicking]);
+  const replayLoad = useReplayStore((state) => state.load);
+  const shownReplay = waveformsShowing && replayLoad?.status === 'ready' ? replayLoad.replay : null;
   const waveformSelection = useWaveformSelection();
   const hoveredWaveformStation = useWaveformStore((state) => state.hoveredStation);
   const waveformOverlayRef = useRef<WaveformStationsOverlay | null>(null);
@@ -780,9 +788,15 @@ export function CesiumViewer() {
    * dock is minimised or on the timeline, even though the stream keeps running
    * — cyan triangles with no traces beside them would be marks nobody can read.
    */
-  const waveformStations = waveformsShowing ? (waveformSelection?.stations ?? null) : null;
+  // While a replay is on screen its rows are the stations shown; its epicentre
+  // is drawn by the replay overlay below, so no picked-spot bracket.
+  const waveformStations = !waveformsShowing
+    ? null
+    : shownReplay !== null
+      ? shownReplay.rows
+      : (waveformSelection?.stations ?? null);
   const waveformPoint =
-    waveformsShowing && waveformSelection?.kind === 'picked' ? waveformSelection.point : null;
+    waveformsShowing && shownReplay === null && waveformSelection?.kind === 'picked' ? waveformSelection.point : null;
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || waveformStations === null) return;
@@ -799,6 +813,20 @@ export function CesiumViewer() {
       if (waveformOverlayRef.current === overlay) waveformOverlayRef.current = null;
     };
   }, [waveformStations, waveformPoint, viewerReadyToken]);
+
+  /**
+   * The replayed quake: epicentre, home, and the P and S wavefronts. The rings
+   * read the replay clock straight from the store on each frame, so playback
+   * moves them without a single React render — see `replay-waves-overlay.ts`.
+   */
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || shownReplay === null) return;
+    const overlay = createReplayWavesOverlay(viewer, shownReplay, () => useReplayStore.getState().playback.positionMs);
+    return () => {
+      overlay.destroy();
+    };
+  }, [shownReplay, viewerReadyToken]);
 
   // Hovering a waveform row picks out its marker. Its own effect, so moving
   // down the rows is a few property writes rather than a teardown and rebuild.

@@ -23,6 +23,9 @@ import type {
   HypothesisId,
   HypothesisSummary,
   MissedEvents,
+  QuakeReplay,
+  QuakeReplayProgress,
+  QuakeReplayRequest,
   RegionalRecurrence,
   SolarFlare,
   WaveformChannel,
@@ -111,6 +114,17 @@ declare global {
         onSegment(callback: (segment: WaveformSegment) => void): () => void;
         /** Connection and channel state changes; returns an unsubscribe function. */
         onStatus(callback: (status: WaveformStreamStatus) => void): () => void;
+      };
+      /** Replaying a past quake through the early-warning detector (§5.13). */
+      quakeReplay: {
+        /**
+         * Fetches what the home network recorded and runs the detector over it.
+         * Rejects if a newer start superseded it, or the archive could not be
+         * read. Follow `onProgress` while it loads.
+         */
+        start(request: QuakeReplayRequest): Promise<QuakeReplay>;
+        cancel(): Promise<void>;
+        onProgress(callback: (progress: QuakeReplayProgress) => void): () => void;
       };
       spaceWeather: {
         /** Kp and Dst over a half-open range. Bounded on both ends. */

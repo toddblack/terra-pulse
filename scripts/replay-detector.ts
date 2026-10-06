@@ -38,12 +38,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { channelIdOf, haversineKm, type WaveformStation } from '../packages/schema/src/index';
 import {
+  DEFAULT_ALERT_GEOMETRY,
   DEFAULT_ALERT_RULE,
   DEFAULT_DETECTOR_PARAMS,
+  DEFAULT_HOME,
+  DEFAULT_HOME_LABEL,
+  HOME_NETWORK_RADIUS_KM,
   HomeAlerter,
-  QuakeDetector,
-  arrivalOrder,
-  asLiveRecords,
   buildStationCatalogue,
   fetchChannelEpochs,
   fetchDataselect,
@@ -51,29 +52,25 @@ import {
   fetchRingInventory,
   fetchStationListing,
   gradeDetections,
-  parseMiniSeedRecord,
-  splitMiniSeedRecords,
-  velocityGainAt,
+  homeNetwork,
+  runDetectorReplay,
+  teleseismicPSeconds,
   type CatalogueQuake,
   type DetectorParams,
   type FdsnTextRow,
   type HomeAlert,
-  type MagnitudeEstimate,
-  type MiniSeedDataRecord,
   type QuakeDetection,
 } from '../packages/ingest/src/index';
 
-const HOME = { latitude: 34.1808, longitude: -118.309, label: 'Burbank, CA' };
-/** Stations the detector listens to: what can hear a quake that matters at home. */
-const STATION_RADIUS_KM = 300;
+const HOME = { ...DEFAULT_HOME, label: DEFAULT_HOME_LABEL };
 /** Quakes whose catalogue entries can explain a detection. Wider than the stations, plus the search margin. */
 const CATALOGUE_RADIUS_KM = 450;
 const LOCAL_CASE_RADIUS_KM = 250;
 const CACHE = join(import.meta.dirname, '..', '.cache', 'replay');
 /** Requests are split so no single POST asks for the whole network at once. */
 const STATIONS_PER_REQUEST = 25;
-const S_VELOCITY_KM_S = 3.6;
-const DEPTH_KM = 8;
+const S_VELOCITY_KM_S = DEFAULT_ALERT_GEOMETRY.sVelocityKmS;
+const DEPTH_KM = DEFAULT_ALERT_GEOMETRY.depthKm;
 /** Burbank's residential ZIP codes, for what people there reported feeling. */
 const HOME_ZIPS = new Set(['91501', '91502', '91504', '91505', '91506']);
 
@@ -126,9 +123,8 @@ async function stations(): Promise<WaveformStation[]> {
   const [listing, ring] = await Promise.all([fetchStationListing(), fetchRingInventory()]);
   if (listing === null || ring === null) throw new Error('station list or ring inventory unavailable');
   const all = buildStationCatalogue(listing.channelRows, listing.stationRows, ring);
-  // 100 Hz only: slower channels pack 2.5-5 s per record even in strong shaking,
-  // which is too slow to be among the first stations an alert waits on.
-  const chosen = all.filter((s) => s.sampleRateHz >= 100 && haversineKm(s, HOME) <= STATION_RADIUS_KM);
+  // The same rule the app's replay uses — see `homeNetwork`.
+  const chosen = homeNetwork(all, HOME);
   writeJson(path, { drawnUtc: new Date().toISOString(), stations: chosen });
   return chosen;
 }
@@ -154,23 +150,6 @@ async function gainEpochs(list: WaveformStation[]): Promise<FdsnTextRow[]> {
 
 function toCatalogueQuake(e: { id: string; timeUtc: string; latitude: number; longitude: number; magnitude: number }): CatalogueQuake {
   return { id: e.id, originMs: Date.parse(e.timeUtc), latitude: e.latitude, longitude: e.longitude, magnitude: e.magnitude };
-}
-
-/**
- * Approximate P travel time for a surface source, seconds, by distance in
- * degrees (IASP91, rounded). Only used to aim a 7-minute replay window at a
- * distant quake's P arrival; an error of 20 s here costs nothing.
- */
-function teleseismicPSeconds(deltaDeg: number): number {
-  const table: [number, number][] = [
-    [20, 277], [30, 372], [40, 461], [50, 537], [60, 601], [70, 660], [80, 714], [90, 766], [100, 818],
-  ];
-  for (let i = 1; i < table.length; i += 1) {
-    const [d1, t1] = table[i] as [number, number];
-    const [d0, t0] = table[i - 1] as [number, number];
-    if (deltaDeg <= d1) return t0 + ((deltaDeg - d0) / (d1 - d0)) * (t1 - t0);
-  }
-  return 818;
 }
 
 function seeded(seed: number): () => number {
@@ -414,36 +393,14 @@ interface MagnitudeStep {
 }
 
 async function runCase(c: Case, list: WaveformStation[], gains: readonly FdsnTextRow[]): Promise<CaseResult> {
-  const records: MiniSeedDataRecord[] = [];
-  let badRecords = 0;
-  for (const bytes of await waveforms(c, list)) {
-    for (const raw of splitMiniSeedRecords(bytes)) {
-      try {
-        const r = parseMiniSeedRecord(raw);
-        // Archive packaging is not always live packaging; see asLiveRecords.
-        if (r.kind === 'data') records.push(...asLiveRecords(r, raw.byteLength));
-      } catch {
-        badRecords += 1;
-      }
-    }
-  }
-
-  const detector = new QuakeDetector(
-    list.map((s) => ({
-      channelId: channelIdOf(s),
-      latitude: s.latitude,
-      longitude: s.longitude,
-      velocityGain: velocityGainAt(gains, channelIdOf(s), c.startMs),
-    })),
-    detectorParams(),
-  );
   // --trace: every pick near the target, in the order the detector saw them,
   // with what the associator made of it. The way to see *why* a declaration
   // came late, rather than guessing at thresholds.
+  let onPick: Parameters<typeof runDetectorReplay>[0]['onPick'];
   if (process.argv.includes('--trace') && c.target !== null) {
     const target = c.target;
     const byId = new Map(list.map((s) => [channelIdOf(s), s]));
-    detector.onPick = (pick, arrivedAtMs, verdict) => {
+    onPick = (pick, arrivedAtMs, verdict) => {
       const afterS = (pick.timeMs - target.originMs) / 1000;
       if (afterS < -5 || afterS > 45) return;
       const station = byId.get(pick.channelId);
@@ -458,27 +415,18 @@ async function runCase(c: Case, list: WaveformStation[], gains: readonly FdsnTex
       );
     };
   }
-  // Every detection's estimate, recorded each time it changes, so the grade
-  // can say what was known at declaration and how far it climbed after.
-  const detections: QuakeDetection[] = [];
-  const estimates = new Map<number, { atMs: number; estimate: MagnitudeEstimate }[]>();
-  const alerter = new HomeAlerter(HOME, { minIntensity: minIntensity() }, { depthKm: DEPTH_KM, sVelocityKmS: S_VELOCITY_KM_S });
-  const alerts: HomeAlert[] = [];
-  for (const { record, arrivedAtMs } of arrivalOrder(records)) {
-    detections.push(...detector.push(record, arrivedAtMs));
-    for (const d of detections) {
-      const estimate = detector.magnitudeOf(d.id);
-      const alert = alerter.evaluate(d, estimate, arrivedAtMs);
-      if (alert !== null) alerts.push(alert);
-      if (estimate === null) continue;
-      const steps = estimates.get(d.id) ?? [];
-      const last = steps[steps.length - 1];
-      if (last?.estimate.magnitude !== estimate.magnitude || last.estimate.complete !== estimate.complete) {
-        steps.push({ atMs: arrivedAtMs, estimate });
-      }
-      estimates.set(d.id, steps);
-    }
-  }
+  // The loop itself is shared with the app's replay — see `runDetectorReplay`.
+  const { records, badRecords, detections, estimates, alerts, alerter } = runDetectorReplay({
+    chunks: await waveforms(c, list),
+    stations: list,
+    gains,
+    gainAtMs: c.startMs,
+    home: HOME,
+    rule: { minIntensity: minIntensity() },
+    geometry: { depthKm: DEPTH_KM, sVelocityKmS: S_VELOCITY_KM_S },
+    params: detectorParams(),
+    onPick,
+  });
 
   // Cached per case: the window is in the past, and a sweep re-grades the same
   // case many times.
@@ -510,7 +458,7 @@ async function runCase(c: Case, list: WaveformStation[], gains: readonly FdsnTex
   const feltAtHome = c.target !== null && !c.set.startsWith('tele') ? await feltReport(c.target.id) : null;
   return {
     c,
-    stationsWithData: new Set(records.map((r) => r.channelId)).size,
+    stationsWithData: new Set(records.map((r) => r.record.channelId)).size,
     badRecords,
     detections,
     grade,
@@ -658,7 +606,7 @@ async function main(): Promise<void> {
   const chosen = all
     .filter((c) => c.set === set && (only === null || c.id.includes(only) || c.label.includes(only)))
     .slice(0, limit);
-  console.log(`${String(list.length)} stations within ${String(STATION_RADIUS_KM)} km of ${HOME.label}; ${String(chosen.length)} '${set}' cases\n`);
+  console.log(`${String(list.length)} stations within ${String(HOME_NETWORK_RADIUS_KM)} km of ${HOME.label}; ${String(chosen.length)} '${set}' cases\n`);
 
   const results: CaseResult[] = [];
   for (const c of chosen) {

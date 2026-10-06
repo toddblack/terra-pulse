@@ -226,6 +226,21 @@
   stroke-linejoin: round;
 }
 
+/* Replay marks. A pick is amber — the trigger is an event on the trace, a
+   different kind of thing from the cyan ink, and amber is the app's colour for
+   "a hit" (the antipode markers). The origin is a quiet dashed neutral: a
+   reference line, not news. */
+.markPick {
+  stroke: rgb(251 191 36);
+  stroke-width: 1.5;
+}
+
+.markOrigin {
+  stroke: rgb(148 163 184 / 70%);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
 /* A stalled station keeps its last window on screen, dimmed — emptying it
    would make a dead path look like still ground. */
 .plot[data-state='stalled'] .line {

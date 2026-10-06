@@ -14,3 +14,4 @@ export * from './analysis';
 export * from './focal-mechanisms';
 export * from './ephemeris';
 export * from './seismic-waveforms';
+export * from './quake-replay';

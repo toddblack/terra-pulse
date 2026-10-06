@@ -37,6 +37,7 @@ import {
 import { registerAuroraIpcHandlers, startAuroraPolling } from './ipc/aurora';
 import { registerTecIpcHandlers } from './ipc/tec';
 import { createWaveformController, registerWaveformIpcHandlers } from './ipc/waveforms';
+import { createQuakeReplayController, registerQuakeReplayHandlers } from './ipc/quake-replay';
 import {
   createWaveformStationSources,
   registerWaveformStationHandlers,
@@ -411,6 +412,20 @@ app
     registerWaveformStationHandlers(waveformStations);
     app.on('will-quit', () => {
       waveforms.dispose();
+    });
+
+    // Replaying a past quake through the detector. Shares the station list
+    // above rather than fetching its own, and never starts on its own: the
+    // inspector's Replay button is the only way in.
+    const quakeReplay = createQuakeReplayController({
+      catalogue: () => waveformStations.catalogue(),
+      onProgress: (progress) => {
+        sendToRenderer(mainWindow, 'quake-replay:progress', progress);
+      },
+    });
+    registerQuakeReplayHandlers(quakeReplay);
+    app.on('will-quit', () => {
+      quakeReplay.cancel();
     });
 
     // Kp and Dst. The rolling Kp tail runs always — it is an 8 KB read from

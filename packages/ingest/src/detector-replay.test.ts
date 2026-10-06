@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arrivalOrder, asLiveRecords, gradeDetections, type CatalogueQuake } from './detector-replay';
+import { arrivalOrder, asLiveRecords, gradeDetections, teleseismicPSeconds, type CatalogueQuake } from './detector-replay';
 import type { MiniSeedDataRecord } from './miniseed';
 import type { QuakeDetection } from './quake-detector';
 
@@ -17,6 +17,26 @@ function record(channelId: string, startTimeMs: number, samples: number, rate = 
     samples: new Int32Array(samples),
   };
 }
+
+describe('teleseismicPSeconds', () => {
+  it('keeps the IASP91 table where the script used it', () => {
+    expect(teleseismicPSeconds(30)).toBe(372);
+    expect(teleseismicPSeconds(45)).toBeCloseTo(499, 0);
+    expect(teleseismicPSeconds(150)).toBe(818);
+  });
+
+  it('uses a regional line below 20°, not the table extrapolated backwards', () => {
+    // A Baja M7 500 km from Burbank: the extrapolated table said 130 s against
+    // a real ~65 s, which would have aimed the replay window past the P wave.
+    const deg = 500 / 111.19;
+    expect(teleseismicPSeconds(deg)).toBeGreaterThan(60);
+    expect(teleseismicPSeconds(deg)).toBeLessThan(75);
+  });
+
+  it('meets the table at 20° within a few seconds', () => {
+    expect(Math.abs(teleseismicPSeconds(19.999) - teleseismicPSeconds(20))).toBeLessThan(8);
+  });
+});
 
 describe('arrivalOrder', () => {
   it('releases a record only after its last sample plus transit', () => {

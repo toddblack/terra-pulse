@@ -1,4 +1,4 @@
-import { haversineKm } from '@terra-pulse/schema';
+import { HOME_LOCATION, haversineKm } from '@terra-pulse/schema';
 import type { MagnitudeEstimate } from './quake-magnitude';
 import { predictIntensity } from './shaking-intensity';
 
@@ -44,12 +44,27 @@ export interface HomeLocation {
   longitude: number;
 }
 
+/**
+ * Home, until the home-location prompt exists (Phase 6). Defined once in
+ * `@terra-pulse/schema` (`HOME_LOCATION`) so the script, main and the renderer
+ * all read the same point every grade so far was made against.
+ */
+export const DEFAULT_HOME: HomeLocation = { latitude: HOME_LOCATION.latitude, longitude: HOME_LOCATION.longitude };
+export const DEFAULT_HOME_LABEL: string = HOME_LOCATION.label;
+
 export interface AlertGeometry {
   /** The detector's assumed source depth, km. */
   depthKm: number;
   /** For when strong shaking reaches home. */
   sVelocityKmS: number;
 }
+
+/**
+ * The geometry every graded replay used: a fixed 8 km source and a 3.6 km/s S
+ * wave. Shared so the app's replay predicts shaking at home exactly as the
+ * graded runs did, not with a second set of numbers that happens to agree.
+ */
+export const DEFAULT_ALERT_GEOMETRY: AlertGeometry = { depthKm: 8, sVelocityKmS: 3.6 };
 
 export interface HomeAlert {
   eventId: number;
