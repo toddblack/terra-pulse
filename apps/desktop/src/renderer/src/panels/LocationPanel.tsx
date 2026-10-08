@@ -5,8 +5,6 @@ import { plateBoundaryLabel, plateClassLabel } from '../layers/plate-association
 import { NearestFaultSection } from './NearestFault';
 import { RegionalRecurrenceSection } from './RegionalRecurrence';
 import { TidalShearField } from './TidalShear';
-import { coordinateLabel } from '@terra-pulse/schema';
-import { WatchHereButton } from '../watch/WatchHereButton';
 import styles from './LocationPanel.module.css';
 
 /**
@@ -65,17 +63,6 @@ export function LocationPanel() {
           ×
         </button>
       </header>
-
-      {/* The coordinate is where the pointer was, never the feature's
-          centroid — the same rule every answer in this panel follows. */}
-      <div className={styles.actions}>
-        <WatchHereButton
-          point={location}
-          label={coordinateLabel(location)}
-          className={styles.watchButton}
-          activeClassName={styles.watchActive}
-        />
-      </div>
 
       <div className={styles.body}>
         {location.kind === 'fault' && <FaultDetail fault={location.fault} point={location} />}

@@ -3993,13 +3993,33 @@ warning moves to a "Watch here" pin (next branch; see `PROJECT_PLAN.md` §5.13).
 
 ## The live watch — "Watch here". Shipped 2026-10-08, branch `watch-here`.
 
-§5.13's last step: the detector running live. One pin, dropped from the
-location panel or the quake inspector; the stations around it stream through
+§5.13's last step: the detector running live. One pin, made from the waveform
+tab's picked spot ("Watch this spot"); the stations around it stream through
 the graded detector for as long as the app is open; an alert when a quake is
 **M4.5+ on the running estimate and predicted MMI ≥ 2.5 at the pin**. The
 user's design throughout: one pin, none on first launch, a dock-strip chip with
 Stop, and **Stop removes the pin** — no paused-but-present state.
 
+- **The button lives in the waveform panel's tab row, and only there — the
+  user's call, the same day.** It shipped first in the location panel and the
+  quake inspector, and felt disconnected: the watch is a waveforms thing. The
+  flow it serves is *pick spots to look at their traces → find one worth
+  keeping an eye on → make it the watch → carry on picking elsewhere*. The pick
+  and the watch are separate connections, so re-picking never moves the watch;
+  on a new pick the button offers "Move watch here". For a quake, the
+  inspector's **Stations** button picks the epicentre and the watch is one
+  click from there.
+  - **Distinct on purpose**: a filled emerald pill with a pin mark, unlike
+    every other control in the panel — they change what you look at, this
+    starts something that keeps running and alerts.
+  - **Disabled, with the reason as tooltip, on a preset tab** (a region has no
+    one spot) **or before a pick**. Active from the click itself: the watch
+    fetches its own stations, so it need not wait for the pick's list.
+  - **Once the pick *is* the pin it shows main's verdict, not just "pinned"**:
+    "Watching this spot", "Watching (limited)" for `too-far`, or amber "Can't
+    watch here · remove" when nothing is in reach. Found by checking in the
+    app: a pick near James Bay (nearest station 318 km) pinned fine and read
+    "Watching" while watching nothing; only the chip said otherwise.
 - **Ring capacity was measured first, and it changed the handshake.** One
   connection takes all 74 Burbank stations; 71 delivered (3 were offline).
   Sequential handshake **17.4 s**, pipelined **0.53 s**, all 225 replies OK and
@@ -4070,9 +4090,12 @@ Stop, and **Stop removes the pin** — no paused-but-present state.
   status push carries a fresh copy, and a marker rebuilt per station-state
   change would flicker.
 - **Verified in a built, isolated instance over CDP**: a fresh launch reports
-  `off` and opens nothing; probe → "Watch here" in Pennsylvania streamed **63 of
-  64** stations (59 with gains) within 20 s; after a restart the pin resumed on
-  its own with the chip and marker drawn; Stop cleared both.
+  `off` and opens nothing; a pin in Pennsylvania streamed **63 of 64** stations
+  (59 with gains) within 20 s; after a restart the pin resumed on its own with
+  the chip and marker drawn; Stop cleared both. After the move to the waveform
+  panel: disabled on a preset; a Rockies pick became a limited watch (14/14,
+  nearest 138 km); re-picking Pennsylvania left the watch on the Rockies and
+  offered "Move watch here".
 - **Not verified, and cannot be without a quake:** a live alert end to end, and
   how the banner looks on screen. The detector is graded only in Southern
   California on 100 Hz stations; a pin elsewhere runs on 20-50 Hz stations it

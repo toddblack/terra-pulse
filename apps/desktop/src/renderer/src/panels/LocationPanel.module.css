@@ -64,40 +64,6 @@
   color: rgb(226 232 240);
 }
 
-/* One action, under the header and outside the scrolling body, so it is never
-   scrolled away below a long recurrence section. */
-.actions {
-  display: flex;
-  flex: none;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid rgb(255 255 255 / 10%);
-}
-
-.watchButton {
-  flex: 1;
-  padding: 0.375rem 0.5rem;
-  border: 1px solid rgb(255 255 255 / 12%);
-  border-radius: 0.375rem;
-  background: transparent;
-  color: rgb(203 213 225);
-  font-size: 0.75rem;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.watchButton:hover {
-  background-color: rgb(51 65 85);
-  color: white;
-}
-
-/* Emerald, the pin's colour on the globe. */
-.watchActive,
-.watchActive:hover {
-  border-color: rgb(52 211 153 / 60%);
-  background-color: rgb(52 211 153 / 16%);
-  color: rgb(209 250 229);
-}
-
 .body {
   overflow-y: auto;
   /* Lets the flex child actually shrink; without it the body refuses to go

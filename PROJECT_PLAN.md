@@ -1094,9 +1094,10 @@ and two connections run side by side. The densest 300 km circles hold 349
 stations (Mount St. Helens), 201 and 150, so a pin streams at most 100, thinned
 by spacing rather than cut by distance.
 
-**The live watch — built 2026-10-08.** "Watch here" in the location panel and
-the quake inspector drops the one pin; a chip on the dock strip shows it and
-Stop removes it. The pin is stored and resumes on launch. Main streams the
+**The live watch — built 2026-10-08.** "Watch this spot" in the waveform tab
+turns the picked spot into the one pin (first placed in the location panel and
+inspector; moved the same day, because the watch belongs with waveforms); a
+chip on the dock strip shows it and Stop removes it. The pin is stored and resumes on launch. Main streams the
 stations within 300 km (≥20 Hz) through the same detector, judged at the pin:
 **M4.5+ on the running estimate and predicted MMI ≥ 2.5 at the pin** (the
 user's option 2 of 2). Swept on the tuning set: the magnitude floor costs no
