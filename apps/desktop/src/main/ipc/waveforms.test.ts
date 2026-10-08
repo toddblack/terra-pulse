@@ -15,6 +15,7 @@ vi.mock('electron', () => ({ ipcMain: { handle: ipcHandle } }));
 
 import {
   WAVEFORM_WATCHDOG_INTERVAL_MS,
+  createMultiServerController,
   createWaveformController,
   parseWaveformStartRequest,
   registerWaveformIpcHandlers,
@@ -200,6 +201,15 @@ describe('parseWaveformStartRequest', () => {
     expect(() => parseWaveformStartRequest({ channels: tooMany })).toThrow(
       new RegExp(`at most ${String(WAVEFORM_MAX_CHANNELS)}`),
     );
+  });
+
+  it('carries a known server through, and refuses anything else — never a host', () => {
+    const wel = { network: 'NZ', station: 'WEL', location: '10', channel: 'HHZ', server: 'geonet' };
+    expect(parseWaveformStartRequest({ channels: [ADO, wel] })).toEqual([ADO, wel]);
+    expect(() => parseWaveformStartRequest({ channels: [{ ...wel, server: 'evil.example.org' }] })).toThrow(
+      /unknown SeedLink server/,
+    );
+    expect(() => parseWaveformStartRequest({ channels: [{ ...wel, server: 7 }] })).toThrow();
   });
 
   it('rejects duplicates, lower case, missing fields, and non-arrays', () => {
@@ -453,6 +463,98 @@ describe('createWaveformController', () => {
     expect(h.controller.status().retries).toBe(1);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(h.sockets).toHaveLength(2);
+  });
+});
+
+describe('createMultiServerController', () => {
+  const WEL: WaveformChannel = { network: 'NZ', station: 'WEL', location: '10', channel: 'HHZ', server: 'geonet' };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function multi() {
+    const opened: { host: string; socket: FakeSocket }[] = [];
+    const connect: SeedLinkConnect = (host) => {
+      const socket = new FakeSocket();
+      opened.push({ host, socket });
+      return socket;
+    };
+    const segments: WaveformSegment[] = [];
+    const statuses: WaveformStreamStatus[] = [];
+    const endpoint = (label: string, host: string) => ({
+      label,
+      host,
+      port: 18000,
+      fetchInventory: () => Promise.resolve(null),
+    });
+    const controller = createMultiServerController({
+      servers: { earthscope: endpoint('EarthScope', 'es.example'), geonet: endpoint('GeoNet', 'nz.example') },
+      onSegment: (segment) => segments.push(segment),
+      onStatus: (status) => statuses.push(status),
+      connect,
+      random: () => 0.5,
+    });
+    const socketAt = (host: string) => opened.find((o) => o.host === host)?.socket;
+    return { controller, opened, segments, statuses, socketAt };
+  }
+
+  it('opens one connection per server, each asked only for its own stations', () => {
+    const { controller, opened, socketAt } = multi();
+    controller.start([ADO, WEL]);
+    expect(opened.map((o) => o.host).sort()).toEqual(['es.example', 'nz.example']);
+    const es = socketAt('es.example') as FakeSocket;
+    const nz = socketAt('nz.example') as FakeSocket;
+    handshake(es);
+    handshake(nz);
+    expect(es.writes).toContain('STATION ADO CI');
+    expect(es.writes).not.toContain('STATION WEL NZ');
+    expect(nz.writes).toContain('STATION WEL NZ');
+    expect(nz.writes).not.toContain('STATION ADO CI');
+  });
+
+  it('is connected only once every server is, and lists channels in the order asked', () => {
+    const { controller, socketAt } = multi();
+    controller.start([WEL, ADO]);
+    handshake(socketAt('es.example') as FakeSocket);
+    expect(controller.status().connected).toBe(false);
+    handshake(socketAt('nz.example') as FakeSocket);
+    const status = controller.status();
+    expect(status.connected).toBe(true);
+    expect(status.channels.map((c) => c.channelId)).toEqual(['NZ_WEL_10_HHZ', 'CI_ADO__HHZ']);
+  });
+
+  it('delivers records from every server through one callback', () => {
+    const { controller, segments, socketAt } = multi();
+    controller.start([ADO, WEL]);
+    const es = socketAt('es.example') as FakeSocket;
+    const nz = socketAt('nz.example') as FakeSocket;
+    handshake(es);
+    handshake(nz);
+    es.send(packetFor(ADO, Date.UTC(2026, 9, 8)));
+    nz.send(packetFor(WEL, Date.UTC(2026, 9, 8)));
+    expect(segments.map((s) => s.channelId)).toEqual(['CI_ADO__HHZ', 'NZ_WEL_10_HHZ']);
+  });
+
+  it('closes a server the next start no longer needs, and its channels leave the status', () => {
+    const { controller, socketAt } = multi();
+    controller.start([ADO, WEL]);
+    handshake(socketAt('es.example') as FakeSocket);
+    handshake(socketAt('nz.example') as FakeSocket);
+    controller.start([ADO]);
+    expect((socketAt('nz.example') as FakeSocket).destroyed).toBe(true);
+    expect(controller.status().channels.map((c) => c.channelId)).toEqual(['CI_ADO__HHZ']);
+  });
+
+  it('names the server in an error once more than one is in play', () => {
+    const { controller, socketAt } = multi();
+    controller.start([ADO, WEL]);
+    handshake(socketAt('es.example') as FakeSocket);
+    (socketAt('nz.example') as FakeSocket).fail('ECONNRESET');
+    expect(controller.status().lastError).toBe('GeoNet: ECONNRESET');
   });
 });
 

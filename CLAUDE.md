@@ -4097,7 +4097,55 @@ Stop, and **Stop removes the pin** — no paused-but-present state.
   nearest 138 km); re-picking Pennsylvania left the watch on the Rockies and
   offered "Move watch here".
 - **Not verified, and cannot be without a quake:** a live alert end to end, and
-  how the banner looks on screen. The detector is graded only in Southern
+  how the banner looks on screen.
+
+## A second SeedLink server: GeoNet New Zealand. 2026-10-08, branch `watch-here`.
+
+Prompted by the user getting "Can't watch here" across Indonesia. A survey of
+every public SeedLink server that answered — ten, ~1,500 stations EarthScope
+does not carry — measured what each would add to the detector's reach over two
+years of M5+ quakes. Full recon in `SOURCES.md` and the memory of the session;
+the decisions:
+
+- **What it buys, measured.** New Zealand M5+ in reach 1 of 21 → **10 of 21**
+  (GeoNet); Chile/Peru 14% → 28% and the Mediterranean 2% → 23% (GEOFON, next);
+  **Indonesia 0 → 0 and Japan 5% → 5%**, because no open real-time source
+  covers either — GEOFON's open stations include none in Indonesia, and Hi-net
+  needs an account (standing rule 2). Worldwide 3% → ~4%: most large quakes are
+  offshore or nowhere near a public station, and no source fixes that.
+- **Order, the user's call on the recommendation:** groundwork + GeoNet (no
+  protocol work), then GEOFON (SeedLink 4 + miniSEED 3), then the SeisComP 3.x
+  servers (need a `BATCH` handshake). Each was tested live before the order was
+  set; the protocol findings are on `SEEDLINK_SERVERS`.
+- **A channel carries an optional `server` id; absent means EarthScope.** That
+  is what kept every preset, stored object and existing test meaning exactly
+  what it did — 1,964 tests passed unchanged before any new one was written.
+  **Only the id crosses the bridge**, validated against `SEEDLINK_SERVER_IDS`;
+  main maps it to a host (`SEEDLINK_SERVERS`), so the renderer cannot point
+  main's socket anywhere.
+- **`createMultiServerController`**: one `createWaveformController` per server
+  behind the same interface, statuses merged — connected only when every active
+  server is, channels in requested order, an error prefixed with its server.
+  One server down leaves the other's rows streaming.
+- **The catalogue merges whichever servers answered** and is unavailable only
+  when all failed. A station on two servers is kept once, **EarthScope's copy**:
+  replays and gains already work there.
+- **GeoNet's inventory comes over `INFO STREAMS`** (`fetchSeedLinkInventory`):
+  its 2020 RingServer has no HTTP listing at all. 2,418 streams in 1.4 s. No
+  `CAPABILITIES` is sent for INFO — SeisComP refuses it, and INFO packets keep
+  `SLINFO` framing either way.
+- **Gains come from each server's own station service** — EarthScope's knows
+  nothing of GeoNet's sensors. Partial gains are kept; null only if every
+  server failed (what the watch's retry keys on).
+- **Replays are EarthScope-only for now**: they read EarthScope's archive, which
+  holds nothing for GeoNet's ring. GeoNet has its own dataselect — a later step.
+- **Verified in a built, isolated instance**: the merged list held 3,398
+  stations (211 GeoNet); a watch on Wellington streamed **95 of 96** stations,
+  nearest 1 km, 51 with magnitude gains, no reach limit — a spot that was
+  unwatchable before; and the tab streamed three GeoNet and two Californian
+  stations at once, all live.
+- Licence: GeoNet is **CC BY 3.0 NZ**, free, no account; its acknowledgement is
+  in the waveform guide and `SOURCES.md`. The detector is graded only in Southern
   California on 100 Hz stations; a pin elsewhere runs on 20-50 Hz stations it
   was never graded on.
 

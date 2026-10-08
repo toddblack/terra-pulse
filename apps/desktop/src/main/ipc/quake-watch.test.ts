@@ -64,7 +64,7 @@ function setup(overrides: Partial<QuakeWatchDeps> = {}) {
   const statuses: QuakeWatchStatus[] = [];
   const deps: QuakeWatchDeps = {
     catalogue: () => Promise.resolve<WaveformStationCatalogue>({ status: 'ready', stations: STATIONS, fetchedAtMs: 0 }),
-    fetchInventory: () => Promise.resolve(null),
+    inventoryFor: () => Promise.resolve(null),
     readPin: () => stored.get(WATCH_PIN_KEY) ?? null,
     writePin: (value) => {
       if (value === null) stored.delete(WATCH_PIN_KEY);
@@ -196,6 +196,40 @@ describe('quake watch controller', () => {
     await vi.advanceTimersByTimeAsync(WATCH_RETRY_MS);
     expect(calls).toBe(2);
     expect(controller.status().reason).toBeNull();
+    controller.dispose();
+  });
+
+  it("fetches each server's gains from that server's own station service, and connects to each", async () => {
+    const nz = (code: string, dLat: number): WaveformStation => ({
+      ...station(code, dLat, 0),
+      network: 'NZ',
+      latitude: -41.3 + dLat,
+      longitude: 174.8,
+      server: 'geonet',
+    });
+    const near = [nz('WEL', 0), nz('TCW', 0.5), nz('MRZ', -0.5), nz('BHW', 1)];
+    const services: string[][] = [];
+    const { controller, sockets } = setup({
+      catalogue: () =>
+        Promise.resolve<WaveformStationCatalogue>({
+          status: 'ready',
+          stations: [...near, { ...station('IUX', 0, 0), latitude: -41.2, longitude: 174.9 }],
+          fetchedAtMs: 0,
+        }),
+      fetchEpochs: (channels, _start, _end, serviceUrl) => {
+        services.push([serviceUrl, ...channels.map((c) => c.station)]);
+        return Promise.resolve([]);
+      },
+    });
+    controller.start({ latitude: -41.3, longitude: 174.8, label: 'Wellington' });
+    await settle();
+    const byService: Record<string, string[]> = {};
+    for (const [url = '', ...codes] of services) byService[url] = codes.sort();
+    expect(byService).toEqual({
+      'https://service.geonet.org.nz/fdsnws/station/1/query': ['BHW', 'MRZ', 'TCW', 'WEL'],
+      'https://service.earthscope.org/fdsnws/station/1/query': ['IUX'],
+    });
+    expect(sockets).toHaveLength(2);
     controller.dispose();
   });
 

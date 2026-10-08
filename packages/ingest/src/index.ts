@@ -50,3 +50,4 @@ export * from './quake-detector';
 export * from './detector-replay';
 export * from './replay-run';
 export * from './quake-watch';
+export * from './seedlink-servers';

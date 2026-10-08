@@ -14,6 +14,7 @@ import {
   channelIdOf,
   haversineKm,
   replayEligible,
+  serverOf,
   type QuakeReplay,
   type QuakeReplayProgress,
   type QuakeReplayRequest,
@@ -110,8 +111,12 @@ export function createQuakeReplayController(deps: QuakeReplayDeps): QuakeReplayC
     const catalogue = await deps.catalogue();
     check();
     if (catalogue.status !== 'ready') throw new Error(`no station list: ${catalogue.reason}`);
-    const detectorNetwork = replayDetectorNetwork(catalogue.stations, request);
-    const rowCandidates = replayRowCandidates(catalogue.stations, request);
+    // EarthScope's stations only: the archive read below is EarthScope's
+    // dataselect, which holds nothing for GeoNet's ring (2026-10-08). Each
+    // other server's archive is its own data centre's — a later step.
+    const archived = catalogue.stations.filter((s) => serverOf(s) === 'earthscope');
+    const detectorNetwork = replayDetectorNetwork(archived, request);
+    const rowCandidates = replayRowCandidates(archived, request);
     if (rowCandidates.length === 0) {
       throw new Error(`no public stations within ${REPLAY_MAX_ROW_KM.toLocaleString('en-US')} km of this quake`);
     }

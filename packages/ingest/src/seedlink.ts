@@ -205,6 +205,131 @@ export async function fetchRingInventory(
   return new Set(channels.map(channelIdOf));
 }
 
+/**
+ * The channel ids an `INFO STREAMS` reply lists, from its XML. Only data
+ * streams (`type="D"`) — the others are logs, events and calibrations, which
+ * no row or detector can use.
+ *
+ * Attribute order is not relied on: each element is matched whole, then its
+ * attributes read by name.
+ */
+export function parseInfoStreams(xml: string): Set<string> {
+  const ids = new Set<string>();
+  for (const stationMatch of xml.matchAll(/<station\b([^>]*)>([\s\S]*?)<\/station>/g)) {
+    const stationAttrs = stationMatch[1] ?? '';
+    const network = /\bnetwork="([^"]*)"/.exec(stationAttrs)?.[1] ?? '';
+    const station = /\bname="([^"]*)"/.exec(stationAttrs)?.[1] ?? '';
+    for (const streamMatch of (stationMatch[2] ?? '').matchAll(/<stream\b([^>]*)\/?>/g)) {
+      const attrs = streamMatch[1] ?? '';
+      if ((/\btype="([^"]*)"/.exec(attrs)?.[1] ?? 'D') !== 'D') continue;
+      const location = (/\blocation="([^"]*)"/.exec(attrs)?.[1] ?? '').trim();
+      const channel = /\bseedname="([^"]*)"/.exec(attrs)?.[1] ?? '';
+      if (network === '' || station === '' || channel === '') continue;
+      ids.add(channelIdOf({ network, station, location, channel }));
+    }
+  }
+  return ids;
+}
+
+/** `INFO STREAMS` from GeoNet is ~300 KB; this bounds a stall, not a slow link. */
+export const SEEDLINK_INFO_TIMEOUT_MS = 30_000;
+/** Stops a server that never sends its last info packet from growing the buffer forever. */
+const SEEDLINK_INFO_MAX_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Every channel a SeedLink server carries, from the protocol's own
+ * `INFO STREAMS` — for servers with no HTTP listing, which is all of them but
+ * RingServer 4 (see `SEEDLINK_SERVERS`). Null when the answer is unknown, with
+ * the same fail-open meaning as `fetchRingInventory`.
+ *
+ * The reply is a sequence of packets headed `SLINFO *` (more follow) and
+ * `SLINFO  ` (the last), each wrapping one 512-byte miniSEED log record whose
+ * text, concatenated, is one XML document. No `CAPABILITIES` is sent: INFO
+ * packets keep this framing on every server version that answers it, and the
+ * SeisComP servers refuse the command outright.
+ */
+export function fetchSeedLinkInventory(
+  host: string,
+  port: number = SEEDLINK_PORT,
+  connect: SeedLinkConnect = connectSeedLinkSocket,
+  timeoutMs: number = SEEDLINK_INFO_TIMEOUT_MS,
+): Promise<Set<string> | null> {
+  return new Promise((resolve) => {
+    const socket = connect(host, port);
+    let settled = false;
+    let buffer: Uint8Array = new Uint8Array(0);
+    let helloLines = 0;
+    let text = '';
+    const decoder = new TextDecoder('latin1');
+    const finish = (result: Set<string> | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      finish(null);
+    }, timeoutMs);
+
+    socket.onConnect(() => {
+      socket.write('HELLO\r\n');
+    });
+    socket.onError(() => {
+      finish(null);
+    });
+    socket.onClose(() => {
+      finish(null);
+    });
+    socket.onData((chunk) => {
+      if (settled) return;
+      buffer = concatBytes(buffer, chunk);
+      if (buffer.length > SEEDLINK_INFO_MAX_BYTES) {
+        finish(null);
+        return;
+      }
+      while (helloLines < 2) {
+        let end = -1;
+        for (let i = 0; i + 1 < buffer.length; i += 1) {
+          if (buffer[i] === CRLF[0] && buffer[i + 1] === CRLF[1]) {
+            end = i;
+            break;
+          }
+        }
+        if (end === -1) return;
+        buffer = buffer.slice(end + 2);
+        helloLines += 1;
+        if (helloLines === 2) socket.write('INFO STREAMS\r\n');
+      }
+      while (buffer.length >= SEEDLINK_PACKET_BYTES) {
+        if (decoder.decode(buffer.subarray(0, 6)) !== 'SLINFO') {
+          // An ERROR line in place of the packets: the server refuses INFO at
+          // this level. Unknown, not empty.
+          finish(null);
+          return;
+        }
+        const more = buffer[7] === 0x2a; // '*'
+        const record = buffer.subarray(SEEDLINK_HEADER_BYTES, SEEDLINK_PACKET_BYTES);
+        const view = new DataView(record.buffer, record.byteOffset, record.byteLength);
+        const length = view.getUint16(30);
+        const offset = view.getUint16(44);
+        if (offset < 48 || offset + length > record.length) {
+          finish(null);
+          return;
+        }
+        text += decoder.decode(record.subarray(offset, offset + length));
+        buffer = buffer.slice(SEEDLINK_PACKET_BYTES);
+        if (!more) {
+          const ids = parseInfoStreams(text);
+          // A document that names nothing is a format we no longer read.
+          finish(ids.size === 0 ? null : ids);
+          return;
+        }
+      }
+    });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Handshake
 // ---------------------------------------------------------------------------

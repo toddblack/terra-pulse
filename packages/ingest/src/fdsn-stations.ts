@@ -2,6 +2,7 @@ import {
   WAVEFORM_PICKER_CHANNELS,
   channelIdOf,
   isValidWaveformChannel,
+  type SeedLinkServerId,
   type WaveformStation,
 } from '@terra-pulse/schema';
 
@@ -107,6 +108,8 @@ export function buildStationCatalogue(
   channelRows: readonly FdsnTextRow[],
   stationRows: readonly FdsnTextRow[],
   onRing: ReadonlySet<string>,
+  /** Tagged on every station unless it is EarthScope, which an absent tag means. */
+  server: SeedLinkServerId = 'earthscope',
 ): WaveformStation[] {
   const siteNames = new Map<string, string>();
   for (const row of stationRows) {
@@ -132,6 +135,7 @@ export function buildStationCatalogue(
       longitude: Number(row.Longitude),
       site: siteNames.get(`${network}_${stationCode}`) ?? stationCode,
       sampleRateHz: Number(row.SampleRate),
+      ...(server === 'earthscope' ? {} : { server }),
     };
 
     if (!isValidWaveformChannel(candidate)) continue;
@@ -161,6 +165,10 @@ export interface FetchStationListingOptions {
   fetchImpl?: typeof fetch;
   now?: Date;
   timeoutMs?: number;
+  /** Which FDSN station service — EarthScope's when absent. */
+  serviceUrl?: string;
+  /** FDSN `net` pattern; every network when absent. */
+  networks?: string;
 }
 
 /** The `endafter` value: today in UTC, which keeps every current epoch. */
@@ -173,9 +181,11 @@ async function fetchRows(
   level: 'channel' | 'station',
   today: string,
   timeoutMs: number,
+  serviceUrl: string,
+  networks: string,
 ): Promise<FdsnTextRow[] | null> {
   const query = new URLSearchParams({
-    net: '*',
+    net: networks,
     cha: WAVEFORM_PICKER_CHANNELS.join(','),
     level,
     endafter: today,
@@ -183,7 +193,7 @@ async function fetchRows(
     nodata: '404',
   });
   try {
-    const response = await fetchImpl(`${STATION_SERVICE_URL}?${query.toString()}`, {
+    const response = await fetchImpl(`${serviceUrl}?${query.toString()}`, {
       signal: AbortSignal.timeout(timeoutMs),
       // The service does not compress today (measured), but this is the host
       // family whose compressed reply crashed the main process in a way no
@@ -271,15 +281,15 @@ export async function fetchChannelEpochs(
   channels: readonly Pick<WaveformStation, 'network' | 'station' | 'location' | 'channel'>[],
   startMs: number,
   endMs: number,
-  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+  options: { fetchImpl?: typeof fetch; timeoutMs?: number; serviceUrl?: string } = {},
 ): Promise<FdsnTextRow[] | null> {
-  const { fetchImpl = fetch, timeoutMs = STATION_CATALOGUE_TIMEOUT_MS } = options;
+  const { fetchImpl = fetch, timeoutMs = STATION_CATALOGUE_TIMEOUT_MS, serviceUrl = STATION_SERVICE_URL } = options;
   const iso = (ms: number): string => new Date(ms).toISOString().slice(0, 19);
   const lines = channels.map(
     (c) => `${c.network} ${c.station} ${c.location === '' ? '--' : c.location} ${c.channel} ${iso(startMs)} ${iso(endMs)}`,
   );
   try {
-    const response = await fetchImpl(STATION_SERVICE_URL, {
+    const response = await fetchImpl(serviceUrl, {
       method: 'POST',
       body: ['level=channel', 'format=text', 'nodata=404', ...lines].join('\n'),
       signal: AbortSignal.timeout(timeoutMs),
@@ -320,12 +330,14 @@ export async function fetchStationListing(
     fetchImpl = fetch,
     now = new Date(),
     timeoutMs = STATION_CATALOGUE_TIMEOUT_MS,
+    serviceUrl = STATION_SERVICE_URL,
+    networks = '*',
   } = options;
   const today = utcDate(now);
 
   const [channelRows, stationRows] = await Promise.all([
-    fetchRows(fetchImpl, 'channel', today, timeoutMs),
-    fetchRows(fetchImpl, 'station', today, timeoutMs),
+    fetchRows(fetchImpl, 'channel', today, timeoutMs, serviceUrl, networks),
+    fetchRows(fetchImpl, 'station', today, timeoutMs, serviceUrl, networks),
   ]);
   // Site names are a nicety; coordinates are the point. A failed station-level
   // request costs the names and nothing else.

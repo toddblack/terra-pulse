@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import {
   LiveQuakeWatch,
+  SEEDLINK_SERVERS,
   fetchChannelEpochs,
   watchNetwork,
   watchReach,
@@ -8,8 +9,11 @@ import {
   type SeedLinkConnect,
 } from '@terra-pulse/ingest';
 import {
+  SEEDLINK_SERVER_IDS,
   WATCH_STATUS_OFF,
   parseWatchPin,
+  serverOf,
+  type SeedLinkServerId,
   type QuakeWatchAlert,
   type QuakeWatchStatus,
   type WatchPin,
@@ -17,7 +21,18 @@ import {
   type WaveformStationCatalogue,
   type WaveformStreamStatus,
 } from '@terra-pulse/schema';
-import { createWaveformController, type WaveformController } from './waveforms';
+import { createMultiServerController, type SeedLinkEndpoint, type WaveformController } from './waveforms';
+
+/** Every server's endpoint, with its inventory from the shared source. */
+export function endpointsFor(
+  inventoryFor: (server: SeedLinkServerId) => Promise<Set<string> | null>,
+): Record<SeedLinkServerId, SeedLinkEndpoint> {
+  const entries = SEEDLINK_SERVER_IDS.map((id): [SeedLinkServerId, SeedLinkEndpoint] => {
+    const server = SEEDLINK_SERVERS[id];
+    return [id, { label: server.label, host: server.host, port: server.port, fetchInventory: () => inventoryFor(id) }];
+  });
+  return Object.fromEntries(entries) as Record<SeedLinkServerId, SeedLinkEndpoint>;
+}
 
 /**
  * The live watch (§5.13): the stations around one pin, streamed for as long as
@@ -58,18 +73,49 @@ const EPOCH_MARGIN_MS = 24 * 60 * 60_000;
 export const WATCH_PIN_KEY = 'quake_watch_pin';
 
 export interface QuakeWatchDeps {
-  /** The waveform picker's station list — shared, hour-cached. */
+  /** The waveform picker's station list — shared, hour-cached, every server merged. */
   catalogue: () => Promise<WaveformStationCatalogue>;
-  /** The ring's stream list, shared with the waveform tab. */
-  fetchInventory: () => Promise<Set<string> | null>;
+  /** Each server's stream list, shared with the waveform tab. */
+  inventoryFor: (server: SeedLinkServerId) => Promise<Set<string> | null>;
   readPin: () => string | null;
   writePin: (value: string | null) => void;
   onStatus: (status: QuakeWatchStatus) => void;
   onAlert: (alert: QuakeWatchAlert) => void;
   onAlertUpdated: (alert: QuakeWatchAlert) => void;
-  fetchEpochs?: (channels: readonly WaveformChannel[], startMs: number, endMs: number) => Promise<FdsnTextRow[] | null>;
+  /** One server's channel epochs, from that server's station service. */
+  fetchEpochs?: (
+    channels: readonly WaveformChannel[],
+    startMs: number,
+    endMs: number,
+    serviceUrl: string,
+  ) => Promise<FdsnTextRow[] | null>;
   connect?: SeedLinkConnect;
   now?: () => number;
+}
+
+/**
+ * Gains for a network spanning servers: each server's channels from its own
+ * station service — EarthScope's knows nothing of GeoNet's sensors. Partial is
+ * kept (a station with no gain still detects; it just does not vote on
+ * magnitude); null only when every server failed, which is what the retry
+ * keys on.
+ */
+async function fetchGainsByServer(
+  network: readonly WaveformChannel[],
+  startMs: number,
+  endMs: number,
+  fetchEpochs: NonNullable<QuakeWatchDeps['fetchEpochs']>,
+): Promise<FdsnTextRow[] | null> {
+  const groups = new Map<SeedLinkServerId, WaveformChannel[]>();
+  for (const channel of network) {
+    const id = serverOf(channel);
+    groups.set(id, [...(groups.get(id) ?? []), channel]);
+  }
+  const results = await Promise.all(
+    [...groups.entries()].map(([id, channels]) => fetchEpochs(channels, startMs, endMs, SEEDLINK_SERVERS[id].stationServiceUrl)),
+  );
+  if (results.every((rows) => rows === null)) return null;
+  return results.flatMap((rows) => rows ?? []);
 }
 
 export interface QuakeWatchController {
@@ -88,7 +134,11 @@ export interface QuakeWatchController {
 
 export function createQuakeWatchController(deps: QuakeWatchDeps): QuakeWatchController {
   const now = deps.now ?? (() => Date.now());
-  const fetchEpochs = deps.fetchEpochs ?? ((channels, startMs, endMs) => fetchChannelEpochs(channels, startMs, endMs));
+  const fetchEpochsFor =
+    deps.fetchEpochs ??
+    ((channels, startMs, endMs, serviceUrl) => fetchChannelEpochs(channels, startMs, endMs, { serviceUrl }));
+  const fetchEpochs = (channels: readonly WaveformChannel[], startMs: number, endMs: number) =>
+    fetchGainsByServer(channels, startMs, endMs, fetchEpochsFor);
 
   /** Bumped on every start and stop, so a late catalogue or gain fetch cannot act on a newer pin. */
   let generation = 0;
@@ -105,8 +155,8 @@ export function createQuakeWatchController(deps: QuakeWatchDeps): QuakeWatchCont
     emit();
   };
 
-  const stream: WaveformController = createWaveformController({
-    fetchInventory: deps.fetchInventory,
+  const stream: WaveformController = createMultiServerController({
+    servers: endpointsFor(deps.inventoryFor),
     ...(deps.connect === undefined ? {} : { connect: deps.connect }),
     now,
     onSegment: (segment) => {
@@ -176,7 +226,11 @@ export function createQuakeWatchController(deps: QuakeWatchDeps): QuakeWatchCont
       magnitudeStations: watch.magnitudeStations,
       detections: 0,
     });
-    stream.start(network.map(({ network: net, station, location, channel }) => ({ network: net, station, location, channel })));
+    stream.start(
+      network.map(({ network: net, station, location, channel, server }) =>
+        server === undefined ? { network: net, station, location, channel } : { network: net, station, location, channel, server },
+      ),
+    );
     if (gains === null) retryGains(mine, pin, network);
   }
 

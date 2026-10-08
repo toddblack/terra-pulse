@@ -382,6 +382,27 @@ Rules of the road: <https://supermag.jhuapl.edu/info/?page=rulesoftheroad>
   triggers (`RING_INVENTORY_IDENTITY_NOTE`) cannot happen there today. The
   adapter asks for `identity` anyway, because that crash cannot be caught.
 
+| | |
+|---|---|
+| **GeoNet SeedLink ring** (New Zealand, added 2026-10-08) | `link.geonet.org.nz:18000` — RingServer 3.1 (2020), no HTTP listing; the stream inventory comes over SeedLink's own `INFO STREAMS` |
+| **FDSN station service** | `service.geonet.org.nz/fdsnws/station/1/` — IRIS's federated catalogue lists GeoNet's stations but returned coordinates for 1 of 489 when measured |
+| Licence | **Creative Commons Attribution 3.0 New Zealand**, "all data and images are made available free of charge" — read at <https://www.geonet.org.nz/policy>, 2026-10-08 |
+| Obligation | Acknowledge: *"We acknowledge the New Zealand GeoNet programme and its sponsors NHC, Earth Sciences NZ, LINZ, NEMA and MBIE for providing data used here."* Carried in the waveform guide's source section and `SEEDLINK_SERVERS`. |
+| Redistributable | Moot, as for EarthScope: nothing is stored. |
+| Credential | None — satisfies standing rule 2 |
+
+- **Why GeoNet, and what else was surveyed.** EarthScope carries almost
+  nothing in New Zealand; with GeoNet, M5+ quakes of the last two years within
+  the detector's reach there went from 1 of 21 to 10 of 21. Ten public SeedLink
+  servers answered a survey on 2026-10-08 (GEOFON, GeoNet, Croatia, BGR,
+  ORFEUS, IPGP, AusPass, ICGC, Brazil, Portugal) with ~1,500 stations
+  EarthScope does not carry. **GEOFON** (`geofon.gfz.de`, "no special
+  permission is required") is next: it speaks SeedLink 4 and sends miniSEED 3,
+  so it needs protocol work first; its licence terms are not yet read. The
+  SeisComP 3.x servers need a `BATCH` handshake. No open real-time source was
+  found for Indonesia (GEOFON's open GE stations include none there) or Japan
+  (Hi-net needs an account, so standing rule 2 excludes it).
+
 ---
 
 ## Basemaps and imagery

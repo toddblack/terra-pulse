@@ -1120,6 +1120,12 @@ when unfocused, retained in main for a renderer that mounts late. Details in
    quake's coda (probably buried). Details in `CLAUDE.md`.
 3. ~~**Running live**~~ — the "Watch here" pin above, 2026-10-08.
 
+**More servers — started 2026-10-08.** EarthScope's ring left most of the
+world unwatchable. GeoNet New Zealand is now a second server (NZ M5+ in reach
+1 of 21 → 10 of 21); GEOFON (Chile/Peru, Mediterranean) and the SeisComP 3.x
+servers follow, each needing protocol work first. Indonesia and Japan have no
+open real-time source and stay unwatchable. Details in `CLAUDE.md`.
+
 **Still open:** the detector is graded only in Southern California, on 100 Hz
 stations; a pin elsewhere runs it on 20-50 Hz stations it was never graded
 on, and the chip says when the pin is out of its reach. No real quake has yet

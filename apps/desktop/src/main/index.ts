@@ -36,12 +36,18 @@ import {
 } from './ipc/earthquakes';
 import { registerAuroraIpcHandlers, startAuroraPolling } from './ipc/aurora';
 import { registerTecIpcHandlers } from './ipc/tec';
-import { createWaveformController, registerWaveformIpcHandlers } from './ipc/waveforms';
+import { createMultiServerController, registerWaveformIpcHandlers } from './ipc/waveforms';
 import { createQuakeReplayController, registerQuakeReplayHandlers } from './ipc/quake-replay';
-import { WATCH_PIN_KEY, createQuakeWatchController, registerQuakeWatchHandlers } from './ipc/quake-watch';
+import {
+  WATCH_PIN_KEY,
+  createQuakeWatchController,
+  endpointsFor,
+  registerQuakeWatchHandlers,
+} from './ipc/quake-watch';
 import {
   createWaveformStationSources,
   registerWaveformStationHandlers,
+  serverFetchers,
 } from './ipc/waveform-stations';
 import {
   registerMagnetometerIpcHandlers,
@@ -399,15 +405,21 @@ app
     // The ring inventory is shared with the picker's station list, so first
     // opening the waveform tab fetches the 1.2 MB list once rather than once
     // per consumer.
-    const waveformStations = createWaveformStationSources();
-    const waveforms = createWaveformController({
+    //
+    // Two servers since 2026-10-08: EarthScope, and GeoNet New Zealand's own
+    // ring. Each stream holds one connection per server it needs, behind one
+    // controller — see `createMultiServerController` and `SEEDLINK_SERVERS`.
+    const waveformStations = createWaveformStationSources({ others: { geonet: serverFetchers('geonet') } });
+    const inventoryFor = (server: Parameters<typeof waveformStations.inventoryFor>[0]) =>
+      waveformStations.inventoryFor(server).get();
+    const waveforms = createMultiServerController({
       onSegment: (segment) => {
         sendToRenderer(mainWindow, 'waveforms:segment', segment);
       },
       onStatus: (status) => {
         sendToRenderer(mainWindow, 'waveforms:status-changed', status);
       },
-      fetchInventory: () => waveformStations.inventory.get(),
+      servers: endpointsFor(inventoryFor),
     });
     registerWaveformIpcHandlers(waveforms);
     registerWaveformStationHandlers(waveformStations);
@@ -441,7 +453,7 @@ app
     // looking at. `sendToRenderer` because the watch can push during teardown.
     const quakeWatch = createQuakeWatchController({
       catalogue: () => waveformStations.catalogue(),
-      fetchInventory: () => waveformStations.inventory.get(),
+      inventoryFor,
       readPin: () => readAppState(db, WATCH_PIN_KEY),
       writePin: (value) => {
         if (value === null) deleteAppState(db, WATCH_PIN_KEY);

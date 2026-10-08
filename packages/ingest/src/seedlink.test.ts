@@ -8,6 +8,8 @@ import {
   type SeedLinkSocket,
   createSeedLinkSession,
   fetchRingInventory,
+  fetchSeedLinkInventory,
+  parseInfoStreams,
   parseStreamIds,
   seedlinkHandshakeScript,
   sourceIdOf,
@@ -467,5 +469,85 @@ describe('createSeedLinkSession', () => {
     vi.advanceTimersByTime(SEEDLINK_COMMAND_TIMEOUT_MS * 2);
     expect(ended).toHaveLength(1);
     expect(ended[0]?.message).toBe('ECONNRESET');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// INFO STREAMS — the inventory for servers with no HTTP listing (GeoNet)
+// ---------------------------------------------------------------------------
+
+/** An info packet: `SLINFO *` (more follow) or `SLINFO  ` (last), wrapping `text` in a log record. */
+function infoPacket(text: string, last: boolean): Uint8Array {
+  const bytes = new Uint8Array(SEEDLINK_PACKET_BYTES);
+  const header = last ? 'SLINFO  ' : 'SLINFO *';
+  for (let i = 0; i < 8; i += 1) bytes[i] = header.charCodeAt(i);
+  const record = bytes.subarray(8);
+  const view = new DataView(record.buffer, record.byteOffset, 512);
+  view.setUint16(30, text.length); // sample count = characters
+  view.setUint16(44, 64); // data offset
+  for (let i = 0; i < text.length; i += 1) record[64 + i] = text.charCodeAt(i);
+  return bytes;
+}
+
+/** A socket that answers HELLO and then INFO STREAMS with these packets. */
+class InfoSocket implements SeedLinkSocket {
+  writes: string[] = [];
+  destroyed = false;
+  private onConnectListener: () => void = () => undefined;
+  private onDataListener: (chunk: Uint8Array) => void = () => undefined;
+  constructor(private readonly reply: Uint8Array) {}
+  write(text: string): void {
+    this.writes.push(text.trim());
+    if (text.startsWith('HELLO')) this.onDataListener(new TextEncoder().encode('SeedLink v3.1\r\nGeoNet\r\n'));
+    if (text.startsWith('INFO STREAMS')) this.onDataListener(this.reply);
+  }
+  destroy(): void {
+    this.destroyed = true;
+  }
+  onConnect(listener: () => void): void {
+    this.onConnectListener = listener;
+  }
+  onData(listener: (chunk: Uint8Array) => void): void {
+    this.onDataListener = listener;
+  }
+  onError(): void {}
+  onClose(): void {}
+  connect(): void {
+    this.onConnectListener();
+  }
+}
+
+describe('parseInfoStreams', () => {
+  it('lists data streams as channel ids, keeping a real location and a blank one', () => {
+    const xml =
+      '<seedlink><station name="ABAZ" network="NZ" description="x">' +
+      '<stream location="12" seedname="HHZ" type="D" /><stream location="12" seedname="LOG" type="L" />' +
+      '</station><station network="CI" name="ADO"><stream seedname="HHZ" location="  " type="D"/></station></seedlink>';
+    expect([...parseInfoStreams(xml)].sort()).toEqual(['CI_ADO__HHZ', 'NZ_ABAZ_12_HHZ']);
+  });
+});
+
+describe('fetchSeedLinkInventory', () => {
+  const XML =
+    '<?xml version="1.0"?><seedlink><station name="WEL" network="NZ"><stream location="10" seedname="HHZ" type="D"/>' +
+    '</station><station name="SNZO" network="NZ"><stream location="10" seedname="HHZ" type="D"/></station></seedlink>';
+
+  it('joins the text of every info packet, in order, and asks without CAPABILITIES', async () => {
+    const half = Math.floor(XML.length / 2);
+    const socket = new InfoSocket(concat(infoPacket(XML.slice(0, half), false), infoPacket(XML.slice(half), true)));
+    const pending = fetchSeedLinkInventory('example.org', 18000, () => socket);
+    socket.connect();
+    expect([...((await pending) ?? [])].sort()).toEqual(['NZ_SNZO_10_HHZ', 'NZ_WEL_10_HHZ']);
+    expect(socket.writes).toEqual(['HELLO', 'INFO STREAMS']);
+    expect(socket.destroyed).toBe(true);
+  });
+
+  it('is unknown, not empty, when the server refuses INFO', async () => {
+    const refusal = new Uint8Array(SEEDLINK_PACKET_BYTES);
+    refusal.set(new TextEncoder().encode('ERROR\r\n'));
+    const socket = new InfoSocket(refusal);
+    const pending = fetchSeedLinkInventory('example.org', 18000, () => socket);
+    socket.connect();
+    expect(await pending).toBeNull();
   });
 });

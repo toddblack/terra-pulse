@@ -9,11 +9,14 @@ import {
 } from '@terra-pulse/ingest';
 import {
   NOT_ON_RING_REASON,
+  SEEDLINK_SERVER_IDS,
   WAVEFORM_CONNECTION_DEAD_AFTER_MS,
   WAVEFORM_MAX_CHANNELS,
   WAVEFORM_STALL_AFTER_MS,
   channelIdOf,
   isValidWaveformChannel,
+  serverOf,
+  type SeedLinkServerId,
   type WaveformChannel,
   type WaveformChannelStatus,
   type WaveformSegment,
@@ -101,7 +104,7 @@ export function parseWaveformStartRequest(payload: unknown): WaveformChannel[] {
     if (typeof item !== 'object' || item === null) {
       throw new WaveformRequestError('each channel must be an object');
     }
-    const { network, station, location, channel } = item as Record<string, unknown>;
+    const { network, station, location, channel, server } = item as Record<string, unknown>;
     if (
       typeof network !== 'string' ||
       typeof station !== 'string' ||
@@ -110,7 +113,18 @@ export function parseWaveformStartRequest(payload: unknown): WaveformChannel[] {
     ) {
       throw new WaveformRequestError('each channel needs string network, station, location and channel');
     }
-    const candidate: WaveformChannel = { network, station, location, channel };
+    // An id from a fixed list, never a host: the renderer cannot point main's
+    // socket anywhere `SEEDLINK_SERVERS` does not already name.
+    if (server !== undefined && !(SEEDLINK_SERVER_IDS as readonly unknown[]).includes(server)) {
+      throw new WaveformRequestError('unknown SeedLink server');
+    }
+    const candidate: WaveformChannel = {
+      network,
+      station,
+      location,
+      channel,
+      ...(server === undefined ? {} : { server: server as SeedLinkServerId }),
+    };
     if (!isValidWaveformChannel(candidate)) {
       // Deliberately does not echo the codes: they may be exactly the control
       // characters being refused.
@@ -129,6 +143,9 @@ export function parseWaveformStartRequest(payload: unknown): WaveformChannel[] {
 export interface WaveformControllerOptions {
   onSegment: (segment: WaveformSegment) => void;
   onStatus: (status: WaveformStreamStatus) => void;
+  /** The SeedLink server; EarthScope's when absent. */
+  host?: string;
+  port?: number;
   connect?: SeedLinkConnect;
   fetchInventory?: () => Promise<Set<string> | null>;
   now?: () => number;
@@ -146,6 +163,8 @@ export function createWaveformController(options: WaveformControllerOptions): Wa
   const {
     onSegment,
     onStatus,
+    host,
+    port,
     connect,
     fetchInventory = () => fetchRingInventory(),
     now = () => Date.now(),
@@ -344,6 +363,8 @@ export function createWaveformController(options: WaveformControllerOptions): Wa
 
     session = createSeedLinkSession({
       channels,
+      ...(host === undefined ? {} : { host }),
+      ...(port === undefined ? {} : { port }),
       ...(connect === undefined ? {} : { connect }),
       onRecord: (bytes) => {
         if (generation !== connectionGeneration) return;
@@ -488,6 +509,143 @@ export function createWaveformController(options: WaveformControllerOptions): Wa
     dispose() {
       stopInternal();
       inventory = null;
+    },
+  };
+}
+
+export interface SeedLinkEndpoint {
+  label: string;
+  host: string;
+  port: number;
+  /** The server's stream list, for marking absent channels. */
+  fetchInventory: () => Promise<Set<string> | null>;
+}
+
+export interface MultiServerControllerOptions {
+  onSegment: (segment: WaveformSegment) => void;
+  onStatus: (status: WaveformStreamStatus) => void;
+  servers: Readonly<Record<SeedLinkServerId, SeedLinkEndpoint>>;
+  connect?: SeedLinkConnect;
+  now?: () => number;
+  random?: () => number;
+}
+
+const IDLE_STATUS: WaveformStreamStatus = {
+  running: false,
+  connected: false,
+  retries: 0,
+  connectedSinceMs: null,
+  lastError: null,
+  channels: [],
+};
+
+/**
+ * One stream across several SeedLink servers: a `createWaveformController` per
+ * server, behind the same interface, with their statuses merged into one.
+ *
+ * **A connection per server, not a relay.** Each server is its own TCP
+ * session, backoff and watchdog, so GeoNet going down leaves EarthScope's
+ * channels streaming — the merged status says "reconnecting" while the
+ * per-channel states say exactly which rows are affected.
+ *
+ * Merged so that callers need no change: `connected` only when every active
+ * server is (the rows on screen are only all live then), `retries` the worst,
+ * and the channels in the order they were requested, so rows do not reshuffle
+ * by server. An error names its server.
+ */
+export function createMultiServerController(options: MultiServerControllerOptions): WaveformController {
+  const { onSegment, onStatus, servers, connect, now, random } = options;
+  const inner = new Map<SeedLinkServerId, WaveformController>();
+  const latest = new Map<SeedLinkServerId, WaveformStreamStatus>();
+  let active: SeedLinkServerId[] = [];
+  let order: string[] = [];
+
+  function merged(): WaveformStreamStatus {
+    const parts = active.flatMap((id) => {
+      const status = latest.get(id);
+      return status === undefined ? [] : [{ id, status }];
+    });
+    if (parts.length === 0) return { ...IDLE_STATUS, channels: [] };
+    const byId = new Map(parts.flatMap(({ status }) => status.channels).map((c) => [c.channelId, c]));
+    const allConnected = parts.every(({ status }) => status.connected);
+    const failing = parts.find(({ status }) => status.lastError !== null);
+    return {
+      running: parts.some(({ status }) => status.running),
+      connected: allConnected,
+      retries: Math.max(...parts.map(({ status }) => status.retries)),
+      connectedSinceMs: allConnected
+        ? Math.max(...parts.map(({ status }) => status.connectedSinceMs ?? 0))
+        : null,
+      lastError:
+        failing === undefined
+          ? null
+          : parts.length === 1
+            ? failing.status.lastError
+            : `${servers[failing.id].label}: ${failing.status.lastError ?? ''}`,
+      channels: order.flatMap((id) => {
+        const channel = byId.get(id);
+        return channel === undefined ? [] : [channel];
+      }),
+    };
+  }
+
+  function controllerFor(id: SeedLinkServerId): WaveformController {
+    const existing = inner.get(id);
+    if (existing !== undefined) return existing;
+    const endpoint = servers[id];
+    const controller = createWaveformController({
+      host: endpoint.host,
+      port: endpoint.port,
+      fetchInventory: endpoint.fetchInventory,
+      onSegment,
+      onStatus: (status) => {
+        latest.set(id, status);
+        if (active.includes(id)) onStatus(merged());
+      },
+      ...(connect === undefined ? {} : { connect }),
+      ...(now === undefined ? {} : { now }),
+      ...(random === undefined ? {} : { random }),
+    });
+    inner.set(id, controller);
+    return controller;
+  }
+
+  return {
+    start(channels) {
+      const groups = new Map<SeedLinkServerId, WaveformChannel[]>();
+      for (const channel of channels) {
+        const id = serverOf(channel);
+        const group = groups.get(id);
+        if (group === undefined) groups.set(id, [channel]);
+        else group.push(channel);
+      }
+      order = channels.map(channelIdOf);
+      // Set before anything starts or stops, so a server being dropped cannot
+      // emit into the new stream's status on its way out.
+      active = [...groups.keys()];
+      for (const [id, controller] of inner) {
+        if (groups.has(id)) continue;
+        controller.stop();
+        latest.delete(id);
+      }
+      for (const [id, group] of groups) latest.set(id, controllerFor(id).start(group));
+      const status = merged();
+      onStatus(status);
+      return status;
+    },
+    stop() {
+      active = [];
+      for (const controller of inner.values()) controller.stop();
+      latest.clear();
+      order = [];
+      onStatus(merged());
+    },
+    status: merged,
+    dispose() {
+      active = [];
+      for (const controller of inner.values()) controller.dispose();
+      inner.clear();
+      latest.clear();
     },
   };
 }

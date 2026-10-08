@@ -177,3 +177,78 @@ describe('createWaveformStationSources', () => {
     expect(fetchListing).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('createWaveformStationSources with more than one server', () => {
+  const WEL_LISTING: StationListing = {
+    channelRows: [
+      {
+        Network: 'NZ',
+        Station: 'WEL',
+        Location: '10',
+        Channel: 'HHZ',
+        Latitude: '-41.28',
+        Longitude: '174.77',
+        SampleRate: '100',
+      },
+    ],
+    stationRows: [],
+  };
+  const geonet = (listing: StationListing | null = WEL_LISTING) => ({
+    fetchInventory: () => Promise.resolve(new Set(['NZ_WEL_10_HHZ'])),
+    fetchListing: () => Promise.resolve(listing),
+  });
+
+  it("merges every server's stations, each tagged with its own", async () => {
+    const sources = createWaveformStationSources({
+      fetchInventory: RATT_ON_RING,
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: { geonet: geonet() },
+    });
+    const catalogue = await sources.catalogue();
+    if (catalogue.status !== 'ready') throw new Error('expected a list');
+    expect(catalogue.stations.map((s) => [s.station, s.server ?? 'earthscope'])).toEqual([
+      ['RATT', 'earthscope'],
+      ['WEL', 'geonet'],
+    ]);
+    expect([...((await sources.inventoryFor('geonet').get()) ?? [])]).toEqual(['NZ_WEL_10_HHZ']);
+  });
+
+  it("keeps one server's stations when another fails, so New Zealand cannot take California with it", async () => {
+    const sources = createWaveformStationSources({
+      fetchInventory: RATT_ON_RING,
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: { geonet: geonet(null) },
+    });
+    const catalogue = await sources.catalogue();
+    expect(catalogue.status === 'ready' ? catalogue.stations.map((s) => s.station) : catalogue).toEqual(['RATT']);
+  });
+
+  it('is unavailable only when every server failed, with EarthScope’s reason', async () => {
+    const sources = createWaveformStationSources({
+      fetchInventory: () => Promise.resolve(null),
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: { geonet: geonet(null) },
+    });
+    expect(await sources.catalogue()).toEqual({
+      status: 'unavailable',
+      reason: "the ring's stream list could not be fetched",
+    });
+  });
+
+  it("keeps EarthScope's copy of a station both servers list", async () => {
+    const sources = createWaveformStationSources({
+      fetchInventory: RATT_ON_RING,
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: {
+        geonet: {
+          fetchInventory: RATT_ON_RING,
+          fetchListing: () => Promise.resolve(RATT_LISTING),
+        },
+      },
+    });
+    const catalogue = await sources.catalogue();
+    if (catalogue.status !== 'ready') throw new Error('expected a list');
+    expect(catalogue.stations).toHaveLength(1);
+    expect(catalogue.stations[0]).not.toHaveProperty('server');
+  });
+});

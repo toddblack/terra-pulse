@@ -124,6 +124,18 @@ describe('buildStationCatalogue', () => {
     expect(catalogue).toEqual([]);
   });
 
+  it('tags a station with its server, and leaves EarthScope untagged so older objects mean the same', () => {
+    const nz = buildStationCatalogue(
+      rows(CHANNEL_HEADER, channelLine('NZ', 'WEL', '10', 'HHZ', -41.3, 174.8)),
+      [],
+      new Set(['NZ_WEL_10_HHZ']),
+      'geonet',
+    );
+    expect(nz[0]?.server).toBe('geonet');
+    const us = buildStationCatalogue(rows(CHANNEL_HEADER, channelLine('CI', 'ADO', '', 'HHZ')), [], ring);
+    expect(us[0]).not.toHaveProperty('server');
+  });
+
   it('ignores channel codes the picker does not choose, such as accelerometers', () => {
     const catalogue = buildStationCatalogue(
       rows(CHANNEL_HEADER, channelLine('CI', 'ADO', '', 'HNZ')),
@@ -161,6 +173,13 @@ describe('fetchStationListing', () => {
       expect(url).toContain('cha=HHZ%2CBHZ%2CEHZ');
       expect(init?.headers).toEqual({ 'accept-encoding': 'identity' });
     }
+  });
+
+  it("asks another server's station service, for its networks, when told to", async () => {
+    const { impl, calls } = routed(new Response(channelBody), new Response(stationBody));
+    const geonet = 'https://service.geonet.org.nz/fdsnws/station/1/query';
+    await fetchStationListing({ fetchImpl: impl, serviceUrl: geonet, networks: 'NZ' });
+    expect(calls.map(({ url }) => url.startsWith(`${geonet}?`) && url.includes('net=NZ'))).toEqual([true, true]);
   });
 
   /** The listing joined to the ring, the way main uses it. */
