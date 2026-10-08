@@ -4,11 +4,11 @@ import {
   haversineKm,
   type QuakeReplay,
   type QuakeReplayRequest,
-  type ReplayKind,
   type ReplayRow,
   type WaveformStation,
+  travelSeconds,
 } from '@terra-pulse/schema';
-import { arrivalOrder, asLiveRecords, gradeDetections, teleseismicPSeconds, type ArrivingRecord } from './detector-replay';
+import { arrivalOrder, asLiveRecords, gradeDetections, type ArrivingRecord } from './detector-replay';
 import { velocityGainAt, type FdsnTextRow } from './fdsn-stations';
 import { parseMiniSeedRecord, splitMiniSeedRecords, type MiniSeedDataRecord } from './miniseed';
 import {
@@ -69,7 +69,8 @@ export interface DetectorReplayInput {
   gains: readonly FdsnTextRow[] | null;
   /** The instant whose channel epochs apply — sensors get swapped. */
   gainAtMs: number;
-  home: HomeLocation;
+  /** Where the home alert is judged. Omitted, nothing alerts: the app's replays show no warning. */
+  home?: HomeLocation;
   rule?: AlertRule;
   geometry?: AlertGeometry;
   params?: DetectorParams;
@@ -88,8 +89,8 @@ export interface DetectorReplayResult {
   /** Every alert as it was raised — a false detection's included. */
   alerts: HomeAlert[];
   picks: DetectorReplayPick[];
-  /** For `alertFor(id)`: an alert keeps updating after it is raised. */
-  alerter: HomeAlerter;
+  /** For `alertFor(id)`: an alert keeps updating after it is raised. Null with no home. */
+  alerter: HomeAlerter | null;
 }
 
 export function runDetectorReplay(input: DetectorReplayInput): DetectorReplayResult {
@@ -126,14 +127,17 @@ export function runDetectorReplay(input: DetectorReplayInput): DetectorReplayRes
   // say what was known at declaration and how far it climbed after.
   const detections: QuakeDetection[] = [];
   const estimates = new Map<number, MagnitudeStep[]>();
-  const alerter = new HomeAlerter(input.home, input.rule ?? DEFAULT_ALERT_RULE, input.geometry ?? DEFAULT_ALERT_GEOMETRY);
+  const alerter =
+    input.home === undefined
+      ? null
+      : new HomeAlerter(input.home, input.rule ?? DEFAULT_ALERT_RULE, input.geometry ?? DEFAULT_ALERT_GEOMETRY);
   const alerts: HomeAlert[] = [];
   const arriving = arrivalOrder(records);
   for (const { record, arrivedAtMs } of arriving) {
     detections.push(...detector.push(record, arrivedAtMs));
     for (const d of detections) {
       const estimate = detector.magnitudeOf(d.id);
-      const alert = alerter.evaluate(d, estimate, arrivedAtMs);
+      const alert = alerter?.evaluate(d, estimate, arrivedAtMs) ?? null;
       if (alert !== null) alerts.push(alert);
       if (estimate === null) continue;
       const steps = estimates.get(d.id) ?? [];
@@ -149,12 +153,50 @@ export function runDetectorReplay(input: DetectorReplayInput): DetectorReplayRes
 }
 
 // ---------------------------------------------------------------------------
-// The app's replay: which window, which rows, and what to hand the renderer.
-// Pure, so every choice is a test; main only fetches.
+// The app's replay: which stations, which window, which rows, and what to hand
+// the renderer. Pure, so every choice is a test; main only fetches.
+//
+// **Centred on the quake.** It began centred on home (`homeNetwork`, which the
+// graded script still uses); on 2026-10-07 the user asked for any M5+ anywhere.
+// Two station sets, because they answer different questions:
+//   - the detector listens to the stations near the epicentre, where it can
+//     work at all (`replayDetectorNetwork`);
+//   - the rows show the nearest stations at any distance, so there is almost
+//     always something to watch the wave reach (`replayRowCandidates`).
+// Measured over 5,137 M5+ quakes (2024-2026): only 13% have four stations
+// within 300 km, while 82% have ten within 2,000 km.
 // ---------------------------------------------------------------------------
 
 /**
- * Lead before the first arrival of interest, and how long after it — **the
+ * The detector's listening radius around an epicentre — the graded home
+ * network's — and **every** station inside it, uncapped.
+ *
+ * A cap at the nearest 80 was built first and measured worse: Ridgecrest M7.1
+ * came out **M6.0, 24 km off** against the graded M7.1, 5 km. In a dense
+ * network the nearest 80 all sit within ~100 km, where the S wave arrives
+ * inside the 10 s P window and cuts it short — the saturation Kuyuk & Allen
+ * report for large quakes — so only the farther stations the cap dropped could
+ * measure an M7. Uncapped, over the 24 tuning and reference quakes: 24/24
+ * found, median +14.2 s, final magnitude 0.02 from the catalogue — the same as
+ * the 100 Hz-only home network, at ~80 stations median.
+ */
+export const REPLAY_DETECTOR_RADIUS_KM = HOME_NETWORK_RADIUS_KM;
+/**
+ * Slower than this is not a seismometer the picker was built for. Note the
+ * graded network was 100 Hz only; outside Southern California most stations
+ * are 20-50 Hz, so the detector listens to them too, and records that take
+ * longer to fill make it later — which the replay shows honestly.
+ */
+export const REPLAY_MIN_RATE_HZ = 20;
+/** Rows on screen: the cap the live view uses. */
+export const REPLAY_ROWS = 10;
+/** Stations fetched for the rows; more than shown, because today's network is not the network of the day replayed. */
+export const REPLAY_ROW_CANDIDATES = 16;
+/** Rows come from no farther than this. Past it, a row is the quake arriving in a different region. */
+export const REPLAY_MAX_ROW_KM = 3000;
+
+/**
+ * Lead before the origin, and the least the window runs after it — **the
  * window every graded case used** (60 s lead, 180 s in all), and it has to be.
  *
  * A first version led by 30 s, and Ridgecrest M7.1 came back declared 11.5 s
@@ -167,106 +209,84 @@ export function runDetectorReplay(input: DetectorReplayInput): DetectorReplayRes
  */
 export const REPLAY_LEAD_MS = 60_000;
 export const REPLAY_FOLLOW_MS = 120_000;
-/** Rows on screen: the cap the live view uses. */
-export const REPLAY_ROWS = 10;
-/**
- * How far before its predicted P arrival a station's pick may still count as
- * the quake: the detector's single velocity and fixed depth are approximate,
- * and so is a catalogue origin. Anything earlier is something else.
- */
-export const REPLAY_PICK_GRACE_MS = 3_000;
+/** Past the S wave reaching the farthest row, so its shaking is on screen rather than at the edge. */
+export const REPLAY_TAIL_MS = 30_000;
 
-/** The P wave's arrival at home, from the catalogue's origin and place. */
-export function pArrivalAtHomeMs(
-  request: QuakeReplayRequest,
-  home: HomeLocation,
-  kind: ReplayKind,
-  depthKm: number,
-  pVelocityKmS: number,
-): number {
-  const homeKm = haversineKm(request, home);
-  if (kind === 'distant') return request.originMs + 1000 * teleseismicPSeconds(homeKm / 111.19);
-  return request.originMs + (1000 * Math.hypot(homeKm, depthKm)) / pVelocityKmS;
+function nearestFirst(
+  stations: readonly WaveformStation[],
+  epicentre: { latitude: number; longitude: number },
+  maxKm: number,
+  count: number,
+): WaveformStation[] {
+  return stations
+    .filter((s) => s.sampleRateHz >= REPLAY_MIN_RATE_HZ)
+    .map((s) => ({ s, km: haversineKm(epicentre, s) }))
+    .filter(({ km }) => km <= maxKm)
+    .sort((a, b) => a.km - b.km)
+    .slice(0, count)
+    .map(({ s }) => s);
+}
+
+/** The stations the detector listens to for a replay: near the epicentre, nearest first. */
+export function replayDetectorNetwork(
+  stations: readonly WaveformStation[],
+  epicentre: { latitude: number; longitude: number },
+): WaveformStation[] {
+  return nearestFirst(stations, epicentre, REPLAY_DETECTOR_RADIUS_KM, Number.POSITIVE_INFINITY);
+}
+
+/** The stations the rows are chosen from: the nearest, at any distance up to `REPLAY_MAX_ROW_KM`. */
+export function replayRowCandidates(
+  stations: readonly WaveformStation[],
+  epicentre: { latitude: number; longitude: number },
+): WaveformStation[] {
+  return nearestFirst(stations, epicentre, REPLAY_MAX_ROW_KM, REPLAY_ROW_CANDIDATES);
 }
 
 /**
- * What a replay fetches. Local: from 30 s before the origin, so the rows open
- * on quiet ground. Distant: aimed at the P wave's arrival at home — the origin
- * is minutes earlier and thousands of kilometres away, and a window starting
- * there would show three minutes of nothing.
+ * What a replay fetches: from a minute before the origin until the S wave has
+ * reached the farthest row — but never less than the graded three minutes.
+ * Arrival times are IASP91's, not the detector's crustal speed: at 2,000 km
+ * that speed would put the P wave 50 s late and the window would end before it.
  */
-export function replayWindow(
-  request: QuakeReplayRequest,
-  kind: ReplayKind,
-  homePArrivalMs: number,
-): { startMs: number; endMs: number } {
-  const anchor = kind === 'local' ? request.originMs : homePArrivalMs;
-  return { startMs: anchor - REPLAY_LEAD_MS, endMs: anchor + REPLAY_FOLLOW_MS };
+export function replayWindow(request: QuakeReplayRequest, farthestRowKm: number): { startMs: number; endMs: number } {
+  const sDoneMs = 1000 * travelSeconds('S', farthestRowKm) + REPLAY_TAIL_MS;
+  return { startMs: request.originMs - REPLAY_LEAD_MS, endMs: request.originMs + Math.max(REPLAY_FOLLOW_MS, sDoneMs) };
 }
 
 /**
- * The rows: **the first stations to trigger**, in trigger order — so the P wave
- * visibly sweeps down the panel and the detector can be watched counting to
- * four. Fewer than `count` triggered (a small or distant quake): the rest are
- * the nearest to the epicentre, so the panel is never short of rows.
- *
- * Ordered by onset, not by arrival: the onset is when the ground moved there,
- * which is what the sweep down the rows should show.
- *
- * **A pick counts only from that station's predicted P arrival** (less a
- * grace). Measured on Ridgecrest M7.1: a station 179 km out triggered 0.3 s
- * *before* the origin — a noisy site, ~29 s ahead of any wave from the quake —
- * and a bare "after the origin" rule ranked it third, ahead of stations that
- * heard the quake. Its row then shows a pick that means nothing.
+ * The rows: **the nearest stations that recorded anything, nearest first**, so
+ * the P wave visibly sweeps down the panel — and with real travel times it does
+ * so at the pace the Earth sets, not the order stations happened to trigger.
+ * Stations with no archived data fill in only when there are not enough with:
+ * today's network is not the network of the day replayed (Tohoku 2011 found 9
+ * of 74 with data), and a row of nothing would take a place from a row of
+ * something.
  */
 export function chooseReplayRows(
-  picks: readonly { channelId: string; timeMs: number }[],
-  network: readonly WaveformStation[],
+  candidates: readonly WaveformStation[],
   epicentre: { latitude: number; longitude: number },
-  earliestPickMs: (station: WaveformStation) => number,
+  hasData: (channelId: string) => boolean,
+  listened: (channelId: string) => boolean,
   count = REPLAY_ROWS,
-  /**
-   * Filler rows prefer stations that recorded anything: today's network is
-   * not the network of the day replayed — Tohoku 2011 found 9 of 74 with data
-   * — and a row of nothing would take a place from a row of something.
-   */
-  hasData: (channelId: string) => boolean = () => true,
 ): ReplayRow[] {
-  const byId = new Map(network.map((s) => [channelIdOf(s), s]));
-  const firstPick = new Map<string, number>();
-  for (const pick of picks) {
-    const station = byId.get(pick.channelId);
-    if (station === undefined || pick.timeMs < earliestPickMs(station)) continue;
-    const seen = firstPick.get(pick.channelId);
-    if (seen === undefined || pick.timeMs < seen) firstPick.set(pick.channelId, pick.timeMs);
-  }
-  const chosen = [...firstPick.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id).slice(0, count);
-
-  const rest = network
-    .filter((s) => !chosen.includes(channelIdOf(s)))
-    .sort(
-      (a, b) =>
-        Number(hasData(channelIdOf(b))) - Number(hasData(channelIdOf(a))) ||
-        haversineKm(epicentre, a) - haversineKm(epicentre, b),
-    )
-    .slice(0, Math.max(0, count - chosen.length))
-    .map(channelIdOf);
-
-  return [...chosen, ...rest].flatMap((id) => {
-    const s = byId.get(id);
-    return s === undefined ? [] : [{ ...s, distanceKm: haversineKm(epicentre, s), bearingDeg: bearingDeg(epicentre, s) }];
-  });
+  return candidates
+    .map((s) => ({ s, km: haversineKm(epicentre, s), data: hasData(channelIdOf(s)) }))
+    .sort((a, b) => Number(b.data) - Number(a.data) || a.km - b.km)
+    .slice(0, count)
+    .sort((a, b) => a.km - b.km)
+    .map(({ s, km }) => ({ ...s, distanceKm: km, bearingDeg: bearingDeg(epicentre, s), listened: listened(channelIdOf(s)) }));
 }
 
 export interface QuakeReplayInput {
   request: QuakeReplayRequest;
-  kind: ReplayKind;
-  home: HomeLocation & { label: string };
-  network: readonly WaveformStation[];
+  /** What the detector listened to (`replayDetectorNetwork`). */
+  detectorNetwork: readonly WaveformStation[];
+  /** What the rows were chosen from (`replayRowCandidates`). */
+  rowCandidates: readonly WaveformStation[];
   window: { startMs: number; endMs: number };
+  /** The detector's run over everything fetched; it ignores stations outside its network. */
   result: DetectorReplayResult;
-  rule?: AlertRule;
-  geometry?: AlertGeometry;
   params?: DetectorParams;
 }
 
@@ -280,47 +300,41 @@ export interface QuakeReplayInput {
  * over.
  */
 export function buildQuakeReplay(input: QuakeReplayInput): QuakeReplay {
-  const { request, kind, home, network, window, result } = input;
-  const rule = input.rule ?? DEFAULT_ALERT_RULE;
-  const geometry = input.geometry ?? DEFAULT_ALERT_GEOMETRY;
-  const pVelocityKmS = (input.params ?? DEFAULT_DETECTOR_PARAMS).associator.pVelocityKmS;
-  const homeKm = haversineKm(request, home);
+  const { request, detectorNetwork, rowCandidates, window, result } = input;
+  const params = input.params ?? DEFAULT_DETECTOR_PARAMS;
 
   const grade = gradeDetections(result.detections, [
     { id: request.eventId, originMs: request.originMs, latitude: request.latitude, longitude: request.longitude, magnitude: request.magnitude },
   ]);
   const match = grade.matched[0] ?? null;
   const steps = match === null ? [] : (result.estimates.get(match.detection.id) ?? []);
-  const lastStep = steps[steps.length - 1];
-  const alert = match === null ? null : result.alerter.alertFor(match.detection.id);
 
-  // For a distant quake the window is aimed at the P wave reaching home, and
-  // every home station is about as far from the source, so that arrival is the
-  // floor for all of them.
-  const homeP = pArrivalAtHomeMs(request, home, kind, geometry.depthKm, pVelocityKmS);
-  const earliestPickMs = (s: WaveformStation) =>
-    (kind === 'distant'
-      ? homeP
-      : request.originMs + (1000 * Math.hypot(haversineKm(request, s), geometry.depthKm)) / pVelocityKmS) -
-    REPLAY_PICK_GRACE_MS;
   const withData = new Set(result.records.map((r) => r.record.channelId));
-  const rows = chooseReplayRows(result.picks, network, request, earliestPickMs, REPLAY_ROWS, (id) => withData.has(id));
+  const listenedIds = new Set(detectorNetwork.map(channelIdOf));
+  const listenedWithData = detectorNetwork.filter((s) => withData.has(channelIdOf(s)));
+  const nearest = listenedWithData[0];
+
+  const rows = chooseReplayRows(
+    rowCandidates,
+    request,
+    (id) => withData.has(id),
+    (id) => listenedIds.has(id),
+  );
   const onRows = new Set(rows.map(channelIdOf));
 
   return {
     request,
-    kind,
     windowStartMs: window.startMs,
     windowEndMs: window.endMs,
-    home: { latitude: home.latitude, longitude: home.longitude, label: home.label },
-    homeKm,
-    pArrivalAtHomeMs: homeP,
-    // No S time for a distant quake: crustal speeds do not apply across the
-    // mantle, and nothing here needs a teleseismic S.
-    sArrivalAtHomeMs: kind === 'local' ? request.originMs + (1000 * Math.hypot(homeKm, geometry.depthKm)) / geometry.sVelocityKmS : null,
-    geometry: { depthKm: geometry.depthKm, pVelocityKmS, sVelocityKmS: geometry.sVelocityKmS },
-    networkSize: network.length,
-    stationsWithData: withData.size,
+    detector: {
+      radiusKm: REPLAY_DETECTOR_RADIUS_KM,
+      stations: detectorNetwork.length,
+      stationsWithData: listenedWithData.length,
+      // The network is nearest first, so the first with data is the nearest.
+      nearestKm: nearest === undefined ? null : haversineKm(request, nearest),
+      minStations: params.associator.minStations,
+      maxNearestStationKm: params.associator.maxNearestStationKm,
+    },
     badRecords: result.badRecords,
     rows,
     arrivals: result.records
@@ -353,16 +367,16 @@ export function buildQuakeReplay(input: QuakeReplayInput): QuakeReplay {
               magnitude: estimate.magnitude,
               stations: estimate.stations.length,
               complete: estimate.complete,
-              intensityAtHome: result.alerter.intensityAtHome(match.detection, estimate.magnitude),
             })),
           },
-    alert:
-      alert === null
-        ? null
-        : { alertedAtMs: alert.alertedAtMs, sArrivalAtHomeMs: alert.sArrivalAtHomeMs, magnitude: alert.magnitude, intensity: alert.intensity },
-    alertThreshold: rule.minIntensity,
-    finalIntensityAtHome:
-      match === null || lastStep === undefined ? null : result.alerter.intensityAtHome(match.detection, lastStep.estimate.magnitude),
-    otherDeclarations: result.detections.length - (match === null ? 0 : 1),
+    otherDetections: result.detections
+      .filter((d) => d !== match?.detection)
+      .map((d) => ({
+        declaredAtMs: d.declaredAtMs,
+        originMs: d.originMs,
+        latitude: d.latitude,
+        longitude: d.longitude,
+        distanceKm: haversineKm(request, d),
+      })),
   };
 }

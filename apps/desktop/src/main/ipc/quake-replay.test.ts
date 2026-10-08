@@ -60,17 +60,38 @@ describe('createQuakeReplayController', () => {
   it('runs a replay end to end, reporting each phase', async () => {
     const { c, progress } = controller();
     const replay = await c.start(RIDGECREST);
-    expect(replay.kind).toBe('local');
-    expect(replay.networkSize).toBe(1);
+    // ~180 km from the epicentre: listened to, and a row.
+    expect(replay.detector.stations).toBe(1);
+    expect(replay.rows.map((r) => r.station)).toEqual(['NEAR']);
     // An archive that held nothing: no data, no declaration — said, not hidden.
-    expect(replay.stationsWithData).toBe(0);
+    expect(replay.detector.stationsWithData).toBe(0);
     expect(replay.detection).toBeNull();
     expect(progress.map((p) => p.phase)).toEqual(['stations', 'gains', 'waveforms', 'detector']);
   });
 
+  it('replays a quake anywhere, from whatever stations are nearest it', async () => {
+    // Tohoku: Burbank's station is ~8,400 km away — not a row, not listened to.
+    const tokyo: WaveformStation = { ...NEAR_HOME, network: 'IU', station: 'MAJO', latitude: 36.55, longitude: 138.2 };
+    const { c, fetchWaveforms } = controller({
+      catalogue: () => Promise.resolve({ status: 'ready', stations: [NEAR_HOME, tokyo], fetchedAtMs: 0 }),
+    });
+    const replay = await c.start({ ...RIDGECREST, eventId: 'tohoku', latitude: 38.3, longitude: 142.37, magnitude: 9.1 });
+    expect(replay.rows.map((r) => r.station)).toEqual(['MAJO']);
+    // ~380 km: past the detector's reach, so only watched.
+    expect(replay.rows[0]?.listened).toBe(false);
+    expect(replay.detector.stations).toBe(0);
+    expect(fetchWaveforms).toHaveBeenCalledWith([tokyo], expect.any(Number), expect.any(Number));
+  });
+
+  it('says so when no public station is anywhere near', async () => {
+    const { c } = controller();
+    // Southern Indian Ocean, thousands of kilometres from the one station.
+    await expect(c.start({ ...RIDGECREST, latitude: -50, longitude: 80 })).rejects.toThrow('no public stations within');
+  });
+
   it('refuses a quake the button would not have offered', async () => {
     const { c } = controller();
-    await expect(c.start({ ...RIDGECREST, magnitude: 4.4 })).rejects.toThrow('not eligible');
+    await expect(c.start({ ...RIDGECREST, magnitude: 4.9 })).rejects.toThrow('not eligible');
   });
 
   it('says why when there is no station list', async () => {
@@ -94,11 +115,11 @@ describe('createQuakeReplayController', () => {
     await expect(second).resolves.toMatchObject({ request: { eventId: 'ci38443183' } });
   });
 
-  it('serves a repeat replay from memory without refetching', async () => {
+  it('keeps nothing: a repeat replay fetches again', async () => {
+    // The user asked for no retained replay data.
     const { c, fetchWaveforms } = controller();
-    const once = await c.start(RIDGECREST);
-    const twice = await c.start(RIDGECREST);
-    expect(twice).toBe(once);
-    expect(fetchWaveforms).toHaveBeenCalledTimes(1);
+    await c.start(RIDGECREST);
+    await c.start(RIDGECREST);
+    expect(fetchWaveforms).toHaveBeenCalledTimes(2);
   });
 });

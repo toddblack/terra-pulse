@@ -12,11 +12,6 @@ interface ReplayState {
   request: QuakeReplayRequest | null;
   load: ReplayLoad | null;
   playback: Playback;
-  /**
-   * What last moved the clock. The alert sound plays only when *playback*
-   * crosses the alert — a scrub across it must stay silent.
-   */
-  lastMove: 'tick' | 'seek';
 
   start: (request: QuakeReplayRequest) => void;
   /** Back to live. The live stream never stopped. */
@@ -50,14 +45,13 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
   request: null,
   load: null,
   playback: IDLE_PLAYBACK,
-  lastMove: 'seek',
 
   start: (request) => {
-    set({ request, load: { status: 'loading', progress: null }, playback: IDLE_PLAYBACK, lastMove: 'seek' });
+    set({ request, load: { status: 'loading', progress: null }, playback: IDLE_PLAYBACK });
     window.terraPulse.quakeReplay.start(request).then(
       (replay) => {
         if (get().request?.eventId !== replay.request.eventId) return;
-        set({ load: { status: 'ready', replay }, playback: startPlayback(replay), lastMove: 'seek' });
+        set({ load: { status: 'ready', replay }, playback: startPlayback(replay) });
       },
       (cause: unknown) => {
         // Superseded by a newer start: that one owns the panel now.
@@ -85,10 +79,7 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
     if (load?.status !== 'ready') return;
     // Play from the end restarts — the obvious meaning of pressing play there.
     const atEnd = playback.positionMs >= load.replay.windowEndMs;
-    set({
-      playback: { ...playback, playing: true, positionMs: atEnd ? load.replay.windowStartMs : playback.positionMs },
-      lastMove: atEnd ? 'seek' : get().lastMove,
-    });
+    set({ playback: { ...playback, playing: true, positionMs: atEnd ? load.replay.windowStartMs : playback.positionMs } });
   },
 
   pause: () => set((state) => ({ playback: { ...state.playback, playing: false } })),
@@ -99,13 +90,13 @@ export const useReplayStore = create<ReplayState>((set, get) => ({
     const { load } = get();
     if (load?.status !== 'ready') return;
     const clamped = Math.max(load.replay.windowStartMs, Math.min(load.replay.windowEndMs, positionMs));
-    set((state) => ({ playback: { ...state.playback, positionMs: clamped }, lastMove: 'seek' }));
+    set((state) => ({ playback: { ...state.playback, positionMs: clamped } }));
   },
 
   tick: (dtMs) => {
     const { load, playback } = get();
     if (load?.status !== 'ready' || !playback.playing) return;
-    set({ playback: advance(playback, dtMs, load.replay.windowEndMs), lastMove: 'tick' });
+    set({ playback: advance(playback, dtMs, load.replay.windowEndMs) });
   },
 }));
 

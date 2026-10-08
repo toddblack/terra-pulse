@@ -454,7 +454,8 @@ async function runCase(c: Case, list: WaveformStation[], gains: readonly FdsnTex
           stations: estimate.stations.length,
           complete: estimate.complete,
         }));
-  const targetAlert = targetMatch === null ? null : alerter.alertFor(targetMatch.detection.id);
+  // Never null here — `home` is passed — but the type allows a home-less run.
+  const targetAlert = targetMatch === null ? null : (alerter?.alertFor(targetMatch.detection.id) ?? null);
   const feltAtHome = c.target !== null && !c.set.startsWith('tele') ? await feltReport(c.target.id) : null;
   return {
     c,

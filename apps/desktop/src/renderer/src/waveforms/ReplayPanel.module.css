@@ -10,7 +10,7 @@
 }
 
 /* Says "this is not live" before anything else is read. Amber, the replay's
-   colour throughout (triggers, the alert banner), never the live cyan. */
+   colour throughout (triggers, the declaration mark), never the live cyan. */
 .badge {
   padding: 0.05rem 0.4rem;
   border: 1px solid rgb(251 191 36 / 60%);
@@ -163,16 +163,8 @@
   background-color: rgb(148 163 184);
 }
 
-.scrubMark[data-kind='home'] {
-  background-color: rgb(103 232 249 / 70%);
-}
-
 .scrubMark[data-kind='declared'] {
   background-color: rgb(251 191 36 / 80%);
-}
-
-.scrubMark[data-kind='alert'] {
-  background-color: rgb(248 113 113);
 }
 
 .clock {
@@ -190,25 +182,4 @@
   color: rgb(148 163 184);
   font-size: 0.75rem;
   line-height: 1.4;
-}
-
-/* The would-be alert. Loud on purpose — it is the moment the replay exists to
-   show — and labelled REPLAY on its face, so it can never be read as live. */
-.banner {
-  flex: none;
-  margin: 0.4rem 0 0.2rem;
-  padding: 0.35rem 0.6rem;
-  border: 1px solid rgb(248 113 113 / 60%);
-  border-radius: 0.35rem;
-  background-color: rgb(127 29 29 / 45%);
-  color: rgb(254 226 226);
-  font-size: 0.75rem;
-  line-height: 1.4;
-}
-
-.bannerTag {
-  margin-right: 0.5rem;
-  color: rgb(252 165 165);
-  font-weight: 700;
-  letter-spacing: 0.04em;
 }
