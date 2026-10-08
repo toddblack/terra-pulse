@@ -30,6 +30,11 @@ export function writeAppState(db: DatabaseSync, key: string, value: string): voi
   ).run(key, value, new Date().toISOString());
 }
 
+/** Removes a key, so the next read is `null` — absence, not an empty string. */
+export function deleteAppState(db: DatabaseSync, key: string): void {
+  db.prepare('DELETE FROM app_state WHERE key = ?').run(key);
+}
+
 /** `null` on a first-ever launch — there is nothing you can have missed yet. */
 export function readSeenThrough(db: DatabaseSync): string | null {
   return readAppState(db, SEEN_THROUGH_KEY);

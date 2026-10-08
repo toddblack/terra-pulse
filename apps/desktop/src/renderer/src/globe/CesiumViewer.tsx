@@ -39,6 +39,8 @@ import { useAppModeStore } from '../state/useAppModeStore';
 import { useWaveformStore } from '../waveforms/useWaveformStore';
 import { selectReplayOpen, useReplayStore } from '../waveforms/useReplayStore';
 import { createReplayWavesOverlay } from '../layers/replay-waves-overlay';
+import { createWatchPinOverlay } from '../layers/watch-pin-overlay';
+import { useQuakeWatchStore } from '../watch/useQuakeWatchStore';
 import { useWaveformSelection } from '../waveforms/useWaveformSelection';
 import { watchSelection } from './selection-sync';
 import { useGlobeLayers } from './useGlobeLayers';
@@ -188,6 +190,8 @@ export function CesiumViewer() {
   const shownReplay = waveformsShowing && replayLoad?.status === 'ready' ? replayLoad.replay : null;
   const waveformSelection = useWaveformSelection();
   const hoveredWaveformStation = useWaveformStore((state) => state.hoveredStation);
+  const watchLatitude = useQuakeWatchStore((state) => state.status.pin?.latitude ?? null);
+  const watchLongitude = useQuakeWatchStore((state) => state.status.pin?.longitude ?? null);
   const waveformOverlayRef = useRef<WaveformStationsOverlay | null>(null);
 
   // Escape leaves the antipode view. The mode covers the globe in translucency
@@ -833,6 +837,20 @@ export function CesiumViewer() {
   useEffect(() => {
     waveformOverlayRef.current?.setHighlighted(hoveredWaveformStation);
   }, [hoveredWaveformStation]);
+
+  /**
+   * The live watch's pin, whenever there is one. Keyed on the coordinate, not
+   * the pin object: every status main pushes carries a fresh copy of the pin,
+   * and a marker rebuilt on each station's state change would flicker.
+   */
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || watchLatitude === null || watchLongitude === null) return;
+    const overlay = createWatchPinOverlay(viewer, { latitude: watchLatitude, longitude: watchLongitude, label: '' });
+    return () => {
+      overlay.destroy();
+    };
+  }, [watchLatitude, watchLongitude, viewerReadyToken]);
 
   // Store → Cesium selection, so the reticle follows the store and survives a
   // layer rebuild.

@@ -11,6 +11,8 @@ import { isDockShowing, type DockTab } from './dock-state';
 import { publishSize } from './published-size';
 import { TimeScrubber } from './TimeScrubber';
 import { formatPlayhead } from './time-labels';
+import { useQuakeWatchStore } from '../watch/useQuakeWatchStore';
+import { watchChipLabel, watchDetail, watchHealth } from '../watch/watch-labels';
 import styles from './BottomDock.module.css';
 
 /**
@@ -90,6 +92,38 @@ function PlayheadChip({ onOpen }: { onOpen: () => void }) {
 }
 
 /**
+ * The live watch, while there is a pin: a dot, where, how many stations are
+ * delivering, and Stop — which removes the pin (the user's design: no
+ * paused-but-present state). On the strip, so a running watch is visible on
+ * both tabs and minimised. Everything the strip has no room for, the limits
+ * above all, is in the tooltip.
+ */
+function WatchChip() {
+  const status = useQuakeWatchStore((state) => state.status);
+  const stopWatching = useQuakeWatchStore((state) => state.stopWatching);
+  const health = watchHealth(status);
+  if (health === 'off') return null;
+  const dotClass =
+    health === 'running' ? styles.watchDotRunning : health === 'limited' ? styles.watchDotLimited : styles.dotTrouble;
+  return (
+    <div id="watch-chip" className={styles.watchChip} title={watchDetail(status)}>
+      <span role="img" className={dotClass} aria-label={`watch ${health}`} />
+      <span className={styles.watchLabel}>{watchChipLabel(status)}</span>
+      <button
+        type="button"
+        id="watch-stop"
+        className={styles.watchStop}
+        onClick={stopWatching}
+        aria-label="Stop watching and remove the pin"
+        title="Stop watching and remove the pin"
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
+/**
  * The bottom of Explore: the timeline and the live waveforms, one at a time,
  * under a strip of tabs — and minimisable to just that strip for a clear globe.
  *
@@ -160,6 +194,8 @@ export function BottomDock() {
             }}
           />
         )}
+
+        <WatchChip />
 
         <button
           type="button"

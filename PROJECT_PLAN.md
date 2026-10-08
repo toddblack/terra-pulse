@@ -1012,7 +1012,7 @@ every layer uses — chief among them that raw counts are not comparable between
 rows, and that almost anything moving on a trace is ocean microseism rather
 than an earthquake.
 
-### 5.13 Waveform Early Warning — detector validated, replayable in the app, not yet live
+### 5.13 Waveform Early Warning — detector validated, replayable, and live as a "Watch here" pin
 
 Requested 2026-10-01: while the app is open, watch the stations around the
 user's home and alert when several of them corroborate an incoming quake. Home
@@ -1086,7 +1086,29 @@ notification, banner, sound, and a pull counterpart. Before building: measure
 ring capacity for 40-70 stations on one connection, and the detector outside
 Southern California using replay-anywhere.
 
-**Not yet a live alert, and two things stand between:**
+**Ring capacity — measured 2026-10-08.** One connection takes all 74 Burbank
+stations (71 delivered; 3 were offline). The handshake took 17.4 s one command
+at a time and **0.53 s pipelined**, so it is pipelined now — the waveform tab
+connects in 0.4 s too. Latency is unchanged at 74 against 10 (median ~1.6 s),
+and two connections run side by side. The densest 300 km circles hold 349
+stations (Mount St. Helens), 201 and 150, so a pin streams at most 100, thinned
+by spacing rather than cut by distance.
+
+**The live watch — built 2026-10-08.** "Watch here" in the location panel and
+the quake inspector drops the one pin; a chip on the dock strip shows it and
+Stop removes it. The pin is stored and resumes on launch. Main streams the
+stations within 300 km (≥20 Hz) through the same detector, judged at the pin:
+**M4.5+ on the running estimate and predicted MMI ≥ 2.5 at the pin** (the
+user's option 2 of 2). Swept on the tuning set: the magnitude floor costs no
+warning on any M5+ quake and drops only two M4.5-4.6 quakes that would have
+alerted at or after their own shaking; MMI 3.0 instead halved Searles Valley's
+warning. Checked against the graded loop over all 75 cached replay cases:
+identical alert instants in every one. The alert is a red countdown banner at
+`App` level (so it reaches Analyze mode), the sound, and an OS notification
+when unfocused, retained in main for a renderer that mounts late. Details in
+`CLAUDE.md` ("The live watch").
+
+**Was not yet a live alert; three things stood between, all now done:**
 1. ~~An alert threshold~~ — done, above.
 2. ~~**Stations stuck triggered in aftershock sequences.**~~ Fixed 2026-10-02.
    Every station near any quake was blind 80-100 s; worse, the associator
@@ -1095,9 +1117,12 @@ Southern California using replay-anywhere.
    the first. Quakes following quakes: 9 → 11 of 17, no new false alarms.
    Graded on 2026: 21/21 isolated quakes, 0/4 small aftershocks inside a larger
    quake's coda (probably buried). Details in `CLAUDE.md`.
-3. **Running live**: the "Watch here" pin above — a background SeedLink
-   connection for the stations around it (ring capacity unchecked), an alert
-   path with a pull counterpart (§5.8's lesson).
+3. ~~**Running live**~~ — the "Watch here" pin above, 2026-10-08.
+
+**Still open:** the detector is graded only in Southern California, on 100 Hz
+stations; a pin elsewhere runs it on 20-50 Hz stations it was never graded
+on, and the chip says when the pin is out of its reach. No real quake has yet
+been alerted live. The home-location prompt (Phase 6) is still to come.
 
 **Why ~14 s and not ShakeAlert's few seconds:** the public ring carries 74
 100 Hz stations within 300 km of Burbank, a fraction of the regional network,

@@ -3986,8 +3986,97 @@ warning moves to a "Watch here" pin (next branch; see `PROJECT_PLAN.md` §5.13).
   `replayEligible`), the home marker, the REPLAY banner, the alert sound on
   playback (`crossedForward`, the store's `lastMove`), `wavefrontRadiusKm`.
   `HOME_LOCATION` stays — the script grades against it.
-- **Not checked in the running app yet**: the camera frame (`replayFrame`,
-  tested for the antimeridian) and how 1,000+ km rings read on the globe.
+- **Seen in the running app by the user, 2026-10-08, and merged**: "looks
+  great". The user accepts that it is mostly useful near dense networks — a
+  Kamchatka–Japan quake replayed with only distant rows, because Japan's dense
+  networks are not on the public ring.
+
+## The live watch — "Watch here". Shipped 2026-10-08, branch `watch-here`.
+
+§5.13's last step: the detector running live. One pin, dropped from the
+location panel or the quake inspector; the stations around it stream through
+the graded detector for as long as the app is open; an alert when a quake is
+**M4.5+ on the running estimate and predicted MMI ≥ 2.5 at the pin**. The
+user's design throughout: one pin, none on first launch, a dock-strip chip with
+Stop, and **Stop removes the pin** — no paused-but-present state.
+
+- **Ring capacity was measured first, and it changed the handshake.** One
+  connection takes all 74 Burbank stations; 71 delivered (3 were offline).
+  Sequential handshake **17.4 s**, pipelined **0.53 s**, all 225 replies OK and
+  in order. Latency unchanged (median ~1.6 s at 74 against 10; at most 0.5 s
+  slower on the same 10 stations). Two connections run side by side.
+  - `createSeedLinkSession` now sends `HELLO` and `CAPABILITIES` one at a time
+    (a refused `CAPABILITIES` must stop before any `STATION` — trap 1) and the
+    whole station block in **one write**, matching replies by position. One
+    thing given up: a station whose `SELECT` was refused still gets its `DATA`
+    (which streams every channel). The ring never refuses — trap 4 — and the
+    controller drops anything unrequested.
+  - The waveform tab gets it free: **10 stations connect in 0.4 s, was 2.7 s.**
+    `WAVEFORM_MAX_CHANNELS` is now a display cap, not a handshake bound.
+- **Station set: the replay's** — every ≥20 Hz station within 300 km — but
+  capped at 100, because the densest circles on the ring hold **349** (Mount St.
+  Helens' volcano network), 201 (West Texas), 150 (Oklahoma). Burbank's 75 are
+  untouched. **The cap thins by spacing, never by distance** (`watchNetwork`):
+  nearest-80 was measured to make Ridgecrest M7.1 read M6.0, and nearest-N
+  around a volcano would be one mountain. Nearest-first greedy with the
+  smallest spacing that fits, found by bisection; the nearest station always
+  survives, since `too-far` is measured from it.
+- **The alert rule was swept before it was built** (`WATCH_ALERT_RULE`, table
+  on the constant). The M4.5 floor costs **no warning on any M5+ quake**; it
+  drops South El Monte M4.5 and Malibu M4.6 (read 4.1-4.4), which would have
+  alerted 1.2 s after and 0.7 s before their shaking. M4.3 wins one back 12 s
+  late. MMI 3.0 halved Searles Valley's warning (36 → 18 s) — the climbing
+  estimate takes longer to get there — so it stays 2.5, not the "about 3"
+  floated to the user. No alert in the distant, random or sequence sets.
+  `AlertRule.minMagnitude` is optional, so every graded run is unchanged.
+- **`LiveQuakeWatch` (ingest, pure) is checked against the graded loop, not
+  just unit-tested**: fed the same records with a Burbank pin across all 75
+  cached replay cases, it raises alerts at **identical instants** in every one.
+  (A first comparison "failed" on magnitude only: the graded loop's
+  `HomeAlert` is updated in place, so it shows the final magnitude, not the one
+  at raising. Compare instants.)
+- **Main owns it, not the renderer** (`main/ipc/quake-watch.ts`). A second
+  `createWaveformController` — different stations, different lifetime from the
+  tab's — so stall detection, backoff and inventory come for free. The pin is
+  stored in `app_state` (`quake_watch_pin`; `deleteAppState` is new) and
+  `restore()` resumes it after the window is up. A reload, Analyze mode or a
+  closed dock leaves it running. Records are fed with `now()` at landing — the
+  live counterpart of the replay's record end + transit.
+- **Failures retry rather than settle.** No station list → `unavailable`,
+  retried every 5 min. **No gains → it streams but cannot estimate magnitude,
+  so cannot alert** — the status says so, the chip goes red, and gains are
+  retried and swapped in. No station within 300 km → `unavailable`, not
+  retried (the ring will not grow one). A pin with stations but none within the
+  associator's 50 km is `too-far`: it watches, but only quakes near the
+  stations can be caught, and the chip's tooltip says so.
+- **The alert lives in `App`, above both shells**, because Explore unmounts in
+  Analyze mode and an alert must still reach someone there.
+  `useQuakeWatchSync` subscribes then pulls (`quake-watch:current-alert` — the
+  §5.8 lesson: a launch with a stored pin can alert before the renderer
+  subscribes). A pulled alert is sounded only while its shaking is still ahead.
+  Dismissal round-trips to main, so it does not come back on reload.
+- **The banner is a warning, unlike `LargeEventBanner`**, which reports the
+  past: bright red, a countdown to the S wave on its own 250 ms clock (the
+  shared 30 s `useNow` is far too coarse), floored at the alert's own raise
+  time so a stale clock cannot count down from the past. It publishes
+  `--watch-banner-height`, and `.topCentreColumn` moves down by it, so it
+  covers nothing.
+- **Emerald is the watch's colour** — the pin, the chip's dot, the active
+  button — because nothing else on the globe uses it: cyan is the streamed
+  stations (a different connection), amber replay/GEM, violet PB2002, red the
+  antipode and the S wave. The inspector's active class was the antipode's red
+  and would have read as the same mode, so the watch has its own.
+- **The pin overlay keys on latitude and longitude, not the pin object**: every
+  status push carries a fresh copy, and a marker rebuilt per station-state
+  change would flicker.
+- **Verified in a built, isolated instance over CDP**: a fresh launch reports
+  `off` and opens nothing; probe → "Watch here" in Pennsylvania streamed **63 of
+  64** stations (59 with gains) within 20 s; after a restart the pin resumed on
+  its own with the chip and marker drawn; Stop cleared both.
+- **Not verified, and cannot be without a quake:** a live alert end to end, and
+  how the banner looks on screen. The detector is graded only in Southern
+  California on 100 Hz stations; a pin elsewhere runs on 20-50 Hz stations it
+  was never graded on.
 
 ## Non-negotiables
 

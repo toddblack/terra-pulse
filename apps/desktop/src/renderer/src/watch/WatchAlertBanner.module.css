@@ -1,0 +1,81 @@
+/* The live watch's alert. Placed by itself rather than by a column, because it
+   lives in `App` and has to show in Analyze mode, where Explore's columns do
+   not exist: centred under the mode switch (which sits at top: 1rem and is one
+   row tall — see `.topCentreColumn`), above everything. Explore's top-centre
+   column moves down by this banner's published height, so nothing is covered. */
+.banner {
+  position: absolute;
+  top: 4rem;
+  left: 50%;
+  z-index: 30;
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  max-width: calc(100vw - 2rem);
+  padding: 0.5rem 0.5rem 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  /* Red, darker once the shaking should have arrived: still the alert, no
+     longer a countdown. Louder than the large-event banner's maroon, which
+     reports something already past. */
+  background-color: rgb(127 29 29 / 95%);
+  box-shadow: 0 6px 16px -2px rgb(0 0 0 / 55%);
+  color: rgb(254 242 242);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.ahead {
+  background-color: rgb(185 28 28 / 97%);
+  outline: 2px solid rgb(254 202 202 / 70%);
+}
+
+.badge {
+  padding: 0.125rem 0.45rem;
+  border-radius: 0.25rem;
+  background-color: rgb(254 242 242);
+  color: rgb(127 29 29);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.magnitude {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.where {
+  font-size: 0.8125rem;
+}
+
+.countdown {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.intensity {
+  font-size: 0.75rem;
+  color: rgb(254 202 202);
+}
+
+.dismiss {
+  flex: none;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: rgb(254 202 202);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dismiss:hover {
+  background-color: rgb(69 10 10);
+  color: rgb(254 242 242);
+}

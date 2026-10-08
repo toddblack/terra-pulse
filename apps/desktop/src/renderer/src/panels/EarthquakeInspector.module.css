@@ -279,6 +279,15 @@
   color: rgb(254 226 226);
 }
 
+/* The live watch's pin is on this quake. Emerald, the pin's colour on the
+   globe — not the antipode's red, which would read as the same mode. */
+.watchActive,
+.watchActive:hover {
+  border-color: rgb(52 211 153 / 60%);
+  background-color: rgb(52 211 153 / 16%);
+  color: rgb(209 250 229);
+}
+
 /* A coordinate, stated plainly. Deliberately not framed as a finding — see the
    note at the call site. */
 .antipodeNote {

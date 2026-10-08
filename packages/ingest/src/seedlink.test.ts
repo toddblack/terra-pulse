@@ -209,7 +209,10 @@ describe('SeedLinkFramer', () => {
 });
 
 class FakeSocket implements SeedLinkSocket {
+  /** Every command line written, in order, however they were batched. */
   writes: string[] = [];
+  /** The lines of each `write` call, to see what went out together. */
+  calls: string[][] = [];
   destroyed = false;
   private connectListeners: (() => void)[] = [];
   private dataListeners: ((chunk: Uint8Array) => void)[] = [];
@@ -217,7 +220,9 @@ class FakeSocket implements SeedLinkSocket {
   private closeListeners: (() => void)[] = [];
 
   write(text: string): void {
-    this.writes.push(text.replace('\r\n', ''));
+    const lines = text.split('\r\n').filter((line) => line !== '');
+    this.calls.push(lines);
+    this.writes.push(...lines);
   }
   destroy(): void {
     this.destroyed = true;
@@ -285,7 +290,7 @@ describe('createSeedLinkSession', () => {
     vi.useRealTimers();
   });
 
-  it('never writes a command before the previous reply has fully landed', () => {
+  it('sends HELLO and CAPABILITIES one at a time, each only after the previous reply has fully landed', () => {
     const { socket } = startSession([ADO]);
     expect(socket.writes).toEqual([]);
     socket.connect();
@@ -294,6 +299,25 @@ describe('createSeedLinkSession', () => {
     expect(socket.writes).toEqual(['HELLO']); // HELLO answers with two lines
     socket.reply('EarthScope Ring Server');
     expect(socket.writes).toEqual(['HELLO', 'CAPABILITIES SLPROTO:3.1']);
+  });
+
+  it('writes every STATION, SELECT and DATA in one go once CAPABILITIES is accepted, and END only after their replies', () => {
+    const { socket, streaming } = startSession([AFI_10, AFI_00, ADO]);
+    greet(socket);
+    expect(socket.calls.at(-1)).toEqual([
+      'STATION AFI IU',
+      'SELECT 10BHZ',
+      'SELECT 00BHZ',
+      'DATA',
+      'STATION ADO CI',
+      'SELECT HHZ',
+      'DATA',
+    ]);
+    socket.reply('OK', 'OK', 'OK', 'OK', 'OK', 'OK');
+    expect(socket.writes).not.toContain('END'); // one reply still outstanding
+    socket.reply('OK');
+    expect(socket.calls.at(-1)).toEqual(['END']);
+    expect(streaming).toEqual([['IU_AFI_10_BHZ', 'IU_AFI_00_BHZ', 'CI_ADO__HHZ']]);
   });
 
   it('completes the handshake, sends END, and delivers records', () => {
@@ -317,7 +341,7 @@ describe('createSeedLinkSession', () => {
     socket.send('SeedLink v4.0\r\nEarthScope');
     socket.send(' Ring Server\r');
     socket.send('\nOK\r\n');
-    expect(socket.writes.at(-1)).toBe('STATION ADO CI');
+    expect(socket.writes).toContain('STATION ADO CI');
     socket.reply('OK');
     socket.reply('OK');
     socket.reply('OK');
@@ -333,41 +357,31 @@ describe('createSeedLinkSession', () => {
     expect(records).toHaveLength(1);
   });
 
-  it('rejects a refused station, skips its SELECT and DATA, and carries on with the others', () => {
+  it('rejects a refused station once, whatever its SELECT and DATA lines answer, and carries on with the others', () => {
     const { socket, rejected, streaming } = startSession([BAK, ADO]);
     greet(socket);
-    socket.reply('ERROR'); // STATION BAK
-    expect(socket.writes.at(-1)).toBe('STATION ADO CI');
-    socket.reply('OK');
-    socket.reply('OK');
-    socket.reply('OK');
+    // BAK: STATION refused; its SELECT and DATA were already on the wire.
+    socket.reply('ERROR', 'ERROR', 'ERROR');
+    socket.reply('OK', 'OK', 'OK'); // ADO
     expect(rejected).toEqual([['CI_BAK__HHZ', 'server refused STATION: ERROR']]);
-    // Nothing between the two STATION lines: BAK's SELECT and DATA were skipped.
-    expect(socket.writes).toEqual([
-      'HELLO',
-      'CAPABILITIES SLPROTO:3.1',
-      'STATION BAK CI',
-      'STATION ADO CI',
-      'SELECT HHZ',
-      'DATA',
-      'END',
-    ]);
     expect(streaming).toEqual([['CI_ADO__HHZ']]);
   });
 
-  it('does not send DATA for a station whose only selector was refused, which would stream all its channels', () => {
-    const { socket, rejected } = startSession([BAK, ADO]);
+  it('matches replies by position, so a refused SELECT rejects that channel and no other', () => {
+    const { socket, rejected, streaming } = startSession([AFI_10, AFI_00, ADO]);
     greet(socket);
-    socket.reply('OK'); // STATION BAK
-    socket.reply('ERROR'); // SELECT HHZ for BAK
-    expect(socket.writes.at(-1)).toBe('STATION ADO CI');
-    expect(rejected.map(([id]) => id)).toEqual(['CI_BAK__HHZ']);
+    socket.reply('OK'); // STATION AFI
+    socket.reply('OK'); // SELECT 10BHZ
+    socket.reply('ERROR'); // SELECT 00BHZ
+    socket.reply('OK', 'OK', 'OK', 'OK'); // DATA, then ADO
+    expect(rejected.map(([id]) => id)).toEqual(['IU_AFI_00_BHZ']);
+    expect(streaming).toEqual([['IU_AFI_10_BHZ', 'CI_ADO__HHZ']]);
   });
 
   it('ends with an error when no channel survives the handshake', () => {
     const { socket, ended, streaming } = startSession([ADO]);
     greet(socket);
-    socket.reply('ERROR');
+    socket.reply('ERROR', 'ERROR', 'ERROR');
     expect(streaming).toEqual([]);
     expect(ended).toHaveLength(1);
     expect(ended[0]?.message).toMatch(/no requested channel was accepted/);

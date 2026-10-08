@@ -185,12 +185,13 @@ export const WAVEFORM_WINDOW_MS = 120_000;
 /**
  * Hard cap on simultaneous channels.
  *
- * Not a performance limit — 10 channels is ~4 KB/s. It bounds the handshake,
- * which is strictly sequential: measured against the live ring, each command
- * costs ~180 ms of round trip, and a station needs three (`STATION`, `SELECT`,
- * `DATA`). Seventeen stations took 9.0-9.4 s to negotiate; eight took ~4.5 s,
- * and ten cost ~5.6 s, which is the dominant term in how long a reader waits for
- * a first trace.
+ * Not a performance limit — 10 channels is ~4 KB/s. It was set by the
+ * handshake, back when that was strictly sequential: ~180 ms of round trip per
+ * command and three commands a station, so ten cost ~5.6 s. **Since 2026-10-08
+ * the station block is pipelined** (see `createSeedLinkSession`) and ten
+ * stations connect in 0.4 s, 74 in 0.5 s — so this is now a display cap, the
+ * rows the panel has room for, and nothing more. The live watch streams far
+ * more on its own connection.
  *
  * **Raised 8 → 10 on 2026-09-30, for the picker's "surround the spot" rule.**
  * That rule spends up to eight slots on eight compass directions, which at 8

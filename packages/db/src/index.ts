@@ -16,6 +16,7 @@ export {
   writeSeenThrough,
   readAppState,
   writeAppState,
+  deleteAppState,
 } from './app-state';
 export type { CatalogSignature } from './queries';
 export {

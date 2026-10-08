@@ -14,6 +14,7 @@ import { useWaveformStore } from '../waveforms/useWaveformStore';
 import { useReplayStore } from '../waveforms/useReplayStore';
 import { replayEligible } from '@terra-pulse/schema';
 import { formatAgoFrom } from './time-labels';
+import { WatchHereButton } from '../watch/WatchHereButton';
 import styles from './EarthquakeInspector.module.css';
 
 function formatUtc(iso: string): string {
@@ -322,6 +323,14 @@ export function EarthquakeInspector() {
           >
             Stations
           </button>
+          {/* The live watch's pin, on the epicentre — the same spot the
+              Stations button centres on, for the same reason. */}
+          <WatchHereButton
+            point={event}
+            label={event.place}
+            className={styles.actionButton}
+            activeClassName={styles.watchActive}
+          />
           {/* Not an <a href> — that would navigate the Electron window itself.
               Goes through main, which validates the URL and hands it to the OS. */}
           {event.source === 'usgs' && (

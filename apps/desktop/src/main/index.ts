@@ -2,7 +2,7 @@ import { app, BrowserWindow, Notification, screen, session } from 'electron';
 import { join } from 'node:path';
 import dotenv from 'dotenv';
 import type { DatabaseSync } from 'node:sqlite';
-import { openDatabase, readAppState, writeAppState } from '@terra-pulse/db';
+import { deleteAppState, openDatabase, readAppState, writeAppState } from '@terra-pulse/db';
 import {
   parseWindowBounds,
   placeWindow,
@@ -38,6 +38,7 @@ import { registerAuroraIpcHandlers, startAuroraPolling } from './ipc/aurora';
 import { registerTecIpcHandlers } from './ipc/tec';
 import { createWaveformController, registerWaveformIpcHandlers } from './ipc/waveforms';
 import { createQuakeReplayController, registerQuakeReplayHandlers } from './ipc/quake-replay';
+import { WATCH_PIN_KEY, createQuakeWatchController, registerQuakeWatchHandlers } from './ipc/quake-watch';
 import {
   createWaveformStationSources,
   registerWaveformStationHandlers,
@@ -426,6 +427,48 @@ app
     registerQuakeReplayHandlers(quakeReplay);
     app.on('will-quit', () => {
       quakeReplay.cancel();
+    });
+
+    // The live watch (§5.13): one pin, its stations streamed through the
+    // detector for as long as the app is open. Owned by main, not the renderer
+    // — a stored pin resumes here on launch, after the window is up, and a
+    // launch without one opens nothing. Shares the station list and ring
+    // inventory with the waveform tab and the replay.
+    //
+    // The alert is the large-event path's shape: pushed, retained for the
+    // renderer to ask for on mount (a push before it subscribes reaches
+    // nobody), and an OS notification when the window is not what you are
+    // looking at. `sendToRenderer` because the watch can push during teardown.
+    const quakeWatch = createQuakeWatchController({
+      catalogue: () => waveformStations.catalogue(),
+      fetchInventory: () => waveformStations.inventory.get(),
+      readPin: () => readAppState(db, WATCH_PIN_KEY),
+      writePin: (value) => {
+        if (value === null) deleteAppState(db, WATCH_PIN_KEY);
+        else writeAppState(db, WATCH_PIN_KEY, value);
+      },
+      onStatus: (status) => {
+        sendToRenderer(mainWindow, 'quake-watch:status-changed', status);
+      },
+      onAlert: (alert) => {
+        sendToRenderer(mainWindow, 'quake-watch:alert', alert);
+        if (Notification.isSupported() && mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) {
+          const seconds = Math.round((alert.sArrivalAtPinMs - Date.now()) / 1000);
+          new Notification({
+            title: `Earthquake — M${alert.magnitude.toFixed(1)}, ${String(Math.round(alert.epicentralKm))} km from ${alert.pin.label}`,
+            body: seconds > 0 ? `Shaking expected in about ${String(seconds)} s` : 'Shaking may already have arrived',
+            urgency: 'critical',
+          }).show();
+        }
+      },
+      onAlertUpdated: (alert) => {
+        sendToRenderer(mainWindow, 'quake-watch:alert-updated', alert);
+      },
+    });
+    registerQuakeWatchHandlers(quakeWatch);
+    quakeWatch.restore();
+    app.on('will-quit', () => {
+      quakeWatch.dispose();
     });
 
     // Kp and Dst. The rolling Kp tail runs always — it is an 8 KB read from

@@ -26,12 +26,15 @@ import type {
   QuakeReplay,
   QuakeReplayProgress,
   QuakeReplayRequest,
+  QuakeWatchAlert,
+  QuakeWatchStatus,
   RegionalRecurrence,
   SolarFlare,
   WaveformChannel,
   WaveformSegment,
   WaveformStationCatalogue,
   WaveformStreamStatus,
+  WatchPin,
 } from '@terra-pulse/schema';
 
 export {};
@@ -118,13 +121,30 @@ declare global {
       /** Replaying a past quake through the early-warning detector (§5.13). */
       quakeReplay: {
         /**
-         * Fetches what the home network recorded and runs the detector over it.
-         * Rejects if a newer start superseded it, or the archive could not be
-         * read. Follow `onProgress` while it loads.
+         * Fetches what the stations around the epicentre recorded and runs the
+         * detector over it. Rejects if a newer start superseded it, or the
+         * archive could not be read. Follow `onProgress` while it loads.
          */
         start(request: QuakeReplayRequest): Promise<QuakeReplay>;
         cancel(): Promise<void>;
         onProgress(callback: (progress: QuakeReplayProgress) => void): () => void;
+      };
+      /** The live watch (§5.13): one pin, watched by main while the app is open. */
+      quakeWatch: {
+        /** Current status, pulled once before subscribing. */
+        status(): Promise<QuakeWatchStatus>;
+        /** Drops the pin here, replacing any other. Throws if main refuses it. */
+        start(pin: WatchPin): Promise<QuakeWatchStatus>;
+        /** Removes the pin. */
+        stop(): Promise<QuakeWatchStatus>;
+        /** An alert raised before this renderer subscribed, or null. */
+        currentAlert(): Promise<QuakeWatchAlert | null>;
+        dismissAlert(): Promise<void>;
+        onStatus(callback: (status: QuakeWatchStatus) => void): () => void;
+        /** Once per quake predicted to be felt at the pin. */
+        onAlert(callback: (alert: QuakeWatchAlert) => void): () => void;
+        /** The same alert with a climbed magnitude — never a new announcement. */
+        onAlertUpdated(callback: (alert: QuakeWatchAlert) => void): () => void;
       };
       spaceWeather: {
         /** Kp and Dst over a half-open range. Bounded on both ends. */

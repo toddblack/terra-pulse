@@ -24,12 +24,15 @@ import type {
   QuakeReplay,
   QuakeReplayProgress,
   QuakeReplayRequest,
+  QuakeWatchAlert,
+  QuakeWatchStatus,
   RegionalRecurrence,
   SolarFlare,
   WaveformChannel,
   WaveformSegment,
   WaveformStationCatalogue,
   WaveformStreamStatus,
+  WatchPin,
 } from '@terra-pulse/schema';
 
 // Narrow, specific functions — never a raw ipcRenderer passthrough
@@ -378,6 +381,51 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.on('quake-replay:progress', listener);
       return () => {
         ipcRenderer.removeListener('quake-replay:progress', listener);
+      };
+    },
+  },
+  /**
+   * The live watch: one pin, watched by main for as long as the app is open.
+   * The renderer drops and removes the pin and shows what main reports; the
+   * stream, the detector and the alert decision never leave main.
+   */
+  quakeWatch: {
+    status: (): Promise<QuakeWatchStatus> => ipcRenderer.invoke('quake-watch:status'),
+    /** Drops the pin here, replacing any other. Main validates it. */
+    start: (pin: WatchPin): Promise<QuakeWatchStatus> => ipcRenderer.invoke('quake-watch:start', pin),
+    /** Removes the pin. */
+    stop: (): Promise<QuakeWatchStatus> => ipcRenderer.invoke('quake-watch:stop'),
+    /** The alert raised before this renderer subscribed, if any — see `earthquakes.currentAlert`. */
+    currentAlert: (): Promise<QuakeWatchAlert | null> => ipcRenderer.invoke('quake-watch:current-alert'),
+    dismissAlert: (): Promise<void> => ipcRenderer.invoke('quake-watch:dismiss-alert'),
+
+    onStatus: (callback: (status: QuakeWatchStatus) => void): (() => void) => {
+      const listener = (_event: unknown, status: QuakeWatchStatus) => {
+        callback(status);
+      };
+      ipcRenderer.on('quake-watch:status-changed', listener);
+      return () => {
+        ipcRenderer.removeListener('quake-watch:status-changed', listener);
+      };
+    },
+    /** A quake predicted to be felt at the pin — once per quake. */
+    onAlert: (callback: (alert: QuakeWatchAlert) => void): (() => void) => {
+      const listener = (_event: unknown, alert: QuakeWatchAlert) => {
+        callback(alert);
+      };
+      ipcRenderer.on('quake-watch:alert', listener);
+      return () => {
+        ipcRenderer.removeListener('quake-watch:alert', listener);
+      };
+    },
+    /** The same alert, its magnitude since climbed. Never a new announcement. */
+    onAlertUpdated: (callback: (alert: QuakeWatchAlert) => void): (() => void) => {
+      const listener = (_event: unknown, alert: QuakeWatchAlert) => {
+        callback(alert);
+      };
+      ipcRenderer.on('quake-watch:alert-updated', listener);
+      return () => {
+        ipcRenderer.removeListener('quake-watch:alert-updated', listener);
       };
     },
   },

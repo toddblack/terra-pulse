@@ -34,8 +34,9 @@ class FakeSocket implements SeedLinkSocket {
     error: [] as ((error: Error) => void)[],
     close: [] as (() => void)[],
   };
+  /** One entry per command line — the station block arrives in a single write. */
   write(text: string): void {
-    this.writes.push(text.replace('\r\n', ''));
+    this.writes.push(...text.split('\r\n').filter((line) => line !== ''));
   }
   destroy(): void {
     this.destroyed = true;

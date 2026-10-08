@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
-import { readAppState, readSeenThrough, writeAppState, writeSeenThrough } from './app-state';
+import { deleteAppState, readAppState, readSeenThrough, writeAppState, writeSeenThrough } from './app-state';
 import { runMigrations } from './migrate';
 import { migrations } from './migrations';
 
@@ -17,6 +17,17 @@ describe('app_state', () => {
     runMigrations(db);
     writeSeenThrough(db, '2026-10-01T00:00:00.000Z');
     writeSeenThrough(db, '2026-10-02T00:00:00.000Z');
+    expect(readSeenThrough(db)).toBe('2026-10-02T00:00:00.000Z');
+  });
+
+  it('deletes a key back to null, leaving the others', () => {
+    const db = new DatabaseSync(':memory:');
+    runMigrations(db);
+    writeAppState(db, 'quake_watch_pin', '{}');
+    writeSeenThrough(db, '2026-10-02T00:00:00.000Z');
+    deleteAppState(db, 'quake_watch_pin');
+    deleteAppState(db, 'never-written');
+    expect(readAppState(db, 'quake_watch_pin')).toBeNull();
     expect(readSeenThrough(db)).toBe('2026-10-02T00:00:00.000Z');
   });
 });

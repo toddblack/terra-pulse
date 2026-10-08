@@ -422,10 +422,23 @@ const CRLF = [0x0d, 0x0a] as const;
  * by socket. One connection is one thing to back off, one status and one thing
  * to stop.
  *
- * **Strictly sequential.** No command is written until the previous reply has
- * landed. Pipelining would be faster, but the reply to a `SELECT` is only
- * attributable to its channel by order, and a misattributed rejection would
- * report the wrong station as missing.
+ * **`HELLO` and `CAPABILITIES` go one at a time; every station line goes in one
+ * write.** The two openers must be sequential — a refused `CAPABILITIES` has
+ * to stop the session before any `STATION` is sent (trap 1). The station block
+ * is pipelined, because one command at a time costs a full round trip each,
+ * three per station: measured on the live ring 2026-10-08, **74 stations took
+ * 17.4 s sequentially and 0.53 s pipelined**, all 225 replies OK. That is the
+ * difference between a live watch that starts at once and one that sits
+ * deaf for most of twenty seconds on every reconnect.
+ *
+ * Replies are still matched to commands **by position**, which pipelining does
+ * not disturb: one TCP stream, one reply line per command, answered in order.
+ *
+ * One behaviour this gives up: sequentially, a station whose `SELECT` was
+ * refused never got its `DATA` (which with no selector streams *every* channel
+ * of the station). Pipelined, the `DATA` is already on the wire. The ring has
+ * never refused a `SELECT` — trap 4 — and anything unrequested that did arrive
+ * would be dropped by the caller, which keeps only the channels it asked for.
  */
 export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLinkSession {
   const {
@@ -448,8 +461,11 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
   let closedByCaller = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
+  /** The step the next reply line belongs to. */
   let stepIndex = -1;
   let repliesOutstanding = 0;
+  /** Set once the station block has been written in one go. */
+  let pipelined = false;
   let lineBuffer: Uint8Array = new Uint8Array(0);
 
   const stationRefused = new Set<string>();
@@ -483,51 +499,66 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
     onChannelRejected?.(channelId, reason);
   }
 
-  /** Whether a step should be skipped given what has been refused so far. */
-  function skipped(step: HandshakeStep): boolean {
-    if (step.kind === 'select') return stationRefused.has(step.stationKey);
-    if (step.kind === 'data') {
-      // DATA with no accepted selector would stream *every* channel of the
-      // station, which is the opposite of what was asked for.
-      return stationRefused.has(step.stationKey) || (accepted.get(step.stationKey) ?? []).length === 0;
-    }
-    return false;
-  }
-
+  /** Writes the next opener, or — once both are answered — the whole station block. */
   function sendNext(): void {
     stepIndex += 1;
-    while (stepIndex < script.length) {
-      const step = script[stepIndex];
-      if (step === undefined || !skipped(step)) break;
-      stepIndex += 1;
-    }
-
     const step = script[stepIndex];
     if (step === undefined) {
       finish(new SeedLinkProtocolError('handshake script ended without END'));
       return;
     }
-
-    if (step.kind === 'end') {
-      const acceptedIds = [...accepted.values()].flat();
-      if (acceptedIds.length === 0) {
-        finish(new SeedLinkProtocolError('no requested channel was accepted by the server'));
-        return;
-      }
-      clearTimer();
+    if (step.kind === 'hello' || step.kind === 'capabilities') {
+      repliesOutstanding = step.replyLines;
+      armTimer(step.line);
       socket.write(`${step.line}\r\n`);
-      phase = 'streaming';
-      onStreaming?.(acceptedIds);
-      // Anything already buffered past the last reply belongs to the stream.
-      const leftover = lineBuffer;
-      lineBuffer = new Uint8Array(0);
-      if (leftover.length > 0) handleStreaming(leftover);
+      return;
+    }
+    if (step.kind === 'end') {
+      endHandshake(step.line);
       return;
     }
 
+    // Every STATION, SELECT and DATA, in one write. Each answers one line, so
+    // the replies are walked step by step in `handleReply`.
+    const block = script.slice(stepIndex).filter((s) => s.kind !== 'end');
+    pipelined = true;
     repliesOutstanding = step.replyLines;
     armTimer(step.line);
-    socket.write(`${step.line}\r\n`);
+    socket.write(block.map((s) => `${s.line}\r\n`).join(''));
+  }
+
+  /** The step after the current one in the pipelined block; no write, it is already sent. */
+  function advancePipelined(): void {
+    stepIndex += 1;
+    const step = script[stepIndex];
+    if (step === undefined) {
+      finish(new SeedLinkProtocolError('handshake script ended without END'));
+      return;
+    }
+    if (step.kind === 'end') {
+      endHandshake(step.line);
+      return;
+    }
+    repliesOutstanding = step.replyLines;
+    // Re-armed per reply: the bound is on the server going quiet, not on how
+    // long a long block takes to answer in full.
+    armTimer(step.line);
+  }
+
+  function endHandshake(endLine: string): void {
+    const acceptedIds = [...accepted.values()].flat();
+    if (acceptedIds.length === 0) {
+      finish(new SeedLinkProtocolError('no requested channel was accepted by the server'));
+      return;
+    }
+    clearTimer();
+    socket.write(`${endLine}\r\n`);
+    phase = 'streaming';
+    onStreaming?.(acceptedIds);
+    // Anything already buffered past the last reply belongs to the stream.
+    const leftover = lineBuffer;
+    lineBuffer = new Uint8Array(0);
+    if (leftover.length > 0) handleStreaming(leftover);
   }
 
   function handleReply(line: string): void {
@@ -554,6 +585,9 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
         }
         break;
       case 'select':
+        // Its STATION was refused, so the channel is rejected already —
+        // whatever this line says.
+        if (stationRefused.has(step.stationKey)) break;
         if (refused) {
           reject(step.channelId, `server refused SELECT: ${line}`);
         } else {
@@ -563,7 +597,7 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
         }
         break;
       case 'data':
-        if (refused) {
+        if (refused && !stationRefused.has(step.stationKey)) {
           for (const channelId of accepted.get(step.stationKey) ?? []) {
             reject(channelId, `server refused DATA: ${line}`);
           }
@@ -575,7 +609,9 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
     }
 
     repliesOutstanding -= 1;
-    if (repliesOutstanding <= 0) sendNext();
+    if (repliesOutstanding > 0) return;
+    if (pipelined) advancePipelined();
+    else sendNext();
   }
 
   function handleHandshake(chunk: Uint8Array): void {
