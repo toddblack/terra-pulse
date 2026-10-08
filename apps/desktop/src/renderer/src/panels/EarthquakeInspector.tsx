@@ -12,7 +12,7 @@ import { hasSequencePanel } from './useAftershockSequence';
 import { useNow } from '../globe/useNow';
 import { useWaveformStore } from '../waveforms/useWaveformStore';
 import { useReplayStore } from '../waveforms/useReplayStore';
-import { replayEligibility } from '@terra-pulse/schema';
+import { replayEligible } from '@terra-pulse/schema';
 import { formatAgoFrom } from './time-labels';
 import styles from './EarthquakeInspector.module.css';
 
@@ -53,7 +53,7 @@ export function EarthquakeInspector() {
   if (selectedEventId === null || event === null) return null;
 
   const age = formatAgoFrom(event.timeUtc, nowMs);
-  const replay = replayEligibility(event);
+  const canReplay = replayEligible(event);
 
   const openUsgsPage = () => {
     void window.terraPulse.shell.openExternal(event.url);
@@ -251,18 +251,14 @@ export function EarthquakeInspector() {
         )}
 
         {/* Its own row, above the others: for an eligible quake it is the
-            headline action, not a peer of Recenter. Offered only where the
-            detector has something to say — see `replayEligibility`. */}
-        {replay.eligible && (
+            headline action, not a peer of Recenter. Any M5+, anywhere — see
+            `replayEligible`. */}
+        {canReplay && (
           <button
             id="inspector-replay"
             type="button"
             className={styles.replayButton}
-            title={
-              replay.kind === 'local'
-                ? 'Replay what the stations around home recorded, through the early-warning detector'
-                : 'A distant quake: replay what your home network heard when its waves arrived'
-            }
+            title="Replay what the stations nearest this quake recorded, as the waves reached them"
             onClick={() => {
               startReplay({
                 eventId: event.id,
@@ -275,7 +271,7 @@ export function EarthquakeInspector() {
               showDockTab('waveforms');
             }}
           >
-            ▶ {replay.kind === 'local' ? 'Replay through the early-warning detector' : 'Replay what home heard'}
+            ▶ Replay the waves from nearby stations
           </button>
         )}
 

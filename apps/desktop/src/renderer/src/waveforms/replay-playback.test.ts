@@ -5,12 +5,11 @@ import {
   arrivedCount,
   buffersFromArrivals,
   circlePoints,
-  crossedForward,
   formatSinceOrigin,
   knownPicks,
   magnitudeAt,
+  replayFrame,
   startPlayback,
-  wavefrontRadiusKm,
 } from './replay-playback';
 import { markX } from './waveform-trace';
 
@@ -33,22 +32,6 @@ describe('the playback clock', () => {
   it('does not move while paused', () => {
     const paused = { playing: false, speed: 1 as const, positionMs: 0 };
     expect(advance(paused, 1_000, 10_000)).toBe(paused);
-  });
-});
-
-describe('crossedForward — when the alert sound plays', () => {
-  it('fires on the tick that passes the alert going forward, once', () => {
-    expect(crossedForward(900, 1_000, 1_000)).toBe(true);
-    expect(crossedForward(1_000, 1_100, 1_000)).toBe(false);
-  });
-
-  it('stays silent going backwards', () => {
-    expect(crossedForward(1_200, 800, 1_000)).toBe(false);
-  });
-
-  it('re-arms: playing through again after going back fires again', () => {
-    // Scrubbed back before the alert, then played through it.
-    expect(crossedForward(950, 1_050, 1_000)).toBe(true);
   });
 });
 
@@ -82,7 +65,6 @@ describe('magnitudeAt', () => {
     magnitude,
     stations: 4,
     complete: false,
-    intensityAtHome: 2,
   });
   const steps = [step(1_000, 6.1), step(2_000, 6.4), step(5_000, 7.1)];
 
@@ -93,14 +75,35 @@ describe('magnitudeAt', () => {
   });
 });
 
-describe('the wavefronts', () => {
-  it('reach the surface only once they have climbed from the source depth', () => {
-    expect(wavefrontRadiusKm(0, 6.2, 8)).toBeNull();
-    expect(wavefrontRadiusKm(1_000, 6.2, 8)).toBeNull(); // 6.2 km travelled, still below 8 km
-    // 10 s of S at 3.6 km/s from 8 km: √(36² − 8²) ≈ 35.1 km.
-    expect(wavefrontRadiusKm(10_000, 3.6, 8)).toBeCloseTo(35.1, 1);
+describe('framing the replay', () => {
+  const at = (latitude: number, longitude: number) => ({ latitude, longitude });
+
+  it('takes in the epicentre and every row, then extends west and south for the panels', () => {
+    const frame = replayFrame(at(35, -118), [at(36, -117), at(34, -119)]);
+    expect(frame.east).toBeGreaterThan(-117);
+    expect(frame.north).toBeGreaterThan(36);
+    // The extension: well past the westmost and southmost row.
+    expect(frame.west).toBeLessThan(-119 - 2);
+    expect(frame.south).toBeLessThan(34 - 2);
   });
 
+  it('frames across the antimeridian the short way, not round the world', () => {
+    // Fiji, with a row on either side of 180°.
+    const frame = replayFrame(at(-18, 179), [at(-17, -179), at(-19, 177)]);
+    // West of the dateline to east of it: Cesium reads west > east as crossing.
+    expect(frame.west).toBeGreaterThan(frame.east);
+    expect(frame.east).toBeGreaterThan(-179);
+    expect(frame.east).toBeLessThan(-170);
+  });
+
+  it('never asks for more than the planet', () => {
+    const frame = replayFrame(at(0, 0), [at(20, 40), at(-20, -40)]);
+    expect(frame.north).toBeLessThanOrEqual(89);
+    expect(frame.south).toBeGreaterThanOrEqual(-89);
+  });
+});
+
+describe('the wavefront rings', () => {
   it('draws a closed ring at the radius it claims', () => {
     const centre = { latitude: 35.77, longitude: -117.6 };
     const ring = circlePoints(centre, 100, 36);

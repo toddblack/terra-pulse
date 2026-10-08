@@ -1,49 +1,33 @@
-import { haversineKm } from './aftershocks';
 import type { WaveformSegment, WaveformStation } from './seismic-waveforms';
 
 /**
- * Replaying a past earthquake through the early-warning detector (§5.13): the
- * archived records the home network recorded, fed to the same detector, the
- * same magnitude and the same home alert the replay script grades — so the app
- * shows what live would have done, released at the instant each record could
- * have reached us.
+ * Replaying a past earthquake (§5.13): what the stations around its epicentre
+ * recorded, fetched from the permanent archive and played back with each record
+ * released at the instant it could have reached us live — with the
+ * early-warning detector listening to the ones close enough for it to use.
+ *
+ * **Centred on the quake, not on home.** It began as "what the stations around
+ * Burbank heard", for M4.5+ within 250 km or M7+ anywhere; the user's call on
+ * 2026-10-07 was any M5+ anywhere, to watch the quake unfold. No alert and no
+ * home: a replay shows the progression, not a warning.
  */
 
 /**
- * Home, until the home-location prompt exists (Phase 6). One definition for
- * main, the renderer and the replay script: every grade, alert and DYFI
- * comparison so far was made against this point.
+ * Home, until the home-location prompt exists (Phase 6). Read by the replay
+ * script, whose grades, alerts and DYFI comparisons were all made against this
+ * point. The app's replay no longer uses it.
  */
 export const HOME_LOCATION = { latitude: 34.1808, longitude: -118.309, label: 'Burbank, CA' } as const;
 
-/** A local replay: within this distance of home. Past it, only great quakes. */
-export const REPLAY_LOCAL_RADIUS_KM = 250;
 /**
- * The user's floor for a local replay — "only large quakes, probably 4.5+".
- * Below it a replay is mostly a quiet network and a small blip.
+ * Any quake at or above this gets a Replay button, wherever it is — the
+ * user's floor. Below it a replay is mostly a quiet network and a small blip.
  */
-export const REPLAY_LOCAL_MIN_MAGNITUDE = 4.5;
-/**
- * Distant replays are for great quakes only: "what your home network heard".
- * The interesting answer is that the detector stays quiet — distant P waves
- * have lost the high frequencies it listens for.
- */
-export const REPLAY_DISTANT_MIN_MAGNITUDE = 7;
+export const REPLAY_MIN_MAGNITUDE = 5;
 
-export type ReplayKind = 'local' | 'distant';
-
-export type ReplayEligibility = { eligible: true; kind: ReplayKind; homeKm: number } | { eligible: false; homeKm: number };
-
-/** Whether a quake gets a Replay button, and which kind of replay it would be. */
-export function replayEligibility(
-  quake: { latitude: number; longitude: number; magnitude: number },
-  home: { latitude: number; longitude: number } = HOME_LOCATION,
-): ReplayEligibility {
-  const homeKm = haversineKm(quake, home);
-  if (homeKm <= REPLAY_LOCAL_RADIUS_KM) {
-    return quake.magnitude >= REPLAY_LOCAL_MIN_MAGNITUDE ? { eligible: true, kind: 'local', homeKm } : { eligible: false, homeKm };
-  }
-  return quake.magnitude >= REPLAY_DISTANT_MIN_MAGNITUDE ? { eligible: true, kind: 'distant', homeKm } : { eligible: false, homeKm };
+/** Whether a quake gets a Replay button. */
+export function replayEligible(quake: { magnitude: number }): boolean {
+  return quake.magnitude >= REPLAY_MIN_MAGNITUDE;
 }
 
 /** What the renderer asks main to replay — the catalogue's account of the quake. */
@@ -61,6 +45,8 @@ export interface ReplayRow extends WaveformStation {
   distanceKm: number;
   /** From the epicentre to the station, 0 = north, clockwise. */
   bearingDeg: number;
+  /** Whether the detector was listening to it. Far rows are only watched. */
+  listened: boolean;
 }
 
 /** A decoded record and the instant it would have reached us live. */
@@ -85,8 +71,6 @@ export interface ReplayMagnitudeStep {
   stations: number;
   /** Every voting station's window is full; it will not climb further. */
   complete: boolean;
-  /** Predicted MMI at home from this estimate and the detector's location. */
-  intensityAtHome: number;
 }
 
 /** The detector's declaration of the replayed quake. */
@@ -104,33 +88,34 @@ export interface ReplayDetection {
   magnitudeSteps: ReplayMagnitudeStep[];
 }
 
-export interface ReplayAlert {
-  alertedAtMs: number;
-  /** When the detector expected strong (S-wave) shaking at home. */
-  sArrivalAtHomeMs: number;
-  magnitude: number;
-  /** Predicted MMI at home. */
-  intensity: number;
+/**
+ * The stations the detector listened to, and whether it could have declared
+ * this quake from them at all. Most of the world's M5+ quakes are too far from
+ * any public station for it to: measured over 5,137 of them (2024-2026), only
+ * 13% had four stations within 300 km.
+ */
+export interface ReplayDetectorReach {
+  /** Its listening radius around the epicentre. */
+  radiusKm: number;
+  /** Stations inside it, and how many of those had archived data. */
+  stations: number;
+  stationsWithData: number;
+  /** Nearest station with data, or null when none had any. */
+  nearestKm: number | null;
+  /** Stations that must agree before it declares. */
+  minStations: number;
+  /** It only locates quakes within this distance of a station. */
+  maxNearestStationKm: number;
 }
 
 export interface QuakeReplay {
   request: QuakeReplayRequest;
-  kind: ReplayKind;
   windowStartMs: number;
   windowEndMs: number;
-  home: { latitude: number; longitude: number; label: string };
-  homeKm: number;
-  /** From the catalogue's origin and place, with the detector's own velocities. */
-  pArrivalAtHomeMs: number;
-  /** Null for a distant quake: crustal speeds don't apply across the mantle. */
-  sArrivalAtHomeMs: number | null;
-  /** The speeds and depth the detector assumes, for drawing the wavefronts. */
-  geometry: { depthKm: number; pVelocityKmS: number; sVelocityKmS: number };
-  /** How many stations the detector listened through, and how many had data. */
-  networkSize: number;
-  stationsWithData: number;
+  detector: ReplayDetectorReach;
   /** Records that would not decode. */
   badRecords: number;
+  /** Nearest stations first, so the P wave sweeps down the panel. */
   rows: ReplayRow[];
   /** Records for the rows on screen only, in arrival order. */
   arrivals: ReplayArrival[];
@@ -138,14 +123,36 @@ export interface QuakeReplay {
   picks: ReplayPick[];
   /** Null: the detector never declared this quake. */
   detection: ReplayDetection | null;
-  /** Null: it was declared but the predicted shaking at home stayed below the threshold. */
-  alert: ReplayAlert | null;
-  /** The alert threshold the replay ran with (predicted MMI at home). */
-  alertThreshold: number;
-  /** Predicted MMI at home from the final estimate — what "no alert" was weighed on. */
-  finalIntensityAtHome: number | null;
-  /** Other declarations in the window: false alarms, or other quakes. */
-  otherDeclarations: number;
+  /**
+   * Everything else it declared in the window, in order: false alarms, other
+   * quakes — or, offshore, this quake placed near the stations, too far from
+   * the catalogue's epicentre to count as found. Shown with where it was placed,
+   * so the reader can judge which.
+   */
+  otherDetections: ReplayOtherDetection[];
+}
+
+export interface ReplayOtherDetection {
+  declaredAtMs: number;
+  originMs: number;
+  latitude: number;
+  longitude: number;
+  /** From the replayed quake's catalogue epicentre. */
+  distanceKm: number;
+}
+
+/**
+ * What stops the detector from catching this quake, if anything:
+ * - `too-few-stations`: fewer with data within its radius than must agree, so
+ *   it can declare nothing at all;
+ * - `too-far`: enough stations, but none within the distance it searches for a
+ *   source, so at best it places the quake near them (an offshore quake behind
+ *   a dense coast).
+ */
+export function detectorLimit(reach: ReplayDetectorReach): 'too-few-stations' | 'too-far' | null {
+  if (reach.stationsWithData < reach.minStations) return 'too-few-stations';
+  if (reach.nearestKm === null || reach.nearestKm > reach.maxNearestStationKm) return 'too-far';
+  return null;
 }
 
 /** Pushed while a replay loads: the slow parts are the archive requests. */

@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { WAVEFORM_WINDOW_MS, channelIdOf, type QuakeReplay, type WaveformChannelStatus } from '@terra-pulse/schema';
-import { playAlertSound } from '../audio/alert-sound';
+import {
+  WAVEFORM_WINDOW_MS,
+  channelIdOf,
+  detectorLimit,
+  type QuakeReplay,
+  type ReplayDetectorReach,
+  type WaveformChannelStatus,
+} from '@terra-pulse/schema';
 import { useGlobeStore } from '../state/useGlobeStore';
 import { StationTrace } from './StationTrace';
 import { EMPTY_CHANNEL_BUFFER } from './waveform-buffer';
@@ -10,7 +16,6 @@ import {
   REPLAY_SPEEDS,
   arrivedCount,
   buffersFromArrivals,
-  crossedForward,
   formatSinceOrigin,
   knownPicks,
   magnitudeAt,
@@ -22,7 +27,7 @@ import styles from './ReplayPanel.module.css';
 /** How often the playback clock advances. Ten a second is smooth for traces drawn at 1 Hz live. */
 const TICK_MS = 100;
 
-const seconds = (ms: number) => (ms / 1000).toFixed(1);
+const km = (value: number) => `${Math.round(value).toLocaleString()} km`;
 
 /** A row the archive held nothing for, said as such rather than as "connecting". */
 function rowStatus(channelId: string, hasData: boolean): WaveformChannelStatus {
@@ -37,26 +42,48 @@ function rowStatus(channelId: string, hasData: boolean): WaveformChannelStatus {
   };
 }
 
+/**
+ * What limits the detector here, said up front — the common case away from
+ * dense networks — so a quiet detector does not look like one that failed.
+ */
+function limitNote(reach: ReplayDetectorReach): string | null {
+  switch (detectorLimit(reach)) {
+    case 'too-few-stations': {
+      const had = reach.stationsWithData === 0 ? 'no public station' : `only ${String(reach.stationsWithData)} public stations`;
+      return `The early-warning detector could not have caught this one: ${had} within ${km(reach.radiusKm)} had data, and it needs ${String(reach.minStations)} to agree. The rows are here to watch the waves arrive.`;
+    }
+    case 'too-far':
+      return `The nearest station is ${km(reach.nearestKm ?? 0)} from the epicentre, and the detector only searches for a source within ${km(reach.maxNearestStationKm)} of one — so at best it places this quake near the stations.`;
+    case null:
+      return null;
+  }
+}
+
 /** The line under the transport: what the detector knew at the playhead. */
 function StatusLine({ replay, positionMs }: { replay: QuakeReplay; positionMs: number }) {
-  const { detection, alert, home } = replay;
+  const { detection, detector } = replay;
+  const limit = detectorLimit(detector);
+  const note = limitNote(detector);
+  if (limit === 'too-few-stations') return <p className={styles.status}>{note}</p>;
 
   if (detection === null || positionMs < detection.declaredAtMs) {
-    if (detection === null && positionMs >= replay.windowEndMs) {
-      return (
-        <p className={styles.status}>
-          The detector never declared this quake.
-          {replay.kind === 'distant'
-            ? ' That is the expected answer for a distant one: its P waves have lost the high frequencies the detector listens for.'
-            : ''}
-        </p>
-      );
+    // Declarations that are not this quake by the match rule — shown once the
+    // playhead reaches them, with where they were placed. Offshore, that is
+    // usually this quake pulled toward the stations.
+    const other = replay.otherDetections.filter((d) => d.declaredAtMs <= positionMs).at(-1);
+    let body: string;
+    if (other !== undefined && detection === null) {
+      body = `It declared an event ${formatSinceOrigin(other.declaredAtMs - replay.request.originMs)} after origin, placed ${km(other.distanceKm)} from where USGS put this quake — too far to count as finding it.`;
+    } else if (detection === null && positionMs >= replay.windowEndMs) {
+      body = 'The detector never declared this quake.';
+    } else {
+      const triggered = [...knownPicks(replay.picks, positionMs).keys()].length;
+      body = `The detector is listening through ${String(detector.stationsWithData)} stations within ${km(detector.radiusKm)} — ${String(triggered)} of these rows triggered so far. It declares once ${String(detector.minStations)} agree on one source.`;
     }
-    const triggered = [...knownPicks(replay.picks, positionMs).keys()].length;
     return (
       <p className={styles.status}>
-        Listening through {replay.stationsWithData} stations — {triggered} of these {replay.rows.length} rows
-        triggered so far. It declares once four agree on one source.
+        {note === null ? '' : `${note} `}
+        {body}
       </p>
     );
   }
@@ -65,35 +92,11 @@ function StatusLine({ replay, positionMs }: { replay: QuakeReplay; positionMs: n
   // "Updating", not "climbing": it usually climbs, but a station joining with a
   // short window can pull it down, and the label should not promise a direction.
   const magnitude = step === null ? 'magnitude pending' : `M${step.magnitude.toFixed(1)}${step.complete ? '' : ' (updating)'}`;
-  const sinceOrigin = formatSinceOrigin(detection.declaredAtMs - replay.request.originMs);
-
-  if (alert !== null && positionMs >= alert.alertedAtMs) {
-    const shakingInMs = alert.sArrivalAtHomeMs - positionMs;
-    const intensity = step?.intensityAtHome ?? alert.intensity;
-    return (
-      <p className={styles.banner} role="status">
-        <span className={styles.bannerTag}>REPLAY · ALERT</span>
-        {magnitude} · MMI {intensity.toFixed(1)} predicted at {home.label} ·{' '}
-        {shakingInMs > 0 ? (
-          <strong>strong shaking in {seconds(shakingInMs)} s</strong>
-        ) : (
-          <strong>
-            strong shaking reached home — {seconds(alert.sArrivalAtHomeMs - alert.alertedAtMs)} s of warning
-          </strong>
-        )}
-      </p>
-    );
-  }
-
-  const intensity = step?.intensityAtHome ?? null;
   return (
     <p className={styles.status}>
-      Declared {sinceOrigin} after origin from {detection.stationsAtDeclaration} stations,{' '}
-      {detection.locationErrorKm.toFixed(0)} km from where USGS placed it · {magnitude}
-      {intensity !== null &&
-        ` · MMI ${intensity.toFixed(1)} predicted at ${home.label}${
-          alert === null ? ` — below the ${replay.alertThreshold.toFixed(1)} alert threshold` : ''
-        }`}
+      Declared {formatSinceOrigin(detection.declaredAtMs - replay.request.originMs)} after origin from{' '}
+      {detection.stationsAtDeclaration} stations, {detection.locationErrorKm.toFixed(0)} km from where USGS placed it ·{' '}
+      {magnitude}
     </p>
   );
 }
@@ -101,18 +104,29 @@ function StatusLine({ replay, positionMs }: { replay: QuakeReplay; positionMs: n
 /** Ticks along the scrub bar for the moments worth jumping to. */
 function scrubMarks(replay: QuakeReplay): { atMs: number; label: string; kind: string }[] {
   const marks = [{ atMs: replay.request.originMs, label: 'Origin', kind: 'origin' }];
-  marks.push({ atMs: replay.pArrivalAtHomeMs, label: `P wave reaches ${replay.home.label}`, kind: 'home' });
-  if (replay.sArrivalAtHomeMs !== null) {
-    marks.push({ atMs: replay.sArrivalAtHomeMs, label: `Strong shaking reaches ${replay.home.label}`, kind: 'home' });
-  }
   if (replay.detection !== null) marks.push({ atMs: replay.detection.declaredAtMs, label: 'Declared', kind: 'declared' });
-  if (replay.alert !== null) marks.push({ atMs: replay.alert.alertedAtMs, label: 'Alert', kind: 'alert' });
   return marks.filter((m) => m.atMs >= replay.windowStartMs && m.atMs <= replay.windowEndMs);
+}
+
+/** The footer: what the rows are, and what to make of empty ones. */
+function footerText(replay: QuakeReplay): string {
+  const withData = new Set(replay.arrivals.map((a) => a.segment.channelId));
+  const rowsWithData = replay.rows.filter((r) => withData.has(channelIdOf(r))).length;
+  const watchedOnly = replay.rows.filter((r) => !r.listened).length;
+  const parts = [
+    `${String(rowsWithData)} of these ${String(replay.rows.length)} stations had archived data.`,
+    'Rows are the nearest public stations to the epicentre, nearest first, with distance and direction; the dashed line is the origin, and each record appears when it would have reached us live.',
+    watchedOnly === 0
+      ? 'Amber ticks are where the detector triggered.'
+      : `Amber ticks are where the detector triggered; the ${String(watchedOnly)} row${watchedOnly === 1 ? '' : 's'} past ${km(replay.detector.radiusKm)} ${watchedOnly === 1 ? 'is' : 'are'} only watched.`,
+  ];
+  // The archive takes minutes to hours to receive the newest data.
+  if (rowsWithData === 0) parts.push('A very recent quake may not have reached the archive yet; try again later.');
+  return parts.join(' ');
 }
 
 function ReadyReplay({ replay }: { replay: QuakeReplay }) {
   const playback = useReplayStore((state) => state.playback);
-  const lastMove = useReplayStore((state) => state.lastMove);
   const play = useReplayStore((state) => state.play);
   const pause = useReplayStore((state) => state.pause);
   const setSpeed = useReplayStore((state) => state.setSpeed);
@@ -134,15 +148,6 @@ function ReadyReplay({ replay }: { replay: QuakeReplay }) {
       clearInterval(timer);
     };
   }, [playback.playing, tick]);
-
-  // The alert sound, on playback crossing the alert — never on a scrub.
-  const previous = useRef(positionMs);
-  useEffect(() => {
-    if (lastMove === 'tick' && replay.alert !== null && crossedForward(previous.current, positionMs, replay.alert.alertedAtMs)) {
-      playAlertSound();
-    }
-    previous.current = positionMs;
-  }, [positionMs, lastMove, replay.alert]);
 
   // Only what had arrived by the playhead — the replay's whole honesty.
   const count = arrivedCount(replay.arrivals, positionMs);
@@ -251,11 +256,7 @@ function ReadyReplay({ replay }: { replay: QuakeReplay }) {
         })}
       </ol>
 
-      <footer className={panelStyles.footer}>
-        {replay.stationsWithData} of the {replay.networkSize} home-network stations had archived data for this
-        quake. Rows are the first to trigger, distance and direction from the epicentre; amber ticks are triggers,
-        the dashed line is the origin. Each record appears when it would have reached us live.
-      </footer>
+      <footer className={panelStyles.footer}>{footerText(replay)}</footer>
     </>
   );
 }

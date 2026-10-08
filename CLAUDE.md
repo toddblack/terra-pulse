@@ -3920,6 +3920,75 @@ underneath.
   - At +55.7 s the S ring had just passed Burbank and the banner read "strong shaking reached home — 40.9 s of warning".
   - The distant pipeline was checked on Tohoku: no declaration, no false alarm.
 
+**Replay anywhere — 2026-10-07, branch `replay-anywhere`. Supersedes the
+Burbank-centred replay above.** The user's call: any M5+ anywhere gets a Replay
+button, centred on the quake, with **no alert, no home, no sound** — "just
+interesting to see the quake progression". The P/S rings stay. Live early
+warning moves to a "Watch here" pin (next branch; see `PROJECT_PLAN.md` §5.13).
+
+- **Measured before designing, and it changed the design.** Over all 5,137 M5+
+  quakes 2024-2026 against the 3,206 stations on the public ring: only **13%**
+  have four stations within 300 km (19% at M6+), the median nearest station is
+  **407 km**, but **82%** have ten within 2,000 km. A replay limited to the
+  detector's reach would show nothing for ~6 in 10 quakes. The user chose (from
+  three options) to split it:
+  - **The detector listens within 300 km of the epicentre**
+    (`replayDetectorNetwork`) — the graded radius.
+  - **The rows are the ten nearest stations with data, at any distance up to
+    3,000 km** (`replayRowCandidates`, `chooseReplayRows`), nearest first so the
+    P wave sweeps down the panel. A row past 300 km is "only watched"
+    (`ReplayRow.listened`).
+- **The detector network is uncapped, and a cap was measured wrong.** The first
+  version took the nearest 80 (≥20 Hz). Ridgecrest M7.1 came back **M6.0, 24 km
+  off** — in a dense network the nearest 80 sit within ~100 km, where S arrives
+  inside the 10 s P window, so the estimate saturates. Four rules over the 24
+  tuning + reference quakes:
+
+  | rule | found | final mag resid | Ridgecrest M7.1 |
+  |---|---|---|---|
+  | ≥20 Hz, nearest 80 | 24/24 | 0.07 | 6.0, 24 km |
+  | ≥100 Hz, all ≤300 km | 24/24 | 0.02 | 7.1, 6 km |
+  | **≥20 Hz, all ≤300 km (shipped)** | 24/24 | 0.02 | 7.1, 6 km |
+  | ≥100 Hz, nearest 80 | 24/24 (1 extra) | 0.02 | 7.2, 11 km |
+
+  All four: median +14.2 s. Slower stations are kept because outside Southern
+  California most are 20-50 Hz; the detector was graded on 100 Hz only, and the
+  guide says so. The replay script still uses `homeNetwork` and reproduces its
+  graded numbers exactly (M7.1: +11.8 s, 40.5 s warning).
+- **The rings and the window use IASP91, not the detector's crustal speed**
+  (`packages/schema/src/travel-times.ts`). A table of first-arrival P and S for
+  a 10 km source, **computed with TauP (ObsPy 1.5.1) in a scratch venv**, not
+  recalled. At 2,000 km a 6.2 km/s ring arrives ~50 s after the row it is meant
+  to explain. The window runs from 60 s before the origin (graded) until the S
+  wave has passed the farthest row + 30 s, never less than the graded 180 s —
+  up to ~10 minutes for a mid-ocean quake, hence a **10×** speed.
+- **`detectorLimit` names why the detector cannot catch a quake**, said up front
+  so a quiet detector does not look broken: `too-few-stations` (fewer than four
+  with data — it can declare nothing) or `too-far` (none within the 50 km the
+  associator searches — at best it places the quake near the stations).
+  **"Could not" was too strong for `too-far`, found on real data:** Alaska
+  Sand Point M7.3 (nearest station 110 km) declared events placed 65 and 152 km
+  from the USGS epicentre, and Taiwan one at 84 km. So `otherDetections` now
+  carries every unmatched declaration with where it was placed, and the panel
+  shows it as the playhead reaches it — the reader judges whether it is the
+  quake pulled toward the stations.
+- **Checked on real quakes through the app's own controller** (a copy with the
+  electron import stripped): Ridgecrest, Aomori M7.6, Sand Point M7.3, Calama
+  M6.9, Yilan M6.6, Reykjanes Ridge, Tonga M7.5, Ende M7.8, Puerto Madero M7.3.
+  Every one loaded in 1-8 s with 10 rows of data, 0.3-1.8 MB to the renderer.
+  **Only Ridgecrest was in reach of the detector** — Japan has just 4 public
+  stations within 300 km of the Aomori quake, all ≥97 km out.
+- **Nothing is retained**: main's five-replay cache is gone (the user asked for
+  no retained replay data), so re-watching refetches, a few seconds.
+- `runDetectorReplay`'s `home` is optional now; without it `alerter` is null.
+  The script passes it and is unchanged in behaviour.
+- Removed with the alert: `ReplayKind`, `replayEligibility` (now
+  `replayEligible`), the home marker, the REPLAY banner, the alert sound on
+  playback (`crossedForward`, the store's `lastMove`), `wavefrontRadiusKm`.
+  `HOME_LOCATION` stays — the script grades against it.
+- **Not checked in the running app yet**: the camera frame (`replayFrame`,
+  tested for the antimeridian) and how 1,000+ km rings read on the globe.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.
