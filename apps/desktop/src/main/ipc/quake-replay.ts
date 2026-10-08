@@ -1,39 +1,41 @@
 import { ipcMain } from 'electron';
 import {
-  DEFAULT_ALERT_GEOMETRY,
-  DEFAULT_DETECTOR_PARAMS,
+  REPLAY_MAX_ROW_KM,
   buildQuakeReplay,
   fetchChannelEpochs,
   fetchDataselect,
-  homeNetwork,
-  pArrivalAtHomeMs,
+  replayDetectorNetwork,
+  replayRowCandidates,
   replayWindow,
   runDetectorReplay,
   type FdsnTextRow,
 } from '@terra-pulse/ingest';
 import {
-  HOME_LOCATION,
-  replayEligibility,
+  channelIdOf,
+  haversineKm,
+  replayEligible,
   type QuakeReplay,
   type QuakeReplayProgress,
   type QuakeReplayRequest,
   type WaveformChannel,
+  type WaveformStation,
   type WaveformStationCatalogue,
 } from '@terra-pulse/schema';
 
 /**
- * Replaying a past quake through the early-warning detector (§5.13): fetch
- * what the home network recorded, run the detector over it exactly as the
- * graded script does (`runDetectorReplay`), and hand the renderer a timeline it
- * can play back.
+ * Replaying a past quake (§5.13): fetch what the stations around its epicentre
+ * recorded, run the detector over the near ones exactly as the graded script
+ * does (`runDetectorReplay`), and hand the renderer a timeline it can play
+ * back. No home and no alert — a replay shows the quake unfolding.
  *
  * **Everything is computed here, up front, and the renderer only plays it.**
  * That makes scrubbing free, keeps the detector in main (where it will run
  * live), and means the app shows the same detector the replay script grades —
  * not a second loop that happens to agree.
  *
- * User-triggered from the inspector, never automatic, and nothing persists: a
- * small in-memory cache makes re-watching instant within a session.
+ * User-triggered from the inspector, never automatic, and **nothing is kept**:
+ * the user asked for no retained replay data, so re-watching a quake fetches
+ * it again (a few seconds). The renderer holds only the replay on screen.
  *
  * **A new start supersedes the one in flight.** The reader clicked another
  * quake; finishing the old one would only cost requests nobody will look at.
@@ -45,7 +47,6 @@ import {
 const STATIONS_PER_REQUEST = 25;
 /** Channel epochs either side of the origin; gains are looked up at the origin itself. */
 const EPOCH_MARGIN_MS = 24 * 60 * 60 * 1000;
-const CACHE_SIZE = 5;
 
 export class ReplayCancelledError extends Error {
   constructor() {
@@ -89,7 +90,6 @@ export interface QuakeReplayController {
 export function createQuakeReplayController(deps: QuakeReplayDeps): QuakeReplayController {
   const fetchEpochs = deps.fetchEpochs ?? ((channels, startMs, endMs) => fetchChannelEpochs(channels, startMs, endMs));
   const fetchWaveforms = deps.fetchWaveforms ?? ((channels, startMs, endMs) => fetchDataselect(channels, startMs, endMs));
-  const cache = new Map<string, QuakeReplay>();
   let generation = 0;
 
   async function start(request: QuakeReplayRequest): Promise<QuakeReplay> {
@@ -102,61 +102,50 @@ export function createQuakeReplayController(deps: QuakeReplayDeps): QuakeReplayC
       if (mine === generation) deps.onProgress({ eventId: request.eventId, phase, done, total });
     };
 
-    const cached = cache.get(request.eventId);
-    if (cached !== undefined) return cached;
-
     // Re-checked here, not trusted from the renderer: the button's rule is the
     // only rule, and it lives in the schema both sides read.
-    const eligibility = replayEligibility(request);
-    if (!eligibility.eligible) throw new Error('not eligible for a replay');
-    const kind = eligibility.kind;
+    if (!replayEligible(request)) throw new Error('not eligible for a replay');
 
     progress('stations', 0, 1);
     const catalogue = await deps.catalogue();
     check();
     if (catalogue.status !== 'ready') throw new Error(`no station list: ${catalogue.reason}`);
-    const network = homeNetwork(catalogue.stations, HOME_LOCATION);
-    if (network.length === 0) throw new Error('no 100 Hz stations on the ring within reach of home');
-
-    const pArrival = pArrivalAtHomeMs(
-      request,
-      HOME_LOCATION,
-      kind,
-      DEFAULT_ALERT_GEOMETRY.depthKm,
-      DEFAULT_DETECTOR_PARAMS.associator.pVelocityKmS,
-    );
-    const window = replayWindow(request, kind, pArrival);
+    const detectorNetwork = replayDetectorNetwork(catalogue.stations, request);
+    const rowCandidates = replayRowCandidates(catalogue.stations, request);
+    if (rowCandidates.length === 0) {
+      throw new Error(`no public stations within ${REPLAY_MAX_ROW_KM.toLocaleString('en-US')} km of this quake`);
+    }
+    // Both sets, once each: in a dense network the rows are the detector's
+    // nearest stations anyway.
+    const fetched = new Map<string, WaveformStation>();
+    for (const s of [...detectorNetwork, ...rowCandidates]) fetched.set(channelIdOf(s), s);
+    const stations = [...fetched.values()];
+    const farthestRowKm = Math.max(...rowCandidates.map((s) => haversineKm(request, s)));
+    const window = replayWindow(request, farthestRowKm);
 
     // A missing gain list is not fatal: the detector still detects (STA/LTA is
     // a ratio), it just cannot estimate a magnitude. The replay says so.
     progress('gains', 0, 1);
-    const gains = await fetchEpochs(network, request.originMs - EPOCH_MARGIN_MS, request.originMs + EPOCH_MARGIN_MS);
+    const gains =
+      detectorNetwork.length === 0
+        ? null
+        : await fetchEpochs(detectorNetwork, request.originMs - EPOCH_MARGIN_MS, request.originMs + EPOCH_MARGIN_MS);
     check();
 
     const chunks: Uint8Array[] = [];
-    const requests = Math.ceil(network.length / STATIONS_PER_REQUEST);
-    for (let i = 0; i < network.length; i += STATIONS_PER_REQUEST) {
+    const requests = Math.ceil(stations.length / STATIONS_PER_REQUEST);
+    for (let i = 0; i < stations.length; i += STATIONS_PER_REQUEST) {
       progress('waveforms', i / STATIONS_PER_REQUEST, requests);
-      chunks.push(await fetchWaveforms(network.slice(i, i + STATIONS_PER_REQUEST), window.startMs, window.endMs));
+      chunks.push(await fetchWaveforms(stations.slice(i, i + STATIONS_PER_REQUEST), window.startMs, window.endMs));
       check();
     }
 
+    // Every record is decoded and timed, but only the detector's own network
+    // is listened to — it ignores channels outside its station list.
     progress('detector', 0, 1);
-    const result = runDetectorReplay({
-      chunks,
-      stations: network,
-      gains,
-      gainAtMs: request.originMs,
-      home: HOME_LOCATION,
-    });
-    const replay = buildQuakeReplay({ request, kind, home: HOME_LOCATION, network, window, result });
+    const result = runDetectorReplay({ chunks, stations: detectorNetwork, gains, gainAtMs: request.originMs });
+    const replay = buildQuakeReplay({ request, detectorNetwork, rowCandidates, window, result });
     check();
-
-    cache.set(request.eventId, replay);
-    if (cache.size > CACHE_SIZE) {
-      const oldest = cache.keys().next().value;
-      if (oldest !== undefined) cache.delete(oldest);
-    }
     return replay;
   }
 

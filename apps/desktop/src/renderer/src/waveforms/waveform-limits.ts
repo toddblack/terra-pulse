@@ -29,31 +29,33 @@ export function waveformGuideFor(id: string): LayerGuide | undefined {
 }
 
 /**
- * A replay is the most persuasive display in the app — it shows a warning
- * arriving before the shaking — so its limits have to be as visible as the
- * warning. The detector shown is the graded one; what is *not* the graded
- * situation is today's network, the archive's packaging and a clean path.
+ * A replay is a persuasive display — it shows a detector finding a quake — so
+ * its limits have to be as visible as the detection. The detector shown is the
+ * graded one; what is *not* the graded situation is the region, today's
+ * network, the archive's packaging and a clean path.
  */
 export const WAVEFORM_REPLAY_GUIDE: LayerGuide = {
   title: 'Quake replay',
   shows:
-    'What the early-warning detector would have done, had it been running when this quake happened. The app fetches what the stations around home recorded from the permanent archive, then plays it back with each record appearing at the moment it could have reached us live. The detector, its magnitude estimate and the alert are the same code the replay grading runs.',
+    'A past earthquake unfolding at the public stations nearest it. The app fetches what those stations recorded from the permanent archive, then plays it back with each record appearing at the moment it could have reached us live. Where there are enough stations close to the quake, the early-warning detector listens too — the same code the replay grading runs — and you can watch it count stations and declare. Any M5 or larger, anywhere, can be replayed.',
   reading: [
-    'The rows are the first stations to trigger, in the order they did, so the P wave visibly sweeps down the panel. Amber ticks are where each station triggered; the dashed line is when the quake began, by the USGS catalogue.',
-    'The detector declares once four stations agree on one source. The line under the controls says when, how far from USGS it placed the quake, and the magnitude as it stood at that moment. The magnitude climbs as more of the P wave arrives — it starts low by design and is final about ten seconds later.',
-    'The alert is decided on predicted shaking at home (MMI 2.5 or more, roughly "felt indoors"), not on magnitude. When playback reaches the moment it would have fired, the banner and the alert sound play, and the banner counts down to the strong (S-wave) shaking reaching home.',
-    'On the globe, the expanding rings are the P wave (fast, first) and the S wave (slower, the strong shaking), drawn from the catalogue epicentre at the speeds the detector assumes. Home is marked. The gap between the alert and the S ring reaching home is the warning time.',
-    'The scrub bar marks the origin, the declaration, the alert, and the P and S waves reaching home. Real time is the default because the waiting is the point; 2× and 5× are for re-watching.',
+    'The rows are the ten nearest public stations that recorded anything, nearest first, each with its distance and direction from the epicentre — so the P wave visibly sweeps down the panel. The dashed line is when the quake began, by the USGS catalogue.',
+    'The detector listens only to stations within 300 km of the epicentre. Amber ticks are where it triggered on a row; a row farther out is only watched, and the footer says how many are.',
+    'It declares once four stations agree on one source. The line under the controls says when, how far from USGS it placed the quake, and the magnitude as it stood at that moment. The magnitude climbs as more of the P wave arrives — it starts low by design and is final about ten seconds later.',
+    'If the detector could not have caught this quake at all, the line says so and why: too few stations nearby, or none close enough to locate from. That is the common case away from dense networks, and the rows are still there to watch.',
+    'On the globe, the expanding rings are the P wave (fast, first) and the S wave (slower, the strong shaking), drawn from the catalogue epicentre with standard travel times (the IASP91 Earth model). The stations on the rows are marked, so you can watch a ring reach one as its row starts to move.',
+    'The scrub bar marks the origin and the declaration. Real time is the default because the waiting is the point; 2×, 5× and 10× are for re-watching and for replays whose far stations stretch the window past ten minutes.',
   ],
   limits: [
-    'It runs today\'s stations, not the network that existed then. Stations come and go, so an older quake was heard by fewer of them — the footer says how many had data — and a 2005 replay can look worse than the detector would do now, or better than it did then.',
-    'Timing is modelled, not recorded. The archive keeps every sample but not when it reached anyone, so each record is released at its last sample plus 2 seconds of transit, as measured live. A ring outage, a slow link or a station clock fault on the day would not show here.',
+    'The detector was tuned and graded in Southern California, on dense 100 Hz stations. Elsewhere the stations are fewer and often slower (20-50 Hz, whose records take longer to fill), and nothing here measures how well it does there. A replay in Japan or Alaska shows what it did, once — not how good it is.',
+    'Most of the world\'s earthquakes have few public stations near them. Measured over every M5+ from 2024 to 2026, only about one in eight had four within 300 km, and half had none within 400 km. So most replays show the quake arriving at distant stations rather than a detection.',
+    'It uses today\'s stations, not the network that existed then. Stations come and go, so an older quake was heard by fewer of them — the footer says how many had data.',
+    'A very recent quake may not be in the archive yet. Data takes minutes to hours to arrive there; rows with nothing in them for a quake from the last few hours usually mean "not yet", not "no station".',
+    'Timing is modelled, not recorded. The archive keeps every sample but not when it reached anyone, so each record is released at its last sample plus 2 seconds of transit, as measured live. A link outage or a station clock fault on the day would not show here.',
     'Some networks archive larger records than they send live; those are cut back to live size, which keeps the average delay right but not the exact moment each record would have arrived.',
-    'The detector assumes one P-wave speed and a fixed 8 km depth. That is why it places quakes a few kilometres off, and why the rings are circles — real wavefronts are shaped by the ground they cross.',
-    'The predicted shaking at home is an average relation for California, checked against what people in Burbank reported (USGS "Did You Feel It?") but carrying real scatter. Basin and site effects can make the same quake feel quite different a few streets apart.',
-    'For a quake within a few tens of kilometres of home, strong shaking can arrive before any alert — the waves are already there while the fourth station is still waiting. In the graded replays the basin quakes (Highland Park, El Monte) alerted one to two seconds after the shaking. A replay shows that honestly; it is physics, not a fault.',
-    'A replay is not evidence that live would do the same. It is one quake, replayed once, on a clean path. The detector was graded on dozens of quakes it had not been tuned on; that grading is the measure, and a single replay is an illustration of it.',
-    'A distant replay shows what the home network heard. The rings are not drawn for it — crustal wave speeds mean nothing across the mantle — and the expected answer is that the detector stays quiet.',
+    'The rings assume a shallow source and a layered, uniform Earth, so they are circles. Real wavefronts are shaped by the ground they cross, and a deep quake\'s waves reach the surface later and differently than drawn.',
+    'The detector itself assumes one P-wave speed and a fixed 8 km depth, which is why it places quakes a few kilometres off.',
+    'A replay is not evidence that live would do the same. It is one quake, replayed once, on a clean path.',
   ],
   source:
     'Archived waveforms from the EarthScope FDSN dataselect service (service.earthscope.org), station calibrations from its station service, and quake locations from the USGS catalogue. Data were accessed from the NSF NGF data archive operated by EarthScope Consortium. Each network, such as CI (Caltech/USGS), declares its own licence and citation at fdsn.org/networks.',

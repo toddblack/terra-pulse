@@ -12,7 +12,8 @@ import type { ChannelBuffer } from './waveform-buffer';
  * — so the waiting you watch is the waiting live would have done.
  */
 
-export const REPLAY_SPEEDS = [1, 2, 5] as const;
+/** 10× is for replays whose far rows stretch the window past ten minutes. */
+export const REPLAY_SPEEDS = [1, 2, 5, 10] as const;
 export type ReplaySpeed = (typeof REPLAY_SPEEDS)[number];
 
 export interface Playback {
@@ -32,15 +33,6 @@ export function advance(playback: Playback, dtMs: number, endMs: number): Playba
   if (!playback.playing || dtMs <= 0) return playback;
   const positionMs = Math.min(endMs, playback.positionMs + dtMs * playback.speed);
   return { ...playback, positionMs, playing: positionMs < endMs };
-}
-
-/**
- * Whether the clock crossed `atMs` moving forward. The alert sound plays on
- * this and on nothing else: never on a backward scrub, and again if the reader
- * goes back and plays through it — the crossing re-arms itself.
- */
-export function crossedForward(previousMs: number, nextMs: number, atMs: number): boolean {
-  return previousMs < atMs && nextMs >= atMs;
 }
 
 /** How many arrivals have landed by `positionMs`. Arrivals are in arrival order. */
@@ -99,21 +91,43 @@ export function knownPicks(picks: readonly ReplayPick[], positionMs: number): Ma
   return out;
 }
 
+const wrapLongitude = (lon: number) => ((((lon + 180) % 360) + 360) % 360) - 180;
+
 /**
- * How far along the surface a wavefront has travelled, km — or null before it
- * reaches the surface at all.
+ * Where the camera goes for a replay: the epicentre and every row, so the rings
+ * can be watched reaching the stations — which, away from dense networks, can
+ * be a thousand kilometres and more apart.
  *
- * The wave leaves a source at depth, so the surface radius is the horizontal
- * leg of a triangle whose long side is `v·t`: √((v·t)² − depth²). The same
- * fixed depth and single velocity the detector assumes, so the ring the reader
- * watches is the one the detector's own timing is built on — including its
- * simplifications, which the replay guide states.
+ * **Framed for the chrome, not the viewport.** A replay has the dock open
+ * across the bottom and usually the inspector left of centre; a frame fitted to
+ * the whole window put the subject behind the inspector. So it is extended west
+ * and south — empty map under those panels — leaving the subject in the clear
+ * upper-right of the globe.
+ *
+ * Longitudes are taken as offsets from the epicentre, so a replay straddling
+ * the antimeridian (Fiji, the Aleutians) frames the short way across it. The
+ * result can have `west > east`, which Cesium reads as crossing 180°.
  */
-export function wavefrontRadiusKm(elapsedMs: number, velocityKmS: number, depthKm: number): number | null {
-  if (elapsedMs <= 0) return null;
-  const travelledKm = (velocityKmS * elapsedMs) / 1000;
-  if (travelledKm <= depthKm) return null;
-  return Math.sqrt(travelledKm ** 2 - depthKm ** 2);
+export function replayFrame(
+  epicentre: { latitude: number; longitude: number },
+  rows: readonly { latitude: number; longitude: number }[],
+): { west: number; south: number; east: number; north: number } {
+  const points = [epicentre, ...rows];
+  const offsets = points.map((p) => wrapLongitude(p.longitude - epicentre.longitude));
+  const lats = points.map((p) => p.latitude);
+  const pad = 1.5;
+  const minOff = Math.min(...offsets) - pad;
+  const maxOff = Math.max(...offsets) + pad;
+  const minLat = Math.min(...lats) - pad;
+  const maxLat = Math.max(...lats) + pad;
+  // Never wider than most of the planet, or the frame would wrap onto itself.
+  const westOff = Math.max(maxOff - 300, minOff - (maxOff - minOff) * 0.9);
+  return {
+    west: wrapLongitude(epicentre.longitude + westOff),
+    east: wrapLongitude(epicentre.longitude + maxOff),
+    south: Math.max(-89, minLat - (maxLat - minLat) * 0.8),
+    north: Math.min(89, maxLat),
+  };
 }
 
 /**

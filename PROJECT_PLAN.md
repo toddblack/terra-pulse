@@ -1067,6 +1067,25 @@ Main runs the same loop the script grades (`runDetectorReplay`, now shared).
 Ridgecrest M7.1 in the app reproduces the graded run: declared +11.8 s, M6.1 →
 7.1, MMI 4.2 at Burbank, 40.9 s of warning.
 
+**Replay anywhere — 2026-10-07, replaces the above.** Any M5+ anywhere, centred
+on the quake: rows are the ten nearest public stations (up to 3,000 km), the
+detector listens to every station within 300 km, the P/S rings follow IASP91,
+and there is no alert, home or sound — a replay shows the progression. Only 13%
+of M5+ quakes have four stations within 300 km, so most replays show the waves
+arriving with the detector out of reach, and the panel says why. Details in
+`CLAUDE.md` ("Replay anywhere").
+
+**Direction change, same day: live detection becomes a "Watch here" pin.**
+The user drops one pin on the globe; the detector runs on the stations around
+it whenever the app is open (stoppable), and alerts at **M4.5+** on its running
+estimate — the purpose is large destructive quakes, and the estimate reads
+~0.3 low at declaration, so 4.5 catches a true M5 early. No pin on first launch;
+if a home location is set (Phase 6 prompt), the waveform tab's default cluster
+is around it. Alert delivery reuses the large-event path (§5.8): OS
+notification, banner, sound, and a pull counterpart. Before building: measure
+ring capacity for 40-70 stations on one connection, and the detector outside
+Southern California using replay-anywhere.
+
 **Not yet a live alert, and two things stand between:**
 1. ~~An alert threshold~~ — done, above.
 2. ~~**Stations stuck triggered in aftershock sequences.**~~ Fixed 2026-10-02.
@@ -1076,9 +1095,9 @@ Ridgecrest M7.1 in the app reproduces the graded run: declared +11.8 s, M6.1 →
    the first. Quakes following quakes: 9 → 11 of 17, no new false alarms.
    Graded on 2026: 21/21 isolated quakes, 0/4 small aftershocks inside a larger
    quake's coda (probably buried). Details in `CLAUDE.md`.
-3. **Running live**: a background SeedLink connection for ~74 stations (ring
-   capacity unchecked), an alert path with a pull counterpart (§5.8's lesson),
-   and the home-location prompt.
+3. **Running live**: the "Watch here" pin above — a background SeedLink
+   connection for the stations around it (ring capacity unchecked), an alert
+   path with a pull counterpart (§5.8's lesson).
 
 **Why ~14 s and not ShakeAlert's few seconds:** the public ring carries 74
 100 Hz stations within 300 km of Burbank, a fraction of the regional network,
