@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { MiniSeedParseError, parseMiniSeedRecord, sampleRateFrom, splitMiniSeedRecords } from './miniseed';
+import {
+  MiniSeedParseError,
+  miniSeed3Crc,
+  parseMiniSeedRecord,
+  sampleRateFrom,
+  splitMiniSeedRecords,
+} from './miniseed';
+import { MS3_FIXTURES } from './miniseed3.fixtures';
 import { MiniSeedIntegrityError } from './steim';
 
 /**
@@ -339,5 +346,49 @@ describe('sampleRateFrom', () => {
   it('returns 0 when either term is zero, which the parser treats as fatal', () => {
     expect(sampleRateFrom(0, 1)).toBe(0);
     expect(sampleRateFrom(40, 0)).toBe(0);
+  });
+});
+
+describe('miniSEED 3 (GEOFON, SeedLink 4)', () => {
+  const record = (key: keyof typeof MS3_FIXTURES) => new Uint8Array(Buffer.from(MS3_FIXTURES[key], 'base64'));
+
+  // Expected values read straight from the bytes by a throwaway script, as for
+  // the 2.x fixtures above: first/last are the record's own Steim X0/Xn
+  // constants, and the time is the header's 2026 day 281 23:22:59 + 190000000 ns.
+  it('decodes real records: the source id, the time to the nanosecond, the rate and every sample', () => {
+    const stu = parseMiniSeedRecord(record('GE_STU'));
+    if (stu.kind !== 'data') throw new Error('expected data');
+    expect(stu.channelId).toBe('GE_STU__HHZ');
+    expect(new Date(stu.startTimeMs).toISOString()).toBe('2026-10-08T23:22:59.190Z');
+    expect(stu.sampleRateHz).toBe(100);
+    expect(stu.samples).toHaveLength(431);
+    expect([stu.samples[0], stu.samples[430]]).toEqual([-1647, -1129]);
+
+    const angg = parseMiniSeedRecord(record('DK_ANGG'));
+    if (angg.kind !== 'data') throw new Error('expected data');
+    expect(angg.channelId).toBe('DK_ANGG_00_BHZ');
+    expect(angg.encoding).toBe(10); // Steim-1
+    expect(angg.sampleRateHz).toBe(20);
+    expect(angg.samples).toHaveLength(362);
+  });
+
+  it('checks the CRC-32C: one flipped byte anywhere is refused', () => {
+    const bytes = record('CX_PB01');
+    bytes[200] = (bytes[200] ?? 0) ^ 0x01;
+    expect(() => parseMiniSeedRecord(bytes)).toThrow(/CRC-32C mismatch/);
+  });
+
+  it('still runs the Steim self-check behind the CRC, so the two guard independently', () => {
+    // Corrupt a difference inside the data, then make the CRC agree with it:
+    // only the decode's own first/last-sample check is left to catch it.
+    const bytes = record('GE_STU');
+    const dataStart = 40 + (bytes[33] ?? 0) + new DataView(bytes.buffer).getUint16(34, true);
+    bytes[dataStart + 20] = (bytes[dataStart + 20] ?? 0) ^ 0x10;
+    new DataView(bytes.buffer).setUint32(28, miniSeed3Crc(bytes), true);
+    expect(() => parseMiniSeedRecord(bytes)).toThrow(MiniSeedIntegrityError);
+  });
+
+  it('refuses a record shorter than its declared lengths', () => {
+    expect(() => parseMiniSeedRecord(record('GE_STU').subarray(0, 300))).toThrow(/declares/);
   });
 });

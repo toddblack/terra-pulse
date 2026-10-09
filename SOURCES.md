@@ -391,15 +391,23 @@ Rules of the road: <https://supermag.jhuapl.edu/info/?page=rulesoftheroad>
 | Redistributable | Moot, as for EarthScope: nothing is stored. |
 | Credential | None — satisfies standing rule 2 |
 
+| | |
+|---|---|
+| **GEOFON SeedLink** (GFZ Potsdam, added 2026-10-08) | `geofon.gfz.de:18000` — SeedLink **4** only, data as **miniSEED 3**; inventory over `INFO STREAMS` (1.12 MB, ~27 networks) |
+| **Station metadata** | IRIS's federated catalogue, `service.iris.edu/irisws/fedcatalog/1/query` — GEOFON's ring carries networks archived at several data centres (GEOFON, BGR, IRIS, ...), so no single centre's service knows them all |
+| Licence | **Per network; GE declares none.** GEOFON: "No special permission is required" for real-time data (<https://geofon.gfz.de/waveform/seedlink.php>); "waveform data are distributed under different terms, licensed by the data set providers". GE is listed **open** (ORFEUS station book). Read 2026-10-08. |
+| Obligation | GEOFON asks (<https://geofon.gfz.de/citation/>): *"Seismic data were obtained from the GEOFON data centre of the GFZ Helmholtz Centre for Geosciences"*, and the GE network's DOI, *GEOFON Data Centre (1993): GEOFON Seismic Network. doi:10.14470/TR560404*. Both in the waveform guide and `SEEDLINK_SERVERS`. |
+| Redistributable | Moot: nothing is stored. Three records are test fixtures (`miniseed3.fixtures.ts`). |
+| Credential | None |
+
 - **Why GeoNet, and what else was surveyed.** EarthScope carries almost
   nothing in New Zealand; with GeoNet, M5+ quakes of the last two years within
   the detector's reach there went from 1 of 21 to 10 of 21. Ten public SeedLink
   servers answered a survey on 2026-10-08 (GEOFON, GeoNet, Croatia, BGR,
   ORFEUS, IPGP, AusPass, ICGC, Brazil, Portugal) with ~1,500 stations
-  EarthScope does not carry. **GEOFON** (`geofon.gfz.de`, "no special
-  permission is required") is next: it speaks SeedLink 4 and sends miniSEED 3,
-  so it needs protocol work first; its licence terms are not yet read. The
-  SeisComP 3.x servers need a `BATCH` handshake. No open real-time source was
+  EarthScope does not carry. **GEOFON** followed the same day (table above).
+  The SeisComP 3.x servers (BGR, ORFEUS, IPGP, Croatia, Brazil) are next and
+  need a `BATCH` handshake. No open real-time source was
   found for Indonesia (GEOFON's open GE stations include none there) or Japan
   (Hi-net needs an account, so standing rule 2 excludes it).
 

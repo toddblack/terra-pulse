@@ -38,8 +38,12 @@ export interface SeedLinkServer {
   port: number;
   /** FDSN station service for coordinates, names and gains. */
   stationServiceUrl: string;
-  /** FDSN `net` parameter: the networks to list from that service. */
-  networks: string;
+  /**
+   * FDSN `net` parameter: the networks to list from that service — or null to
+   * take them from the server's own inventory, for a server carrying many
+   * networks whose list changes (GEOFON: 27 when measured).
+   */
+  networks: string | null;
   inventory: 'streamids' | 'info';
   /** The acknowledgement the operator asks for — repeated in `SOURCES.md`. */
   attribution: string;
@@ -69,5 +73,26 @@ export const SEEDLINK_SERVERS: Readonly<Record<SeedLinkServerId, SeedLinkServer>
     // CC BY 3.0 NZ, free, no account — geonet.org.nz/policy, read 2026-10-08.
     attribution:
       'We acknowledge the New Zealand GeoNet programme and its sponsors NHC, Earth Sciences NZ, LINZ, NEMA and MBIE for providing data used here.',
+  },
+  geofon: {
+    id: 'geofon',
+    label: 'GEOFON',
+    host: 'geofon.gfz.de',
+    port: 18000,
+    // SeedLink 4 only, sending miniSEED 3 — the session switches protocol on
+    // its HELLO (`seedlinkVersionFrom`) and the parser reads both formats.
+    //
+    // Its ring carries ~27 networks archived at several data centres (GEOFON,
+    // BGR, IRIS, ...), so no single centre's station service knows them all.
+    // IRIS's federated catalogue does, and answers the same FDSN text and POST
+    // the other services do — measured 0.7 s for four networks' channels.
+    stationServiceUrl: 'https://service.iris.edu/irisws/fedcatalog/1/query',
+    networks: null,
+    inventory: 'info',
+    // "No special permission is required" (geofon.gfz.de/waveform/seedlink.php);
+    // waveforms are licensed by each network, and GE declares none. GEOFON asks
+    // for this acknowledgement and the GE network's DOI. Read 2026-10-08.
+    attribution:
+      'Seismic data were obtained from the GEOFON data centre of the GFZ Helmholtz Centre for Geosciences; GEOFON Seismic Network doi:10.14470/TR560404.',
   },
 };

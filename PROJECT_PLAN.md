@@ -1122,8 +1122,9 @@ when unfocused, retained in main for a renderer that mounts late. Details in
 
 **More servers — started 2026-10-08.** EarthScope's ring left most of the
 world unwatchable. GeoNet New Zealand is now a second server (NZ M5+ in reach
-1 of 21 → 10 of 21); GEOFON (Chile/Peru, Mediterranean) and the SeisComP 3.x
-servers follow, each needing protocol work first. Indonesia and Japan have no
+1 of 21 → 10 of 21), and GEOFON a third (SeedLink 4 + miniSEED 3; northern
+Chile and the Greek islands become watchable — Antofagasta, Santorini,
+Kythira). The SeisComP 3.x servers follow (`BATCH` handshake). Indonesia and Japan have no
 open real-time source and stay unwatchable. Details in `CLAUDE.md`.
 
 **Still open:** the detector is graded only in Southern California, on 100 Hz

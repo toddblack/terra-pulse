@@ -4,6 +4,7 @@ import {
   SEEDLINK_COMMAND_TIMEOUT_MS,
   SEEDLINK_PACKET_BYTES,
   SeedLinkDesyncError,
+  SeedLink4Framer,
   SeedLinkFramer,
   type SeedLinkSocket,
   createSeedLinkSession,
@@ -12,8 +13,10 @@ import {
   parseInfoStreams,
   parseStreamIds,
   seedlinkHandshakeScript,
+  seedlinkVersionFrom,
   sourceIdOf,
 } from './seedlink';
+import { MS3_FIXTURES } from './miniseed3.fixtures';
 
 const ADO: WaveformChannel = { network: 'CI', station: 'ADO', location: '', channel: 'HHZ' };
 const BAK: WaveformChannel = { network: 'CI', station: 'BAK', location: '', channel: 'HHZ' };
@@ -549,5 +552,117 @@ describe('fetchSeedLinkInventory', () => {
     const pending = fetchSeedLinkInventory('example.org', 18000, () => socket);
     socket.connect();
     expect(await pending).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SeedLink 4 — GEOFON
+// ---------------------------------------------------------------------------
+
+/** One SeedLink 4 data packet: `SE`, format, subformat, u32 LE length, u64 LE sequence, id length, id, payload. */
+function sePacket(payload: Uint8Array, format = '3', subformat = 'D', id = 'GE_STU'): Uint8Array {
+  const out = new Uint8Array(17 + id.length + payload.length);
+  out[0] = 0x53;
+  out[1] = 0x45;
+  out[2] = format.charCodeAt(0);
+  out[3] = subformat.charCodeAt(0);
+  const view = new DataView(out.buffer);
+  view.setUint32(4, payload.length, true);
+  view.setBigUint64(8, 42n, true);
+  out[16] = id.length;
+  for (let i = 0; i < id.length; i += 1) out[17 + i] = id.charCodeAt(i);
+  out.set(payload, 17 + id.length);
+  return out;
+}
+
+const GEOFON_HELLO = 'SeedLink v4.0 [HMB SeedLink v0.2 (2026.110)] :: SLPROTO:4.0';
+
+describe('seedlinkVersionFrom', () => {
+  it('prefers 3.1 wherever it is offered, uses 4 only when it is all there is, and defaults to 3', () => {
+    expect(seedlinkVersionFrom('SeedLink v4.0 (RingServer/4.5.6) :: SLPROTO:4.0 SLPROTO:3.1 CAP WS:13')).toBe(3);
+    expect(seedlinkVersionFrom('SeedLink v3.1 (2020.075 RingServer) :: SLPROTO:3.1 CAP EXTREPLY')).toBe(3);
+    expect(seedlinkVersionFrom(GEOFON_HELLO)).toBe(4);
+    expect(seedlinkVersionFrom('SeedLink v3.3 (2024.020)')).toBe(3);
+  });
+});
+
+describe('the SeedLink 4 handshake script', () => {
+  it('opens with SLPROTO 4.0, names stations NET_STA, and selects LOC_B_S_SS with a blank location left blank', () => {
+    expect(seedlinkHandshakeScript([ADO, AFI_10], 4).map((s) => s.line)).toEqual([
+      'HELLO',
+      'SLPROTO 4.0',
+      'STATION CI_ADO',
+      'SELECT _H_H_Z',
+      'DATA',
+      'STATION IU_AFI',
+      'SELECT 10_B_H_Z',
+      'DATA',
+      'END',
+    ]);
+  });
+});
+
+describe('SeedLink4Framer', () => {
+  const record = new Uint8Array(Buffer.from(MS3_FIXTURES.GE_STU, 'base64'));
+
+  it('returns each miniSEED payload whole, however the bytes are chunked', () => {
+    const stream = concat(sePacket(record), sePacket(record, '2'));
+    const framer = new SeedLink4Framer();
+    const out = [...framer.push(stream.subarray(0, 10)).records, ...framer.push(stream.subarray(10, 600)).records, ...framer.push(stream.subarray(600)).records];
+    expect(out.map((r) => r.length)).toEqual([record.length, record.length]);
+    expect([...(out[0] ?? [])]).toEqual([...record]);
+  });
+
+  it('skips non-data payloads by their declared length, staying aligned', () => {
+    const json = new TextEncoder().encode('{"info":true}');
+    const framer = new SeedLink4Framer();
+    const result = framer.push(concat(sePacket(json, 'J', 'I'), sePacket(record)));
+    expect(result.desync).toBeNull();
+    expect(result.records).toHaveLength(1);
+  });
+
+  it('refuses to resynchronise after a bad signature or an impossible length', () => {
+    const bad = sePacket(record);
+    bad[1] = 0x4c; // "SL": a 3.x packet in a 4.x stream
+    expect(new SeedLink4Framer().push(bad).desync).toMatch(/SE/);
+    const huge = sePacket(record);
+    new DataView(huge.buffer).setUint32(4, 0x7fffffff, true);
+    expect(new SeedLink4Framer().push(huge).desync).toMatch(/not a miniSEED record/);
+  });
+});
+
+describe('a session against a SeedLink 4 server', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('switches protocol on HELLO, pipelines the station block, and delivers miniSEED 3 payloads', () => {
+    const GE_STU: WaveformChannel = { network: 'GE', station: 'STU', location: '', channel: 'HHZ' };
+    const { socket, records, streaming } = startSession([GE_STU]);
+    socket.connect();
+    socket.reply(GEOFON_HELLO, 'GEOFON');
+    expect(socket.calls.at(-1)).toEqual(['SLPROTO 4.0']);
+    socket.reply('OK');
+    expect(socket.calls.at(-1)).toEqual(['STATION GE_STU', 'SELECT _H_H_Z', 'DATA']);
+    socket.reply('OK', 'OK', 'OK');
+    expect(socket.calls.at(-1)).toEqual(['END']);
+    expect(streaming).toEqual([['GE_STU__HHZ']]);
+
+    const record = new Uint8Array(Buffer.from(MS3_FIXTURES.GE_STU, 'base64'));
+    socket.send(sePacket(record));
+    expect(records).toHaveLength(1);
+    expect(records[0]?.length).toBe(record.length);
+  });
+
+  it('ends when the server refuses SLPROTO 4.0, before any station is sent', () => {
+    const { socket, ended } = startSession([ADO]);
+    socket.connect();
+    socket.reply(GEOFON_HELLO, 'GEOFON');
+    socket.reply('ERROR UNSUPPORTED');
+    expect(ended[0]?.message).toMatch(/SLPROTO 4\.0/);
+    expect(socket.writes.some((line) => line.startsWith('STATION'))).toBe(false);
   });
 });

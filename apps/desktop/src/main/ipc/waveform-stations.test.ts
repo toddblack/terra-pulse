@@ -252,3 +252,25 @@ describe('createWaveformStationSources with more than one server', () => {
     expect(catalogue.stations[0]).not.toHaveProperty('server');
   });
 });
+
+describe('a server whose networks come from its inventory', () => {
+  it('lists only after the inventory arrives, and is handed it', async () => {
+    const seen: (ReadonlySet<string> | undefined)[] = [];
+    const sources = createWaveformStationSources({
+      fetchInventory: RATT_ON_RING,
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: {
+        geofon: {
+          fetchInventory: () => Promise.resolve(new Set(['GE_STU__HHZ'])),
+          fetchListing: (onRing) => {
+            seen.push(onRing);
+            return Promise.resolve(null);
+          },
+          listingNeedsInventory: true,
+        },
+      },
+    });
+    await sources.catalogue();
+    expect(seen.map((ids) => [...(ids ?? [])])).toEqual([['GE_STU__HHZ']]);
+  });
+});

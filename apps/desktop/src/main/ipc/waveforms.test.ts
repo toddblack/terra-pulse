@@ -492,7 +492,11 @@ describe('createMultiServerController', () => {
       fetchInventory: () => Promise.resolve(null),
     });
     const controller = createMultiServerController({
-      servers: { earthscope: endpoint('EarthScope', 'es.example'), geonet: endpoint('GeoNet', 'nz.example') },
+      servers: {
+        earthscope: endpoint('EarthScope', 'es.example'),
+        geonet: endpoint('GeoNet', 'nz.example'),
+        geofon: endpoint('GEOFON', 'gfz.example'),
+      },
       onSegment: (segment) => segments.push(segment),
       onStatus: (status) => statuses.push(status),
       connect,

@@ -4145,7 +4145,57 @@ the decisions:
   unwatchable before; and the tab streamed three GeoNet and two Californian
   stations at once, all live.
 - Licence: GeoNet is **CC BY 3.0 NZ**, free, no account; its acknowledgement is
-  in the waveform guide and `SOURCES.md`. The detector is graded only in Southern
+  in the waveform guide and `SOURCES.md`.
+
+## The third server: GEOFON — SeedLink 4 and miniSEED 3. 2026-10-08.
+
+Step 2 of the agreed order. GEOFON (GFZ Potsdam) is the server that adds
+Chile and the eastern Mediterranean, and it needed two pieces of protocol the
+app did not have.
+
+- **The session picks its protocol from `HELLO`** (`seedlinkVersionFrom`):
+  3.1 wherever it is advertised (EarthScope and GeoNet advertise it, EarthScope
+  alongside 4.0), 4 only when 4.0 is all there is (GEOFON's "HMB SeedLink
+  v0.2"), and the 3.x default when nothing is advertised (SeisComP 3.x — step
+  3). The 3.1 path is unchanged: every existing SeedLink test passed before a
+  v4 test was written.
+- **SeedLink 4 differs in four places, each live-tested on GEOFON first**:
+  `SLPROTO 4.0` opens; stations are `NET_STA`; selectors are `LOC_B_S_SS`
+  with a blank location left blank (`_H_H_Z`, exactly one channel); and
+  packets are `SE`-framed and **variable-length** — `SeedLink4Framer` reads
+  the length and is as strict as the 3.x framer (no resync). Pipelining is
+  allowed by the spec and worked: handshake ~1 s.
+- **GEOFON sends miniSEED 3 only**; asking for `.2D` returns nothing.
+  `parseMiniSeedRecord` recognises "MS"+3 (a 2.x record opens with sequence
+  digits, so no collision) and hands it to `parseMiniSeed3Record`: 40-byte
+  little-endian header, FDSN source id, JSON extra headers, Steim frames
+  **still big-endian**. Every caller — tab, watch, replay — reads both formats.
+- **Two independent integrity checks, both proven load-bearing by tests**: the
+  record's CRC-32C over every byte, and Steim's last-sample check. A test
+  corrupts the data *and recomputes the CRC*, so only the Steim check can catch
+  it — and it does. Fixtures are three real GEOFON records, expected values
+  read from the bytes by a separate script (X0/Xn constants), not by the parser.
+- **Station metadata from IRIS's federated catalogue**, networks taken from
+  GEOFON's own inventory (`networks: null`): its ring carries ~27 networks
+  archived at several data centres, and no one centre's service knows them all.
+  It answers the same FDSN text and POST (gains included) as the others; its
+  `#DATACENTER=` comment lines are now skipped by `parseFdsnText`.
+- **GEOFON's `INFO STREAMS` is 1.12 MB, and it failed once inside the app**
+  while succeeding every time in a script. The reader now walks packets by
+  offset instead of slicing per packet, and **every failure logs its reason**;
+  a failed list is never cached, so the next request retries — which is why the
+  first in-app run still had GEOFON's stations for the watch. Not reproduced
+  since; if it recurs the log says why.
+- **Measured, same station list with and without GEOFON** (detector reach:
+  four stations within 300 km and one within 50 km): Antofagasta 4 stations /
+  nearest 187 km → **15 / 22 km, in reach**; Santorini 1 → **8, nearest 6 km**;
+  Kythira 1 → **7, nearest 14 km**; Iquique 5 → 20. **Athens stays out of reach**
+  (nearest 168 km) and Lima and Istanbul stay at a station or few: Greece's,
+  Peru's and Turkey's national networks are not on an open server.
+- Live: a Santorini watch ran 8 stations, all with gains; 4 had delivered
+  within 30 s (several are 20 Hz, which ship records less often).
+- Licence: GE declares none; GEOFON says no permission is needed and asks for
+  an acknowledgement and the GE DOI, both in the guide and `SOURCES.md`. The detector is graded only in Southern
   California on 100 Hz stations; a pin elsewhere runs on 20-50 Hz stations it
   was never graded on.
 

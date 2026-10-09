@@ -261,6 +261,16 @@ export function fetchSeedLinkInventory(
     let helloLines = 0;
     let text = '';
     const decoder = new TextDecoder('latin1');
+    let received = 0;
+    const startedMs = Date.now();
+    /** Null with a logged reason — "unknown" is the answer, but why is worth knowing. */
+    const fail = (reason: string) => {
+      if (settled) return;
+      console.warn(
+        `SeedLink INFO STREAMS from ${host} failed after ${String(Date.now() - startedMs)} ms, ${String(received)} bytes: ${reason}`,
+      );
+      finish(null);
+    };
     const finish = (result: Set<string> | null) => {
       if (settled) return;
       settled = true;
@@ -269,23 +279,24 @@ export function fetchSeedLinkInventory(
       resolve(result);
     };
     const timer = setTimeout(() => {
-      finish(null);
+      fail('timed out');
     }, timeoutMs);
 
     socket.onConnect(() => {
       socket.write('HELLO\r\n');
     });
-    socket.onError(() => {
-      finish(null);
+    socket.onError((error) => {
+      fail(error.message);
     });
     socket.onClose(() => {
-      finish(null);
+      fail('connection closed before the last info packet');
     });
     socket.onData((chunk) => {
       if (settled) return;
+      received += chunk.length;
       buffer = concatBytes(buffer, chunk);
-      if (buffer.length > SEEDLINK_INFO_MAX_BYTES) {
-        finish(null);
+      if (received > SEEDLINK_INFO_MAX_BYTES) {
+        fail('reply larger than any stream list');
         return;
       }
       while (helloLines < 2) {
@@ -301,31 +312,37 @@ export function fetchSeedLinkInventory(
         helloLines += 1;
         if (helloLines === 2) socket.write('INFO STREAMS\r\n');
       }
-      while (buffer.length >= SEEDLINK_PACKET_BYTES) {
-        if (decoder.decode(buffer.subarray(0, 6)) !== 'SLINFO') {
+      // Walk the packets by offset and trim once: GEOFON's list is 1.12 MB,
+      // ~2,160 packets, and slicing per packet would copy the rest each time.
+      let at = 0;
+      while (buffer.length - at >= SEEDLINK_PACKET_BYTES) {
+        const packet = buffer.subarray(at, at + SEEDLINK_PACKET_BYTES);
+        if (decoder.decode(packet.subarray(0, 6)) !== 'SLINFO') {
           // An ERROR line in place of the packets: the server refuses INFO at
           // this level. Unknown, not empty.
-          finish(null);
+          fail(`not an info packet: ${JSON.stringify(decoder.decode(packet.subarray(0, 24)))}`);
           return;
         }
-        const more = buffer[7] === 0x2a; // '*'
-        const record = buffer.subarray(SEEDLINK_HEADER_BYTES, SEEDLINK_PACKET_BYTES);
+        const more = packet[7] === 0x2a; // '*'
+        const record = packet.subarray(SEEDLINK_HEADER_BYTES);
         const view = new DataView(record.buffer, record.byteOffset, record.byteLength);
         const length = view.getUint16(30);
         const offset = view.getUint16(44);
         if (offset < 48 || offset + length > record.length) {
-          finish(null);
+          fail(`info record text out of bounds (offset ${String(offset)}, length ${String(length)})`);
           return;
         }
         text += decoder.decode(record.subarray(offset, offset + length));
-        buffer = buffer.slice(SEEDLINK_PACKET_BYTES);
+        at += SEEDLINK_PACKET_BYTES;
         if (!more) {
           const ids = parseInfoStreams(text);
           // A document that names nothing is a format we no longer read.
-          finish(ids.size === 0 ? null : ids);
+          if (ids.size === 0) fail('the stream list named no streams');
+          else finish(ids);
           return;
         }
       }
+      buffer = buffer.slice(at);
     });
   });
 }
@@ -348,6 +365,7 @@ export function fetchSeedLinkInventory(
 export type HandshakeStep =
   | { kind: 'hello'; line: 'HELLO'; replyLines: 2 }
   | { kind: 'capabilities'; line: 'CAPABILITIES SLPROTO:3.1'; replyLines: 1 }
+  | { kind: 'slproto'; line: 'SLPROTO 4.0'; replyLines: 1 }
   | {
       kind: 'station';
       line: string;
@@ -359,8 +377,38 @@ export type HandshakeStep =
   | { kind: 'data'; line: 'DATA'; replyLines: 1; stationKey: string }
   | { kind: 'end'; line: 'END'; replyLines: 0 };
 
+/**
+ * The SeedLink protocol a server's `HELLO` reply says it speaks, as this
+ * client will use it:
+ * - **3** when it advertises `SLPROTO:3.1` (RingServer — EarthScope, GeoNet).
+ *   Preferred even where 4.0 is also offered: it is the path measured against
+ *   EarthScope since 2026-09, and the one every trap note above describes.
+ * - **4** when it advertises only `SLPROTO:4.0` (GEOFON's server).
+ * - **3** when it advertises nothing (SeisComP 3.x), which is the legacy
+ *   default — those servers need a different handshake again (`BATCH`), not
+ *   yet built, and refuse `CAPABILITIES`.
+ */
+export function seedlinkVersionFrom(helloLine: string): 3 | 4 {
+  const capabilities = helloLine.split('::')[1] ?? '';
+  if (/\bSLPROTO:3\.1\b/.test(capabilities)) return 3;
+  if (/\bSLPROTO:4\.0\b/.test(capabilities)) return 4;
+  return 3;
+}
+
+/**
+ * The SeedLink 4 stream selector, `LOC_B_S_SS`: the channel code split into
+ * band, source and subsource, and a blank location left blank — `_H_H_Z`.
+ * Measured on GEOFON 2026-10-08: that selects exactly the one channel, as
+ * `00_B_H_Z` does for a real location.
+ */
+export function seedlink4SelectorFor(channel: WaveformChannel): string {
+  const [band = '', source = '', subsource = ''] = channel.channel.split('');
+  return `${channel.location}_${band}_${source}_${subsource}`;
+}
+
 export function seedlinkHandshakeScript(
   channels: readonly WaveformChannel[],
+  version: 3 | 4 = 3,
 ): readonly HandshakeStep[] {
   const byStation = new Map<string, WaveformChannel[]>();
   for (const channel of channels) {
@@ -372,14 +420,17 @@ export function seedlinkHandshakeScript(
 
   const steps: HandshakeStep[] = [
     { kind: 'hello', line: 'HELLO', replyLines: 2 },
-    { kind: 'capabilities', line: 'CAPABILITIES SLPROTO:3.1', replyLines: 1 },
+    version === 4
+      ? { kind: 'slproto', line: 'SLPROTO 4.0', replyLines: 1 }
+      : { kind: 'capabilities', line: 'CAPABILITIES SLPROTO:3.1', replyLines: 1 },
   ];
   for (const [stationKey, group] of byStation) {
     const first = group[0];
     if (first === undefined) continue;
     steps.push({
       kind: 'station',
-      line: `STATION ${first.station} ${first.network}`,
+      // v4 names a station by its FDSN `NET_STA`; v3 by two fields.
+      line: version === 4 ? `STATION ${first.network}_${first.station}` : `STATION ${first.station} ${first.network}`,
       replyLines: 1,
       stationKey,
       channelIds: group.map(channelIdOf),
@@ -387,7 +438,7 @@ export function seedlinkHandshakeScript(
     for (const channel of group) {
       steps.push({
         kind: 'select',
-        line: `SELECT ${seedlinkSelectorFor(channel)}`,
+        line: `SELECT ${version === 4 ? seedlink4SelectorFor(channel) : seedlinkSelectorFor(channel)}`,
         replyLines: 1,
         stationKey,
         channelId: channelIdOf(channel),
@@ -458,6 +509,69 @@ export class SeedLinkFramer {
         this.buffer.slice(offset + SEEDLINK_HEADER_BYTES, offset + SEEDLINK_PACKET_BYTES),
       );
       offset += SEEDLINK_PACKET_BYTES;
+    }
+    this.buffer = this.buffer.slice(offset);
+    return { records, desync: null };
+  }
+}
+
+/** SeedLink 4 header before the station id: `SE`, format, subformat, u32 length, u64 sequence, u8 id length. */
+const SEEDLINK4_FIXED_HEADER_BYTES = 17;
+/**
+ * A miniSEED record is at most a few kilobytes; a "payload" larger than this
+ * means the stream is misaligned and the length field is reading sample data.
+ */
+const SEEDLINK4_MAX_PAYLOAD_BYTES = 1 << 20;
+
+/**
+ * Splits a SeedLink 4 data stream into payloads (FDSN SeedLink 4 §"Data
+ * packets"). Unlike 3.x, packets are **variable length**: the header carries
+ * the payload's length, so a packet is complete only once that many bytes have
+ * arrived after its station id.
+ *
+ * Only miniSEED data payloads are returned — format `2` or `3` with subformat
+ * `D`. Anything else (logs, JSON info) is skipped whole, by its declared
+ * length, which is what keeps the stream aligned past it.
+ *
+ * **Strict, as the 3.x framer is**: a signature other than `SE`, or a length no
+ * miniSEED record could have, ends the stream rather than scanning for the next
+ * `SE` — the same reason a 3.x desync is never resynchronised.
+ */
+export class SeedLink4Framer {
+  private buffer: Uint8Array = new Uint8Array(0);
+  private desynced = false;
+
+  push(chunk: Uint8Array): FramerResult {
+    if (this.desynced) return { records: [], desync: 'framer already desynchronised' };
+    this.buffer = concatBytes(this.buffer, chunk);
+
+    const records: Uint8Array[] = [];
+    let offset = 0;
+    for (;;) {
+      if (this.buffer.length - offset < SEEDLINK4_FIXED_HEADER_BYTES) break;
+      const first = this.buffer[offset] ?? -1;
+      const second = this.buffer[offset + 1] ?? -1;
+      const view = new DataView(this.buffer.buffer, this.buffer.byteOffset + offset);
+      const payloadLength = view.getUint32(4, true);
+      if (first !== 0x53 || second !== 0x45 || payloadLength > SEEDLINK4_MAX_PAYLOAD_BYTES) {
+        this.desynced = true;
+        this.buffer = new Uint8Array(0);
+        return {
+          records,
+          desync:
+            first !== 0x53 || second !== 0x45
+              ? `expected "SE" packet signature, found bytes ${String(first)}/${String(second)}`
+              : `SeedLink 4 payload length ${String(payloadLength)} is not a miniSEED record`,
+        };
+      }
+      const idLength = this.buffer[offset + 16] ?? 0;
+      const start = offset + SEEDLINK4_FIXED_HEADER_BYTES + idLength;
+      const end = start + payloadLength;
+      if (end > this.buffer.length) break;
+      const format = String.fromCharCode(this.buffer[offset + 2] ?? 0);
+      const subformat = String.fromCharCode(this.buffer[offset + 3] ?? 0);
+      if ((format === '2' || format === '3') && subformat === 'D') records.push(this.buffer.slice(start, end));
+      offset = end;
     }
     this.buffer = this.buffer.slice(offset);
     return { records, desync: null };
@@ -578,8 +692,11 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
     onEnd,
   } = options;
 
-  const script = seedlinkHandshakeScript(channels);
-  const framer = new SeedLinkFramer();
+  // The script and framer are chosen once HELLO says which protocol the server
+  // speaks (`seedlinkVersionFrom`); HELLO itself is step 0 of both scripts.
+  let script = seedlinkHandshakeScript(channels);
+  let framer: { push(chunk: Uint8Array): FramerResult } = new SeedLinkFramer();
+  let helloFirstLine: string | null = null;
 
   let phase: 'connecting' | 'handshake' | 'streaming' = 'connecting';
   let done = false;
@@ -632,7 +749,7 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
       finish(new SeedLinkProtocolError('handshake script ended without END'));
       return;
     }
-    if (step.kind === 'hello' || step.kind === 'capabilities') {
+    if (step.kind === 'hello' || step.kind === 'capabilities' || step.kind === 'slproto') {
       repliesOutstanding = step.replyLines;
       armTimer(step.line);
       socket.write(`${step.line}\r\n`);
@@ -693,11 +810,26 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
 
     switch (step.kind) {
       case 'hello':
+        if (helloFirstLine === null) {
+          helloFirstLine = line;
+          // Before the second reply line lands, so the next step sent is the
+          // right protocol's. Steps after HELLO are rebuilt; HELLO is shared.
+          if (seedlinkVersionFrom(line) === 4) {
+            script = seedlinkHandshakeScript(channels, 4);
+            framer = new SeedLink4Framer();
+          }
+        }
         break;
       case 'capabilities':
         if (refused) {
           // Trap 1: without 3.1 framing every packet would be discarded.
           finish(new SeedLinkProtocolError(`server refused CAPABILITIES SLPROTO:3.1: ${line}`));
+          return;
+        }
+        break;
+      case 'slproto':
+        if (refused) {
+          finish(new SeedLinkProtocolError(`server refused SLPROTO 4.0: ${line}`));
           return;
         }
         break;

@@ -47,6 +47,13 @@ describe('parseFdsnText', () => {
     ]);
   });
 
+  it("skips later `#` lines, which the federated catalogue puts before each data centre's block", () => {
+    const parsed = parseFdsnText(
+      `${STATION_HEADER}\n#DATACENTER=BGR,http://eida.bgr.de\nGR|AHRW|50.541|7.076|290.0|GRSN Station Ahrweiler|2009-02-01T00:00:00|\n#DATACENTER=GEOFON,http://geofon.gfz-potsdam.de\n`,
+    );
+    expect(parsed?.map((row) => row.Station)).toEqual(['AHRW']);
+  });
+
   it('refuses a body with no header rather than guessing at column positions', () => {
     expect(parseFdsnText('UW|RATT||HHZ|47.6|-122.3\n')).toBeNull();
   });

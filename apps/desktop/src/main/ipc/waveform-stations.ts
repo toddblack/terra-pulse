@@ -79,7 +79,12 @@ export interface WaveformStationSources {
 
 export interface ServerFetchers {
   fetchInventory: () => Promise<Set<string> | null>;
-  fetchListing: () => Promise<StationListing | null>;
+  /**
+   * The server's station listing. Given the inventory when `listingNeedsInventory`
+   * is set — for a server whose networks are read from what it carries.
+   */
+  fetchListing: (onRing?: ReadonlySet<string>) => Promise<StationListing | null>;
+  listingNeedsInventory?: boolean;
 }
 
 export interface WaveformStationSourceOptions {
@@ -99,7 +104,13 @@ export function serverFetchers(id: SeedLinkServerId): ServerFetchers {
       server.inventory === 'streamids'
         ? () => fetchRingInventory(fetch, server.host, server.port)
         : () => fetchSeedLinkInventory(server.host, server.port),
-    fetchListing: () => fetchStationListing({ serviceUrl: server.stationServiceUrl, networks: server.networks }),
+    fetchListing: (onRing) => {
+      const networks =
+        server.networks ?? [...new Set([...(onRing ?? [])].map((id) => id.split('_')[0] ?? ''))].filter(Boolean).join(',');
+      if (networks === '') return Promise.resolve(null);
+      return fetchStationListing({ serviceUrl: server.stationServiceUrl, networks });
+    },
+    listingNeedsInventory: server.networks === null,
   };
 }
 
@@ -151,7 +162,14 @@ export function createWaveformStationSources(
       id,
       createCachedLoader<WaveformStation[]>(
         async () => {
-          const [onRing, listing] = await Promise.all([inventoryFor(id).get(), fetcher.fetchListing()]);
+          // In parallel unless the listing needs the inventory's networks first.
+          const ring = inventoryFor(id).get();
+          const [onRing, listing] = await Promise.all([
+            ring,
+            fetcher.listingNeedsInventory === true
+              ? ring.then((ids) => (ids === null ? null : fetcher.fetchListing(ids)))
+              : fetcher.fetchListing(),
+          ]);
           if (onRing === null) {
             failures.set(id, "the ring's stream list could not be fetched");
             return null;

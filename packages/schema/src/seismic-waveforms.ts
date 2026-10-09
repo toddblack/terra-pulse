@@ -49,9 +49,9 @@ export interface WaveformChannel {
  * Hosts, station services and attribution live in `@terra-pulse/ingest`'s
  * `SEEDLINK_SERVERS`; only the id crosses the bridge.
  */
-export type SeedLinkServerId = 'earthscope' | 'geonet';
+export type SeedLinkServerId = 'earthscope' | 'geonet' | 'geofon';
 
-export const SEEDLINK_SERVER_IDS: readonly SeedLinkServerId[] = ['earthscope', 'geonet'];
+export const SEEDLINK_SERVER_IDS: readonly SeedLinkServerId[] = ['earthscope', 'geonet', 'geofon'];
 
 /** The server a channel streams from — EarthScope when none is named. */
 export function serverOf(channel: Pick<WaveformChannel, 'server'>): SeedLinkServerId {

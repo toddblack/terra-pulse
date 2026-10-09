@@ -63,7 +63,9 @@ export function parseFdsnText(text: string): FdsnTextRow[] | null {
     .slice(1)
     .split('|')
     .map((name) => name.trim());
-  return lines.map((line) => {
+  // Later `#` lines are comments, never rows: IRIS's federated catalogue puts a
+  // `#DATACENTER=...` line before each data centre's block.
+  return lines.filter((line) => !line.startsWith('#')).map((line) => {
     const values = line.split('|');
     return Object.fromEntries(columns.map((name, i) => [name, (values[i] ?? '').trim()]));
   });

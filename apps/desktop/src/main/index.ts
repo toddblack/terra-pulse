@@ -409,7 +409,9 @@ app
     // Two servers since 2026-10-08: EarthScope, and GeoNet New Zealand's own
     // ring. Each stream holds one connection per server it needs, behind one
     // controller — see `createMultiServerController` and `SEEDLINK_SERVERS`.
-    const waveformStations = createWaveformStationSources({ others: { geonet: serverFetchers('geonet') } });
+    const waveformStations = createWaveformStationSources({
+      others: { geonet: serverFetchers('geonet'), geofon: serverFetchers('geofon') },
+    });
     const inventoryFor = (server: Parameters<typeof waveformStations.inventoryFor>[0]) =>
       waveformStations.inventoryFor(server).get();
     const waveforms = createMultiServerController({
