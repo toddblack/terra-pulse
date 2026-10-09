@@ -4096,8 +4096,30 @@ Stop, and **Stop removes the pin** — no paused-but-present state.
   panel: disabled on a preset; a Rockies pick became a limited watch (14/14,
   nearest 138 km); re-picking Pennsylvania left the watch on the Rockies and
   offered "Move watch here".
-- **Not verified, and cannot be without a quake:** a live alert end to end, and
-  how the banner looks on screen.
+- **Not verified, and cannot be without a quake:** a live alert end to end.
+- **The chip's Test button (2026-10-08)** exists because the banner had never
+  been seen: MyShake's answer, a fake quake down the real path. Main builds it
+  (`testWatchAlert`) and sends it through the same `onAlert` push, retention,
+  OS notification, sound and dismissal as a detection. It is shaped like a
+  *typical* alert, not a dramatic one, so what you see is what you will get:
+  M5.0 100 km NE, declared 14 s after origin (the graded median), ~14 s of
+  countdown, MMI ~2.8 from the real equation (just over the 2.5 threshold).
+  After 3 s it climbs to M5.4, the way a real estimate does. `test: true` on
+  the alert; the badge reads "Test — not real" and the notification title
+  "TEST — not a real earthquake". Everything else looks real on purpose.
+  - **The climb must not resurrect a dismissed test.** Main's retained copy
+    updates only if it is still the current alert, the rule real updates
+    follow; a test pins it. Stop cancels a pending climb.
+
+**North of the Andes is a data-policy hole, not a station shortage** (measured
+2026-10-08, after the user found few stations in Colombia and Venezuela). Of
+6°S–13°N / 82°–58°W, the open rings carry 22 stations: 9 Colombian (mostly the
+Caribbean coast), 10 Ecuadorian, **no Venezuelan**. Venezuela's network has 48
+operating stations at IRIS, **all `restricted`**; Colombia's national network
+shares 16 internationally, 6 of them restricted. So the 2026 Venezuela M7.5 and
+M7.2 and the Colombia M7.4 each had 0–1 open stations within 300 km. No
+protocol work fixes that. Ecuador is the exception: most of its M5+ had 7–9
+open stations in range.
 
 ## A second SeedLink server: GeoNet New Zealand. 2026-10-08, branch `watch-here`.
 

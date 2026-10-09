@@ -23,6 +23,12 @@ interface QuakeWatchState {
   dismissAlert: () => void;
   watch: (pin: WatchPin) => void;
   stopWatching: () => void;
+  /**
+   * Asks main for a test alert. Nothing is shown from the reply: the alert
+   * arrives the way a real one does, pushed and sounded by `useQuakeWatchSync`,
+   * which is the path being tested.
+   */
+  testAlert: () => void;
 }
 
 /** The IPC error wrapper adds "Error invoking remote method …: Error: "; keep what main said. */
@@ -72,6 +78,12 @@ export const useQuakeWatchStore = create<QuakeWatchState>((set, get) => ({
       .catch((cause: unknown) => {
         set({ error: reasonOf(cause) });
       });
+  },
+  testAlert: () => {
+    set({ error: null });
+    window.terraPulse.quakeWatch.testAlert().catch((cause: unknown) => {
+      set({ error: reasonOf(cause) });
+    });
   },
 }));
 

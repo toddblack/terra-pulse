@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { SeedLinkConnect, SeedLinkSocket } from '@terra-pulse/ingest';
-import type { QuakeWatchStatus, WaveformStation, WaveformStationCatalogue, WatchPin } from '@terra-pulse/schema';
+import { TEST_ALERT, type SeedLinkConnect, type SeedLinkSocket } from '@terra-pulse/ingest';
+import type {
+  QuakeWatchAlert,
+  QuakeWatchStatus,
+  WaveformStation,
+  WaveformStationCatalogue,
+  WatchPin,
+} from '@terra-pulse/schema';
 
 const ipcHandle = vi.hoisted(() => vi.fn());
 vi.mock('electron', () => ({ ipcMain: { handle: ipcHandle } }));
@@ -254,6 +260,49 @@ describe('quake watch controller', () => {
     expect(controller.status().state).toBe('watching');
     expect(sockets).toHaveLength(1);
     controller.dispose();
+  });
+
+  it('a test alert goes down the real path: pushed, retained, then climbed once', async () => {
+    const onAlert = vi.fn();
+    const onAlertUpdated = vi.fn();
+    const { controller } = setup({ onAlert, onAlertUpdated });
+    expect(() => controller.testAlert()).toThrow(/no watch pin/);
+
+    controller.start(PIN);
+    await settle();
+    const alert = controller.testAlert();
+    expect(alert.test).toBe(true);
+    expect(onAlert).toHaveBeenCalledWith(alert);
+    // Retained like a real one, so a renderer mounting now still sees it.
+    expect(controller.currentAlert()).toEqual(alert);
+
+    await vi.advanceTimersByTimeAsync(TEST_ALERT.climbAfterMs);
+    expect(onAlertUpdated).toHaveBeenCalledTimes(1);
+    const climbed = onAlertUpdated.mock.calls[0]?.[0] as QuakeWatchAlert;
+    expect(climbed.id).toBe(alert.id);
+    expect(climbed.magnitude).toBe(TEST_ALERT.climbedMagnitude);
+    expect(controller.currentAlert()).toEqual(climbed);
+    controller.dispose();
+  });
+
+  it('a dismissed test alert stays dismissed when it climbs, and Stop cancels the climb', async () => {
+    const onAlertUpdated = vi.fn();
+    const { controller } = setup({ onAlertUpdated });
+    controller.start(PIN);
+    await settle();
+
+    controller.testAlert();
+    controller.dismissAlert();
+    await vi.advanceTimersByTimeAsync(TEST_ALERT.climbAfterMs);
+    // Pushed (the renderer ignores an update for an alert not on screen), but
+    // main must not resurrect it for the next renderer that asks.
+    expect(controller.currentAlert()).toBeNull();
+
+    onAlertUpdated.mockClear();
+    controller.testAlert();
+    controller.stop();
+    await vi.advanceTimersByTimeAsync(TEST_ALERT.climbAfterMs);
+    expect(onAlertUpdated).not.toHaveBeenCalled();
   });
 });
 

@@ -137,6 +137,8 @@ declare global {
         start(pin: WatchPin): Promise<QuakeWatchStatus>;
         /** Removes the pin. */
         stop(): Promise<QuakeWatchStatus>;
+        /** Raises a test alert through main's real alert path. Throws without a pin. */
+        testAlert(): Promise<QuakeWatchAlert>;
         /** An alert raised before this renderer subscribed, or null. */
         currentAlert(): Promise<QuakeWatchAlert | null>;
         dismissAlert(): Promise<void>;

@@ -17,6 +17,7 @@ import {
 } from './quake-alert';
 import { DEFAULT_DETECTOR_PARAMS, QuakeDetector, type DetectorParams, type DetectorRecord, type QuakeDetection } from './quake-detector';
 import { REPLAY_DETECTOR_RADIUS_KM, REPLAY_MIN_RATE_HZ } from './replay-run';
+import { predictIntensity } from './shaking-intensity';
 
 /**
  * The live watch's detector (§5.13): the same `QuakeDetector` the replay
@@ -220,4 +221,89 @@ export class LiveQuakeWatch {
       magnitudeStations,
     };
   }
+}
+
+/**
+ * The made-up quake behind the chip's Test button (2026-10-08). The banner had
+ * never been seen on screen, and the only other way to see it is a real quake,
+ * so this is MyShake's test alert: a fake quake sent down the real path.
+ *
+ * Shaped like a typical real alert rather than a dramatic one, so what you see
+ * is what a real alert looks like:
+ * - **100 km from the pin**, declared **14 s after its origin** — the graded
+ *   median. That leaves ~14 s of countdown, enough to watch it run.
+ * - **M5.0, climbing to M5.4 after 3 s**, because a real estimate starts low
+ *   and climbs (~0.3 low at declaration). The update goes out the way a real
+ *   one does.
+ * - Intensity comes from the same equation as a real alert. M5.0 at 100 km
+ *   works out to about MMI 2.8, just over the 2.5 threshold.
+ *
+ * North-east is arbitrary. It only has to be a direction, so the banner gets
+ * its usual "100 km NE of …".
+ */
+export const TEST_ALERT = {
+  distanceKm: 100,
+  bearingDeg: 45,
+  magnitude: 5.0,
+  climbedMagnitude: 5.4,
+  climbAfterMs: 3_000,
+  declaredAfterOriginMs: 14_000,
+} as const;
+
+/** The point `distanceKm` from `from` on a great circle at `bearingDeg`. */
+function pointFrom(
+  from: { latitude: number; longitude: number },
+  distanceKm: number,
+  bearingDeg: number,
+): { latitude: number; longitude: number } {
+  const rad = Math.PI / 180;
+  const delta = distanceKm / 6371;
+  const theta = bearingDeg * rad;
+  const phi1 = from.latitude * rad;
+  const phi2 = Math.asin(Math.sin(phi1) * Math.cos(delta) + Math.cos(phi1) * Math.sin(delta) * Math.cos(theta));
+  const lambda2 =
+    from.longitude * rad +
+    Math.atan2(Math.sin(theta) * Math.sin(delta) * Math.cos(phi1), Math.cos(delta) - Math.sin(phi1) * Math.sin(phi2));
+  // Back into [-180, 180): a pin near the antimeridian would otherwise step out of range.
+  const longitude = ((((lambda2 / rad + 180) % 360) + 360) % 360) - 180;
+  return { latitude: phi2 / rad, longitude };
+}
+
+/** A test alert for this pin, raised now. */
+export function testWatchAlert(
+  pin: WatchPin,
+  alertedAtMs: number,
+  id: string,
+  geometry: AlertGeometry = DEFAULT_ALERT_GEOMETRY,
+): QuakeWatchAlert {
+  const epicentre = pointFrom(pin, TEST_ALERT.distanceKm, TEST_ALERT.bearingDeg);
+  const epicentralKm = haversineKm(pin, epicentre);
+  const originMs = alertedAtMs - TEST_ALERT.declaredAfterOriginMs;
+  const hypocentralKm = Math.hypot(epicentralKm, geometry.depthKm);
+  return {
+    id,
+    pin: { ...pin },
+    alertedAtMs,
+    originMs,
+    ...epicentre,
+    epicentralKm,
+    sArrivalAtPinMs: originMs + (1000 * hypocentralKm) / geometry.sVelocityKmS,
+    magnitude: TEST_ALERT.magnitude,
+    intensity: predictIntensity(TEST_ALERT.magnitude, hypocentralKm),
+    magnitudeStations: 0,
+    test: true,
+  };
+}
+
+/** The same test alert with a climbed magnitude. Origin, place and countdown stay as they were. */
+export function climbTestAlert(
+  alert: QuakeWatchAlert,
+  magnitude: number,
+  geometry: AlertGeometry = DEFAULT_ALERT_GEOMETRY,
+): QuakeWatchAlert {
+  return {
+    ...alert,
+    magnitude,
+    intensity: predictIntensity(magnitude, Math.hypot(alert.epicentralKm, geometry.depthKm)),
+  };
 }

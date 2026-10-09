@@ -2,7 +2,10 @@ import { ipcMain } from 'electron';
 import {
   LiveQuakeWatch,
   SEEDLINK_SERVERS,
+  TEST_ALERT,
+  climbTestAlert,
   fetchChannelEpochs,
+  testWatchAlert,
   watchNetwork,
   watchReach,
   type FdsnTextRow,
@@ -126,6 +129,12 @@ export interface QuakeWatchController {
   /** Removes the pin and stops. */
   stop(): QuakeWatchStatus;
   status(): QuakeWatchStatus;
+  /**
+   * Raises a test alert for the pin through the real alert path, then climbs
+   * its magnitude once. Throws when there is no pin: a test with no place to
+   * name would not look like a real alert.
+   */
+  testAlert(): QuakeWatchAlert;
   /** The raised-but-not-dismissed alert, for the renderer to ask for on mount. */
   currentAlert(): QuakeWatchAlert | null;
   dismissAlert(): void;
@@ -145,6 +154,9 @@ export function createQuakeWatchController(deps: QuakeWatchDeps): QuakeWatchCont
   let status: QuakeWatchStatus = { ...WATCH_STATUS_OFF };
   let watch: LiveQuakeWatch | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The pending climb of a test alert. Cleared with everything else on stop. */
+  let testTimer: ReturnType<typeof setTimeout> | null = null;
+  let testCount = 0;
   let current: QuakeWatchAlert | null = null;
 
   const emit = () => {
@@ -255,9 +267,17 @@ export function createQuakeWatchController(deps: QuakeWatchDeps): QuakeWatchCont
     }, WATCH_RETRY_MS);
   };
 
+  const clearTest = () => {
+    if (testTimer !== null) {
+      clearTimeout(testTimer);
+      testTimer = null;
+    }
+  };
+
   function halt(): void {
     generation += 1;
     clearRetry();
+    clearTest();
     stream.stop();
     watch = null;
   }
@@ -300,6 +320,24 @@ export function createQuakeWatchController(deps: QuakeWatchDeps): QuakeWatchCont
       return status;
     },
     status: () => status,
+    testAlert() {
+      const pin = status.pin;
+      if (pin === null) throw new Error('no watch pin to test');
+      clearTest();
+      testCount += 1;
+      const alert = testWatchAlert(pin, now(), `test-${String(now())}-${String(testCount)}`);
+      current = alert;
+      deps.onAlert(alert);
+      // Like a real update, it reaches the banner only if this alert is still
+      // the one on screen. Dismissed or replaced first, it is dropped there.
+      testTimer = setTimeout(() => {
+        testTimer = null;
+        const climbed = climbTestAlert(alert, TEST_ALERT.climbedMagnitude);
+        if (current?.id === alert.id) current = climbed;
+        deps.onAlertUpdated(climbed);
+      }, TEST_ALERT.climbAfterMs);
+      return alert;
+    },
     currentAlert: () => current,
     dismissAlert() {
       current = null;
@@ -325,6 +363,7 @@ export function registerQuakeWatchHandlers(controller: QuakeWatchController): vo
     return controller.start(pin);
   });
   ipcMain.handle('quake-watch:stop', (): QuakeWatchStatus => controller.stop());
+  ipcMain.handle('quake-watch:test-alert', (): QuakeWatchAlert => controller.testAlert());
   ipcMain.handle('quake-watch:current-alert', (): QuakeWatchAlert | null => controller.currentAlert());
   ipcMain.handle('quake-watch:dismiss-alert', (): void => {
     controller.dismissAlert();

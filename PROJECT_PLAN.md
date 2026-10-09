@@ -1106,8 +1106,10 @@ alerted at or after their own shaking; MMI 3.0 instead halved Searles Valley's
 warning. Checked against the graded loop over all 75 cached replay cases:
 identical alert instants in every one. The alert is a red countdown banner at
 `App` level (so it reaches Analyze mode), the sound, and an OS notification
-when unfocused, retained in main for a renderer that mounts late. Details in
-`CLAUDE.md` ("The live watch").
+when unfocused, retained in main for a renderer that mounts late. A **Test**
+button on the chip sends a made-up M5.0 down that same path, so the banner and
+sound can be seen without a real quake. Details in `CLAUDE.md` ("The live
+watch").
 
 **Was not yet a live alert; three things stood between, all now done:**
 1. ~~An alert threshold~~ — done, above.
@@ -1125,7 +1127,8 @@ world unwatchable. GeoNet New Zealand is now a second server (NZ M5+ in reach
 1 of 21 → 10 of 21), and GEOFON a third (SeedLink 4 + miniSEED 3; northern
 Chile and the Greek islands become watchable — Antofagasta, Santorini,
 Kythira). The SeisComP 3.x servers follow (`BATCH` handshake). Indonesia and Japan have no
-open real-time source and stay unwatchable. Details in `CLAUDE.md`.
+open real-time source and stay unwatchable, and neither do Venezuela (all 48
+national stations restricted) or most of Colombia. Details in `CLAUDE.md`.
 
 **Still open:** the detector is graded only in Southern California, on 100 Hz
 stations; a pin elsewhere runs it on 20-50 Hz stations it was never graded

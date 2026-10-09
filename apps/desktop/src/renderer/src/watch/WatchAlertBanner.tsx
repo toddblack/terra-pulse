@@ -58,7 +58,9 @@ export function WatchAlertBanner() {
       className={words.ahead ? `${styles.banner} ${styles.ahead}` : styles.banner}
       role="alert"
     >
-      <span className={styles.badge}>Earthquake</span>
+      {/* A test looks like the real thing on purpose, so this badge is the
+          one place that says it is not — the colour and countdown stay. */}
+      <span className={styles.badge}>{alert.test === true ? 'Test — not real' : 'Earthquake'}</span>
       <span className={styles.magnitude} title="Running estimate from the first stations; it climbs as more arrives">
         {words.magnitude}
       </span>

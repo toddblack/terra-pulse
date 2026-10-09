@@ -395,6 +395,8 @@ contextBridge.exposeInMainWorld('terraPulse', {
     start: (pin: WatchPin): Promise<QuakeWatchStatus> => ipcRenderer.invoke('quake-watch:start', pin),
     /** Removes the pin. */
     stop: (): Promise<QuakeWatchStatus> => ipcRenderer.invoke('quake-watch:stop'),
+    /** A made-up alert down the real path, so the banner can be seen. Needs a pin. */
+    testAlert: (): Promise<QuakeWatchAlert> => ipcRenderer.invoke('quake-watch:test-alert'),
     /** The alert raised before this renderer subscribed, if any — see `earthquakes.currentAlert`. */
     currentAlert: (): Promise<QuakeWatchAlert | null> => ipcRenderer.invoke('quake-watch:current-alert'),
     dismissAlert: (): Promise<void> => ipcRenderer.invoke('quake-watch:dismiss-alert'),

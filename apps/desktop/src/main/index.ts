@@ -469,7 +469,7 @@ app
         if (Notification.isSupported() && mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) {
           const seconds = Math.round((alert.sArrivalAtPinMs - Date.now()) / 1000);
           new Notification({
-            title: `Earthquake — M${alert.magnitude.toFixed(1)}, ${String(Math.round(alert.epicentralKm))} km from ${alert.pin.label}`,
+            title: `${alert.test === true ? 'TEST — not a real earthquake' : 'Earthquake'} — M${alert.magnitude.toFixed(1)}, ${String(Math.round(alert.epicentralKm))} km from ${alert.pin.label}`,
             body: seconds > 0 ? `Shaking expected in about ${String(seconds)} s` : 'Shaking may already have arrived',
             urgency: 'critical',
           }).show();

@@ -198,6 +198,25 @@
   background-color: rgb(251 191 36);
 }
 
+/* A small outlined word, so it reads as an occasional check rather than part
+   of the status beside it. */
+.watchTest {
+  flex: none;
+  padding: 0 0.3rem;
+  border: 1px solid rgb(71 85 105);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  line-height: 1rem;
+  cursor: pointer;
+}
+
+.watchTest:hover {
+  border-color: rgb(148 163 184);
+  color: rgb(226 232 240);
+}
+
 .watchStop {
   flex: none;
   width: 1.1rem;

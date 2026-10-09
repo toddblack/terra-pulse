@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { haversineKm, type WaveformStation } from '@terra-pulse/schema';
-import { LiveQuakeWatch, WATCH_MAX_STATIONS, WATCH_RADIUS_KM, watchNetwork, watchReach } from './quake-watch';
+import { bearingDeg, haversineKm, type WaveformStation } from '@terra-pulse/schema';
+import { WATCH_ALERT_RULE } from './quake-alert';
+import {
+  LiveQuakeWatch,
+  TEST_ALERT,
+  WATCH_MAX_STATIONS,
+  WATCH_RADIUS_KM,
+  climbTestAlert,
+  testWatchAlert,
+  watchNetwork,
+  watchReach,
+} from './quake-watch';
 
 const PIN = { latitude: 34.1808, longitude: -118.309, label: 'Burbank' };
 const KM_PER_DEG = 111.195;
@@ -77,5 +87,38 @@ describe('LiveQuakeWatch', () => {
     expect(result).toEqual({ declared: [], raised: [], updated: [] });
     expect(watch.detections).toBe(0);
     expect(watch.magnitudeStations).toBe(0);
+  });
+});
+
+describe('testWatchAlert', () => {
+  it('is shaped like a real alert: 100 km NE, ~14 s of countdown, and over both alert thresholds', () => {
+    const alert = testWatchAlert(PIN, 1_000_000, 'test-1');
+    expect(alert.test).toBe(true);
+    expect(alert.epicentralKm).toBeCloseTo(TEST_ALERT.distanceKm, 6);
+    expect(haversineKm(PIN, alert)).toBeCloseTo(TEST_ALERT.distanceKm, 6);
+    expect(bearingDeg(PIN, alert)).toBeCloseTo(TEST_ALERT.bearingDeg, 0);
+    expect(alert.originMs).toBe(1_000_000 - TEST_ALERT.declaredAfterOriginMs);
+    // S at 3.6 km/s over ~100 km is ~28 s after origin, 14 s of which has gone.
+    const countdownS = (alert.sArrivalAtPinMs - alert.alertedAtMs) / 1000;
+    expect(countdownS).toBeGreaterThan(12);
+    expect(countdownS).toBeLessThan(16);
+    // A real alert at these numbers would have been raised: the test shows nothing a real one could not.
+    expect(alert.magnitude).toBeGreaterThanOrEqual(WATCH_ALERT_RULE.minMagnitude ?? 0);
+    expect(alert.intensity).toBeGreaterThanOrEqual(WATCH_ALERT_RULE.minIntensity);
+  });
+
+  it('climbs in magnitude and intensity, and nothing else moves', () => {
+    const alert = testWatchAlert(PIN, 1_000_000, 'test-1');
+    const climbed = climbTestAlert(alert, TEST_ALERT.climbedMagnitude);
+    expect(climbed.magnitude).toBe(TEST_ALERT.climbedMagnitude);
+    expect(climbed.intensity).toBeGreaterThan(alert.intensity);
+    expect({ ...climbed, magnitude: alert.magnitude, intensity: alert.intensity }).toEqual(alert);
+  });
+
+  it('stays a legal coordinate for a pin by the antimeridian', () => {
+    const alert = testWatchAlert({ latitude: -17.7, longitude: 179.9, label: 'Fiji' }, 0, 't');
+    expect(alert.longitude).toBeGreaterThanOrEqual(-180);
+    expect(alert.longitude).toBeLessThan(180);
+    expect(alert.epicentralKm).toBeCloseTo(TEST_ALERT.distanceKm, 6);
   });
 });

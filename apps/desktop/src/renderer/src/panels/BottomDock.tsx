@@ -101,6 +101,7 @@ function PlayheadChip({ onOpen }: { onOpen: () => void }) {
 function WatchChip() {
   const status = useQuakeWatchStore((state) => state.status);
   const stopWatching = useQuakeWatchStore((state) => state.stopWatching);
+  const testAlert = useQuakeWatchStore((state) => state.testAlert);
   const health = watchHealth(status);
   if (health === 'off') return null;
   const dotClass =
@@ -109,6 +110,16 @@ function WatchChip() {
     <div id="watch-chip" className={styles.watchChip} title={watchDetail(status)}>
       <span role="img" className={dotClass} aria-label={`watch ${health}`} />
       <span className={styles.watchLabel}>{watchChipLabel(status)}</span>
+      {/* Works whatever the health: it tests the alert, not the stations. */}
+      <button
+        type="button"
+        id="watch-test"
+        className={styles.watchTest}
+        onClick={testAlert}
+        title="Show a test alert: a made-up M5.0 100 km away, with the real banner, sound and countdown"
+      >
+        Test
+      </button>
       <button
         type="button"
         id="watch-stop"

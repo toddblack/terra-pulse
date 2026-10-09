@@ -125,4 +125,10 @@ export interface QuakeWatchAlert {
   intensity: number;
   /** Stations voting on the magnitude. */
   magnitudeStations: number;
+  /**
+   * A made-up quake from the chip's Test button, not a detection. It goes
+   * through main's real alert path so the banner, sound and dismissal can be
+   * seen before a real one, and everything that shows it must say TEST.
+   */
+  test?: boolean;
 }
