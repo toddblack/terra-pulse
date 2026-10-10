@@ -28,6 +28,19 @@ import {
 /** Stations join and leave the ring over days, so an hour is plenty fresh. */
 export const WAVEFORM_STATIONS_TTL_MS = 60 * 60_000;
 
+/**
+ * How long the merged list waits for any one server before going without it.
+ *
+ * With eight servers, waiting for all of them means waiting for the worst:
+ * IPGP's host stopped answering twice on 2026-10-09, and a connection to it
+ * hangs ~21 s before the OS gives up — so the picker, and a watch starting up,
+ * had no stations at all for that long. Healthy servers measured 1.5-3.6 s for
+ * stream list and coordinates together, so 10 s leaves a slow one room. A
+ * server that misses it keeps loading, and its answer is cached for the next
+ * ask.
+ */
+export const CATALOGUE_SERVER_WAIT_MS = 10_000;
+
 export interface CachedLoader<T> {
   /** The cached value if fresh, else the in-flight load, else a new one. */
   get(): Promise<T | null>;
@@ -94,6 +107,29 @@ export interface WaveformStationSourceOptions {
   /** Servers beyond EarthScope, merged into the catalogue. None when absent. */
   others?: Partial<Record<SeedLinkServerId, ServerFetchers>>;
   now?: () => number;
+  /** `CATALOGUE_SERVER_WAIT_MS` unless a test shortens it. */
+  serverWaitMs?: number;
+}
+
+/**
+ * One listing from several station services, asked side by side. Null only
+ * when every one failed; a station two of them list appears twice in the rows,
+ * which `buildStationCatalogue` already collapses to one per station.
+ */
+export async function fetchMergedListing(
+  serviceUrls: readonly string[],
+  networks: string,
+  fetchOne: (serviceUrl: string, networks: string) => Promise<StationListing | null> = (serviceUrl, nets) =>
+    fetchStationListing({ serviceUrl, networks: nets }),
+): Promise<StationListing | null> {
+  const listings = (await Promise.all(serviceUrls.map((url) => fetchOne(url, networks)))).filter(
+    (listing): listing is StationListing => listing !== null,
+  );
+  if (listings.length === 0) return null;
+  return {
+    channelRows: listings.flatMap((l) => l.channelRows),
+    stationRows: listings.flatMap((l) => l.stationRows),
+  };
 }
 
 /** The real fetchers for a server, from `SEEDLINK_SERVERS`. */
@@ -108,7 +144,7 @@ export function serverFetchers(id: SeedLinkServerId): ServerFetchers {
       const networks =
         server.networks ?? [...new Set([...(onRing ?? [])].map((id) => id.split('_')[0] ?? ''))].filter(Boolean).join(',');
       if (networks === '') return Promise.resolve(null);
-      return fetchStationListing({ serviceUrl: server.stationServiceUrl, networks });
+      return fetchMergedListing(server.stationServiceUrls, networks);
     },
     listingNeedsInventory: server.networks === null,
   };
@@ -135,6 +171,7 @@ export function createWaveformStationSources(
     fetchListing = () => fetchStationListing(),
     others = {},
     now = () => Date.now(),
+    serverWaitMs = CATALOGUE_SERVER_WAIT_MS,
   } = options;
 
   const fetchers = new Map<SeedLinkServerId, ServerFetchers>([['earthscope', { fetchInventory, fetchListing }]]);
@@ -207,10 +244,27 @@ export function createWaveformStationSources(
      * replays and gains have worked against its archive and station service
      * since the start, and choosing per server would make a row's source depend
      * on which list answered first.
+     *
+     * A server slower than `serverWaitMs` is left out of this answer, not
+     * waited for — see `CATALOGUE_SERVER_WAIT_MS`.
      */
     async catalogue() {
       const lists = await Promise.all(
-        [...perServer.entries()].map(async ([id, loader]) => ({ id, stations: await loader.get() })),
+        [...perServer.entries()].map(async ([id, loader]) => {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const late = new Promise<'late'>((resolve) => {
+            timer = setTimeout(() => {
+              resolve('late');
+            }, serverWaitMs);
+          });
+          const answer = await Promise.race([loader.get(), late]);
+          clearTimeout(timer);
+          if (answer === 'late') {
+            failures.set(id, `no answer within ${String(serverWaitMs / 1000)} s`);
+            return { id, stations: null };
+          }
+          return { id, stations: answer };
+        }),
       );
       const merged: WaveformStation[] = [];
       const seen = new Set<string>();

@@ -24,6 +24,7 @@ const MIN_HEIGHT = 600;
 import {
   ALERT_MAX_AGE_MS,
   ALERT_MIN_MAGNITUDE,
+  SEEDLINK_SERVER_IDS,
   type EarthquakeSyncResult,
 } from '@terra-pulse/schema';
 import { createArchiveController, registerArchiveIpcHandlers } from './ipc/archive';
@@ -406,11 +407,14 @@ app
     // opening the waveform tab fetches the 1.2 MB list once rather than once
     // per consumer.
     //
-    // Two servers since 2026-10-08: EarthScope, and GeoNet New Zealand's own
-    // ring. Each stream holds one connection per server it needs, behind one
-    // controller — see `createMultiServerController` and `SEEDLINK_SERVERS`.
+    // Several servers since 2026-10-08: EarthScope, GeoNet, GEOFON and the
+    // SeisComP rings. Each stream holds one connection per server it needs,
+    // behind one controller — see `createMultiServerController` and
+    // `SEEDLINK_SERVERS`.
     const waveformStations = createWaveformStationSources({
-      others: { geonet: serverFetchers('geonet'), geofon: serverFetchers('geofon') },
+      others: Object.fromEntries(
+        SEEDLINK_SERVER_IDS.filter((id) => id !== 'earthscope').map((id) => [id, serverFetchers(id)]),
+      ),
     });
     const inventoryFor = (server: Parameters<typeof waveformStations.inventoryFor>[0]) =>
       waveformStations.inventoryFor(server).get();

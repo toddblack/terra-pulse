@@ -8,7 +8,34 @@ import {
   WAVEFORM_STATIONS_TTL_MS,
   createCachedLoader,
   createWaveformStationSources,
+  fetchMergedListing,
 } from './waveform-stations';
+
+describe('fetchMergedListing', () => {
+  const row = (station: string) => ({ Network: 'CR', Station: station });
+  const listing = (...stations: string[]): StationListing => ({
+    channelRows: stations.map(row),
+    stationRows: stations.map(row),
+  });
+
+  it("asks every service and keeps both halves — Croatia's own service knows stations the federated catalogue does not", async () => {
+    const asked: string[] = [];
+    const merged = await fetchMergedListing(['fed', 'hr'], 'CR', (url) => {
+      asked.push(url);
+      return Promise.resolve(url === 'fed' ? listing('BATN') : listing('CR00'));
+    });
+    expect(asked).toEqual(['fed', 'hr']);
+    expect(merged?.channelRows.map((r) => r.Station)).toEqual(['BATN', 'CR00']);
+  });
+
+  it('keeps what answered when one service fails, and is null only when all do', async () => {
+    const one = await fetchMergedListing(['fed', 'hr'], 'CR', (url) =>
+      Promise.resolve(url === 'fed' ? null : listing('CR00')),
+    );
+    expect(one?.channelRows.map((r) => r.Station)).toEqual(['CR00']);
+    expect(await fetchMergedListing(['fed', 'hr'], 'CR', () => Promise.resolve(null))).toBeNull();
+  });
+});
 
 const RATT: WaveformStation = {
   network: 'UW',
@@ -221,6 +248,24 @@ describe('createWaveformStationSources with more than one server', () => {
     });
     const catalogue = await sources.catalogue();
     expect(catalogue.status === 'ready' ? catalogue.stations.map((s) => s.station) : catalogue).toEqual(['RATT']);
+  });
+
+  it('does not wait for a server that hangs, and has its stations on the next ask once it answers', async () => {
+    // IPGP's host stopped answering twice while this was built; a connection to
+    // it hangs ~21 s, and nothing else may wait that long.
+    const hung = deferred<Set<string> | null>();
+    const sources = createWaveformStationSources({
+      fetchInventory: RATT_ON_RING,
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: { geonet: { fetchInventory: () => hung.promise, fetchListing: () => Promise.resolve(WEL_LISTING) } },
+      serverWaitMs: 20,
+    });
+    const first = await sources.catalogue();
+    expect(first.status === 'ready' ? first.stations.map((s) => s.station) : first).toEqual(['RATT']);
+
+    hung.resolve(new Set(['NZ_WEL_10_HHZ']));
+    const second = await sources.catalogue();
+    expect(second.status === 'ready' ? second.stations.map((s) => s.station) : second).toEqual(['RATT', 'WEL']);
   });
 
   it('is unavailable only when every server failed, with EarthScope’s reason', async () => {

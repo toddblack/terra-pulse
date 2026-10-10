@@ -1,5 +1,6 @@
 /**
- * SeedLink v3.1 client for the EarthScope ring.
+ * SeedLink client: v3.1 for the EarthScope and GeoNet rings, v4 for GEOFON,
+ * and `BATCH` mode for SeisComP's own 3.x servers (`seedlinkDialectFrom`).
  *
  * SeedLink is a line-based handshake followed by a binary stream of fixed-size
  * packets, each wrapping one 512-byte miniSEED record. This module owns the
@@ -366,33 +367,38 @@ export type HandshakeStep =
   | { kind: 'hello'; line: 'HELLO'; replyLines: 2 }
   | { kind: 'capabilities'; line: 'CAPABILITIES SLPROTO:3.1'; replyLines: 1 }
   | { kind: 'slproto'; line: 'SLPROTO 4.0'; replyLines: 1 }
+  | { kind: 'batch'; line: 'BATCH'; replyLines: 1 }
   | {
       kind: 'station';
       line: string;
-      replyLines: 1;
+      /** 0 in batch mode, where the server answers none of the station block. */
+      replyLines: 0 | 1;
       stationKey: string;
       channelIds: readonly string[];
     }
-  | { kind: 'select'; line: string; replyLines: 1; stationKey: string; channelId: string }
-  | { kind: 'data'; line: 'DATA'; replyLines: 1; stationKey: string }
+  | { kind: 'select'; line: string; replyLines: 0 | 1; stationKey: string; channelId: string }
+  | { kind: 'data'; line: 'DATA'; replyLines: 0 | 1; stationKey: string }
   | { kind: 'end'; line: 'END'; replyLines: 0 };
 
 /**
- * The SeedLink protocol a server's `HELLO` reply says it speaks, as this
- * client will use it:
- * - **3** when it advertises `SLPROTO:3.1` (RingServer — EarthScope, GeoNet).
- *   Preferred even where 4.0 is also offered: it is the path measured against
- *   EarthScope since 2026-09, and the one every trap note above describes.
- * - **4** when it advertises only `SLPROTO:4.0` (GEOFON's server).
- * - **3** when it advertises nothing (SeisComP 3.x), which is the legacy
- *   default — those servers need a different handshake again (`BATCH`), not
- *   yet built, and refuse `CAPABILITIES`.
+ * Which handshake a server takes, decided from the first line of its `HELLO`:
+ *
+ * - **`v3.1`** when it advertises `SLPROTO:3.1` (RingServer — EarthScope,
+ *   GeoNet). Preferred even where 4.0 is also offered: it is the path measured
+ *   against EarthScope since 2026-09, and the one every trap note above
+ *   describes.
+ * - **`v4`** when it advertises only `SLPROTO:4.0` (GEOFON's server).
+ * - **`batch`** when it advertises nothing — SeisComP's own SeedLink 3.x
+ *   (BGR, ORFEUS, IPGP, Croatia, Brazil), whose `HELLO` is just
+ *   `SeedLink v3.3 (2024.020)`. See `seedlinkHandshakeScript` for why.
  */
-export function seedlinkVersionFrom(helloLine: string): 3 | 4 {
+export type SeedLinkDialect = 'v3.1' | 'v4' | 'batch';
+
+export function seedlinkDialectFrom(helloLine: string): SeedLinkDialect {
   const capabilities = helloLine.split('::')[1] ?? '';
-  if (/\bSLPROTO:3\.1\b/.test(capabilities)) return 3;
-  if (/\bSLPROTO:4\.0\b/.test(capabilities)) return 4;
-  return 3;
+  if (/\bSLPROTO:3\.1\b/.test(capabilities)) return 'v3.1';
+  if (/\bSLPROTO:4\.0\b/.test(capabilities)) return 'v4';
+  return 'batch';
 }
 
 /**
@@ -406,9 +412,29 @@ export function seedlink4SelectorFor(channel: WaveformChannel): string {
   return `${channel.location}_${band}_${source}_${subsource}`;
 }
 
+/**
+ * The handshake for a dialect. The station block is the same shape in all
+ * three — `STATION`, a `SELECT` per channel, `DATA` — and only the opener and
+ * the naming differ, except in batch mode, which changes who answers.
+ *
+ * ## Batch mode (SeisComP 3.x), measured 2026-10-09
+ *
+ * These servers reply `ERROR` to `CAPABILITIES`, and to a pipelined block they
+ * act on the first line and drop the rest. `BATCH` is their own answer: it is
+ * acknowledged `OK`, and after it the server **answers nothing** — not the
+ * `STATION`, `SELECT` or `DATA` lines, and not `END`. So the whole block goes
+ * in one write and streaming begins at once. Measured on BGR, ORFEUS,
+ * Croatia, Brazil, Catalonia and Évora: first packet 1.3-3.4 s after `HELLO`.
+ *
+ * Silence covers refusals too: a station that does not exist and a `SELECT`
+ * matching nothing were both met with no reply and no data, on four servers —
+ * no stray `ERROR` in the stream to desynchronise the framer. That is
+ * EarthScope's trap 4 by another route, and the same answer applies: the
+ * controller checks each channel against the server's own stream list.
+ */
 export function seedlinkHandshakeScript(
   channels: readonly WaveformChannel[],
-  version: 3 | 4 = 3,
+  dialect: SeedLinkDialect = 'v3.1',
 ): readonly HandshakeStep[] {
   const byStation = new Map<string, WaveformChannel[]>();
   for (const channel of channels) {
@@ -418,33 +444,35 @@ export function seedlinkHandshakeScript(
     else group.push(channel);
   }
 
-  const steps: HandshakeStep[] = [
-    { kind: 'hello', line: 'HELLO', replyLines: 2 },
-    version === 4
+  const opener: HandshakeStep =
+    dialect === 'v4'
       ? { kind: 'slproto', line: 'SLPROTO 4.0', replyLines: 1 }
-      : { kind: 'capabilities', line: 'CAPABILITIES SLPROTO:3.1', replyLines: 1 },
-  ];
+      : dialect === 'batch'
+        ? { kind: 'batch', line: 'BATCH', replyLines: 1 }
+        : { kind: 'capabilities', line: 'CAPABILITIES SLPROTO:3.1', replyLines: 1 };
+  const steps: HandshakeStep[] = [{ kind: 'hello', line: 'HELLO', replyLines: 2 }, opener];
+  const replyLines = dialect === 'batch' ? 0 : 1;
   for (const [stationKey, group] of byStation) {
     const first = group[0];
     if (first === undefined) continue;
     steps.push({
       kind: 'station',
-      // v4 names a station by its FDSN `NET_STA`; v3 by two fields.
-      line: version === 4 ? `STATION ${first.network}_${first.station}` : `STATION ${first.station} ${first.network}`,
-      replyLines: 1,
+      // v4 names a station by its FDSN `NET_STA`; 3.x by two fields.
+      line: dialect === 'v4' ? `STATION ${first.network}_${first.station}` : `STATION ${first.station} ${first.network}`,
+      replyLines,
       stationKey,
       channelIds: group.map(channelIdOf),
     });
     for (const channel of group) {
       steps.push({
         kind: 'select',
-        line: `SELECT ${version === 4 ? seedlink4SelectorFor(channel) : seedlinkSelectorFor(channel)}`,
-        replyLines: 1,
+        line: `SELECT ${dialect === 'v4' ? seedlink4SelectorFor(channel) : seedlinkSelectorFor(channel)}`,
+        replyLines,
         stationKey,
         channelId: channelIdOf(channel),
       });
     }
-    steps.push({ kind: 'data', line: 'DATA', replyLines: 1, stationKey });
+    steps.push({ kind: 'data', line: 'DATA', replyLines, stationKey });
   }
   steps.push({ kind: 'end', line: 'END', replyLines: 0 });
   return steps;
@@ -678,6 +706,12 @@ const CRLF = [0x0d, 0x0a] as const;
  * of the station). Pipelined, the `DATA` is already on the wire. The ring has
  * never refused a `SELECT` — trap 4 — and anything unrequested that did arrive
  * would be dropped by the caller, which keeps only the channels it asked for.
+ *
+ * **Batch mode (SeisComP 3.x) has no replies to match.** After `BATCH` is
+ * acknowledged the block and `END` go out together and streaming begins; see
+ * `seedlinkHandshakeScript`. The command timer stops with the `OK`, so a
+ * server that then sends nothing is the controller's stall detection to catch,
+ * exactly as a silent station is.
  */
 export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLinkSession {
   const {
@@ -693,8 +727,9 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
   } = options;
 
   // The script and framer are chosen once HELLO says which protocol the server
-  // speaks (`seedlinkVersionFrom`); HELLO itself is step 0 of both scripts.
+  // speaks (`seedlinkDialectFrom`); HELLO itself is step 0 of every script.
   let script = seedlinkHandshakeScript(channels);
+  let dialect: SeedLinkDialect = 'v3.1';
   let framer: { push(chunk: Uint8Array): FramerResult } = new SeedLinkFramer();
   let helloFirstLine: string | null = null;
 
@@ -749,7 +784,7 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
       finish(new SeedLinkProtocolError('handshake script ended without END'));
       return;
     }
-    if (step.kind === 'hello' || step.kind === 'capabilities' || step.kind === 'slproto') {
+    if (step.kind === 'hello' || step.kind === 'capabilities' || step.kind === 'slproto' || step.kind === 'batch') {
       repliesOutstanding = step.replyLines;
       armTimer(step.line);
       socket.write(`${step.line}\r\n`);
@@ -757,6 +792,18 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
     }
     if (step.kind === 'end') {
       endHandshake(step.line);
+      return;
+    }
+    if (dialect === 'batch') {
+      // Nothing in the block is answered, END included, so it all goes in one
+      // write — the shape measured on every SeisComP server — and every channel
+      // counts as accepted. An absent one is caught by the inventory check.
+      clearTimer();
+      socket.write(script.slice(stepIndex).map((s) => `${s.line}\r\n`).join(''));
+      for (const s of script) {
+        if (s.kind === 'select') accepted.set(s.stationKey, [...(accepted.get(s.stationKey) ?? []), s.channelId]);
+      }
+      beginStreaming();
       return;
     }
 
@@ -788,15 +835,19 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
   }
 
   function endHandshake(endLine: string): void {
-    const acceptedIds = [...accepted.values()].flat();
-    if (acceptedIds.length === 0) {
+    if ([...accepted.values()].flat().length === 0) {
       finish(new SeedLinkProtocolError('no requested channel was accepted by the server'));
       return;
     }
     clearTimer();
     socket.write(`${endLine}\r\n`);
+    beginStreaming();
+  }
+
+  /** END is written; from here every byte is packets. */
+  function beginStreaming(): void {
     phase = 'streaming';
-    onStreaming?.(acceptedIds);
+    onStreaming?.([...accepted.values()].flat());
     // Anything already buffered past the last reply belongs to the stream.
     const leftover = lineBuffer;
     lineBuffer = new Uint8Array(0);
@@ -814,16 +865,21 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
           helloFirstLine = line;
           // Before the second reply line lands, so the next step sent is the
           // right protocol's. Steps after HELLO are rebuilt; HELLO is shared.
-          if (seedlinkVersionFrom(line) === 4) {
-            script = seedlinkHandshakeScript(channels, 4);
-            framer = new SeedLink4Framer();
-          }
+          dialect = seedlinkDialectFrom(line);
+          if (dialect !== 'v3.1') script = seedlinkHandshakeScript(channels, dialect);
+          if (dialect === 'v4') framer = new SeedLink4Framer();
         }
         break;
       case 'capabilities':
         if (refused) {
           // Trap 1: without 3.1 framing every packet would be discarded.
           finish(new SeedLinkProtocolError(`server refused CAPABILITIES SLPROTO:3.1: ${line}`));
+          return;
+        }
+        break;
+      case 'batch':
+        if (refused) {
+          finish(new SeedLinkProtocolError(`server refused BATCH: ${line}`));
           return;
         }
         break;

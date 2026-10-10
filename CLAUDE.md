@@ -4175,7 +4175,8 @@ Step 2 of the agreed order. GEOFON (GFZ Potsdam) is the server that adds
 Chile and the eastern Mediterranean, and it needed two pieces of protocol the
 app did not have.
 
-- **The session picks its protocol from `HELLO`** (`seedlinkVersionFrom`):
+- **The session picks its protocol from `HELLO`** (`seedlinkVersionFrom`, now
+  `seedlinkDialectFrom` — see the SeisComP section):
   3.1 wherever it is advertised (EarthScope and GeoNet advertise it, EarthScope
   alongside 4.0), 4 only when 4.0 is all there is (GEOFON's "HMB SeedLink
   v0.2"), and the 3.x default when nothing is advertised (SeisComP 3.x — step
@@ -4220,6 +4221,68 @@ app did not have.
   an acknowledgement and the GE DOI, both in the guide and `SOURCES.md`. The detector is graded only in Southern
   California on 100 Hz stations; a pin elsewhere runs on 20-50 Hz stations it
   was never graded on.
+
+## The SeisComP servers: five more, one handshake. 2026-10-09.
+
+Step 3 of the agreed order: BGR, ORFEUS, IPGP, the Croatian Seismological
+Survey and USP (Brazil). All five run SeisComP's own SeedLink, and one
+handshake covers them all. Eight servers now; the merged list holds **4,001
+stations** (3,201 EarthScope, 210 GeoNet, 170 GEOFON, 105 BGR, 99 IPGP, 89
+Croatia, 83 ORFEUS, 44 USP), built in 3.4 s in the running app.
+
+- **`seedlinkDialectFrom` picks the handshake from the first HELLO line**:
+  `v3.1` when `SLPROTO:3.1` is advertised, `v4` when only 4.0 is, and
+  **`batch` when nothing is**. SeisComP 3.x answers `SeedLink v3.3 (2024.020)`
+  with no capabilities at all. It replaced `seedlinkVersionFrom`, whose "no
+  capabilities → 3" default was a placeholder for exactly this. Two old test
+  fixtures used a bare `SeedLink v4.0` HELLO to stand in for RingServer; they
+  now use RingServer's real line, because "advertises nothing" now means
+  something.
+- **Batch mode means no replies.** These servers answer `ERROR` to
+  `CAPABILITIES`, and to a pipelined block they act on the first line and drop
+  the rest. After `BATCH` (answered `OK`) the server answers **nothing**: not
+  `STATION`, `SELECT` or `DATA`, and not `END`. So the block and `END` go in
+  one write and streaming starts at once. Measured on six servers: first packet
+  1.3-3.4 s after HELLO, and in the app streaming within ~0.6 s of connecting.
+  - **An unknown station or selector gets silence, not an `ERROR` line**,
+    checked on four servers. That matters, because a text line in the packet
+    stream would desynchronise the framer. It is trap 4 by another route, and
+    the inventory check already catches it.
+  - The command timer stops at `BATCH`'s `OK`. A server that then sends
+    nothing is left to the controller's stall detection, like a silent station.
+- **`stationServiceUrls` is a list now**, asked in parallel and merged, for
+  Croatia. The federated catalogue placed 52 of its 126 new stations; the
+  survey's own service (`http://` only, since its https does not answer) knows
+  42 CR stations the catalogue lacks. Together: 89. Listing
+  (`fetchMergedListing`) and gains (`fetchGainsByServer`) both ask every URL.
+  Duplicate rows are harmless: `buildStationCatalogue` keeps one per station,
+  and `velocityGainAt` takes the first epoch that covers the instant.
+- **Order in `SEEDLINK_SERVER_IDS` is priority.** The merge keeps the first
+  server's copy of a duplicated station, and BGR re-serves GE stations, so
+  GEOFON comes before it.
+- **The merged list no longer waits for the slowest server**
+  (`CATALOGUE_SERVER_WAIT_MS`, 10 s). IPGP's host stopped answering three
+  times during this work and came back in between. A connection to it hangs
+  ~21 s before the OS gives up, and `Promise.all` over eight servers meant the
+  picker *and a starting watch* had no stations at all for that long. A late
+  server is left out of that answer, keeps loading, and its result is cached for
+  the next ask. Found by the live check, not by a test. Healthy servers took
+  1.5-3.6 s for stream list plus coordinates.
+- **Verified in a built, isolated instance**: a Zagreb watch ran 85 stations,
+  nearest 11 km, 84 with gains, 46 delivering within 35 s. A Guadeloupe watch
+  ran 55, nearest 17 km, 45 with gains. Neither carries a reach limit; both
+  spots were unwatchable before. The shipped session code also streamed and
+  decoded records from BGR, ORFEUS, Croatia and USP directly.
+- **Licences** (full table in `SOURCES.md`): BGR and ORFEUS are EIDA nodes,
+  licensed per network and mostly CC BY 4.0, asking that each network be cited
+  by DOI. IPGP asks for its own sentence plus the network DOIs. Croatia
+  publishes no licence, but its restrictions were lifted at ORFEUS on the
+  owners' behalf. Brazil's BL network is declared open, with no DOI. Every
+  acknowledgement is in the waveform guide's source section and on
+  `SEEDLINK_SERVERS`.
+- **Left out on purpose:** ICGC Catalonia (11 new) and Évora (14 new, 5
+  placeable). Both take `BATCH`, so each is one entry if ever wanted. Replays
+  are still EarthScope-only.
 
 ## Non-negotiables
 

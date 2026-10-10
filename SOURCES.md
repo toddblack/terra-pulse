@@ -400,14 +400,32 @@ Rules of the road: <https://supermag.jhuapl.edu/info/?page=rulesoftheroad>
 | Redistributable | Moot: nothing is stored. Three records are test fixtures (`miniseed3.fixtures.ts`). |
 | Credential | None |
 
+**The SeisComP 3.x servers** (added 2026-10-09). All five run SeisComP's own
+SeedLink (`HELLO` answers `SeedLink v3.3`, advertising no protocol), take the
+`BATCH` handshake, list their streams over `INFO STREAMS`, and serve 512-byte
+miniSEED 2. Station metadata comes from IRIS's federated catalogue, with
+networks read from each server's own list. "New" counts stations with a
+vertical HH/BH/EH channel that none of EarthScope, GeoNet or GEOFON carries;
+"placed" those the metadata services could give coordinates for. None needs a
+credential (standing rule 2), and nothing is stored, so redistribution is moot.
+
+| Server | Host | New / placed | Licence | Acknowledgement carried (waveform guide + `SEEDLINK_SERVERS`) |
+|---|---|---|---|---|
+| **BGR** (EIDA node) | `eida.bgr.de:18000` | 113 / 105 — Germany: GR, TH, SX, BW | Per network; EIDA's norm is CC BY 4.0. GR: "not subject to any access restrictions" (fdsn.org/networks/detail/GR) | EIDA node at BGR, German Regional Seismic Network doi:10.25928/mbx6-hr74 |
+| **ORFEUS** (EIDA node) | `eida.orfeus-eu.org:18000` | 90 / 84 — NL, BE, and NA (Saba, Sint Eustatius) | Per network; NL "openly available" (fdsn.org). ORFEUS asks data suppliers be cited by network and DOI, and appreciates crediting ORFEUS/EIDA (<https://orfeus-eu.org/data/eida/acknowledgements>). Its note that EIDA data "cannot be reused in unaltered form for commercial use" sits oddly with CC BY; it does not bite here, since nothing is reused or redistributed. | ORFEUS Data Center (EIDA), KNMI doi:10.21944/e970fd34-23b9-3411-b366-e4f72877d2c5, Belgian Seismic Network doi:10.7914/SN/BE |
+| **IPGP** | `rtserver.ipgp.fr:18000` | 101 / 95 — GL, MQ, WI (Lesser Antilles), PF (Réunion), G (GEOSCOPE) | Not stated by IPGP; GEOSCOPE "freely and fully disseminated" (fdsn.org); RESIF redistributes these networks as CC BY 4.0. **The host timed out three times during the work and answered in between** — the app treats it as down when it does. | IPGP's own sentence (<https://datacenter.ipgp.fr/citations.php>): *"Data is made available through the IPGP Data Center (re3data.org, 2021)"*, doi:10.17616/R31NJN23, plus each network's DOI |
+| **Croatian Seismological Survey** | `fdsn.potres.hr:18000` | 126 / 89 — CR, plus HU, SL, ME, NN | None published. CR's restrictions were lifted at ORFEUS on the owners' behalf (ORFEUS forum), and the ring is public. Metadata from the federated catalogue **and** the survey's own `http://fdsn.potres.hr/fdsnws/station/1/query` (its https does not answer), which knows 42 CR stations the catalogue lacks. | Croatian Seismograph Network, University of Zagreb, doi:10.7914/SN/CR |
+| **USP** (Brazil) | `seisrequest.iag.usp.br:18000` | 45 / 44 — BL, BR | BL: "open and accessible" (fdsn.org); no DOI and no published citation | Brazilian Seismographic Network (RSBR) via Centro de Sismologia da USP; Bianchi et al. (2018), *SRL* |
+
 - **Why GeoNet, and what else was surveyed.** EarthScope carries almost
   nothing in New Zealand; with GeoNet, M5+ quakes of the last two years within
   the detector's reach there went from 1 of 21 to 10 of 21. Ten public SeedLink
   servers answered a survey on 2026-10-08 (GEOFON, GeoNet, Croatia, BGR,
   ORFEUS, IPGP, AusPass, ICGC, Brazil, Portugal) with ~1,500 stations
-  EarthScope does not carry. **GEOFON** followed the same day (table above).
-  The SeisComP 3.x servers (BGR, ORFEUS, IPGP, Croatia, Brazil) are next and
-  need a `BATCH` handshake. No open real-time source was
+  EarthScope does not carry. **GEOFON** followed the same day and the five
+  SeisComP servers the next (tables above). Left out: AusPass (mostly
+  duplicates), ICGC Catalonia (11 new) and Évora (14 new, 5 placeable) — both
+  take `BATCH` and would be one entry each. No open real-time source was
   found for Indonesia (GEOFON's open GE stations include none there) or Japan
   (Hi-net needs an account, so standing rule 2 excludes it).
 

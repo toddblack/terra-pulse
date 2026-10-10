@@ -1122,11 +1122,14 @@ watch").
    quake's coda (probably buried). Details in `CLAUDE.md`.
 3. ~~**Running live**~~ — the "Watch here" pin above, 2026-10-08.
 
-**More servers — started 2026-10-08.** EarthScope's ring left most of the
+**More servers — 2026-10-08/09.** EarthScope's ring left most of the
 world unwatchable. GeoNet New Zealand is now a second server (NZ M5+ in reach
 1 of 21 → 10 of 21), and GEOFON a third (SeedLink 4 + miniSEED 3; northern
 Chile and the Greek islands become watchable — Antofagasta, Santorini,
-Kythira). The SeisComP 3.x servers follow (`BATCH` handshake). Indonesia and Japan have no
+Kythira). Five SeisComP 3.x servers followed (`BATCH` handshake): BGR,
+ORFEUS, IPGP, Croatia and Brazil, ~420 more stations — Zagreb and Guadeloupe
+are now fully in the detector's reach. Eight servers, 4,001 stations in the
+merged list. Indonesia and Japan have no
 open real-time source and stay unwatchable, and neither do Venezuela (all 48
 national stations restricted) or most of Colombia. Details in `CLAUDE.md`.
 

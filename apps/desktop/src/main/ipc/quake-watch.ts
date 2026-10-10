@@ -114,8 +114,13 @@ async function fetchGainsByServer(
     const id = serverOf(channel);
     groups.set(id, [...(groups.get(id) ?? []), channel]);
   }
+  // Every service a server lists, since each may know stations the other does
+  // not (Croatia); a channel both know gets two rows, and the first that covers
+  // the instant is the one `velocityGainAt` takes.
   const results = await Promise.all(
-    [...groups.entries()].map(([id, channels]) => fetchEpochs(channels, startMs, endMs, SEEDLINK_SERVERS[id].stationServiceUrl)),
+    [...groups.entries()].flatMap(([id, channels]) =>
+      SEEDLINK_SERVERS[id].stationServiceUrls.map((url) => fetchEpochs(channels, startMs, endMs, url)),
+    ),
   );
   if (results.every((rows) => rows === null)) return null;
   return results.flatMap((rows) => rows ?? []);

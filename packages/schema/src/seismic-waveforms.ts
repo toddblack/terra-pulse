@@ -46,12 +46,27 @@ export interface WaveformChannel {
  * carries the US and the sparse global networks; GeoNet New Zealand's own ring
  * adds ~220 usable stations there, where EarthScope has almost none — measured,
  * M5+ quakes within the detector's reach in New Zealand went from 1 of 21 to 10.
- * Hosts, station services and attribution live in `@terra-pulse/ingest`'s
- * `SEEDLINK_SERVERS`; only the id crosses the bridge.
+ * GEOFON adds Chile and the eastern Mediterranean, and the SeisComP servers
+ * (2026-10-09) the Caribbean, Germany and the Low Countries, the Balkans and
+ * Brazil. Hosts, station services and attribution live in
+ * `@terra-pulse/ingest`'s `SEEDLINK_SERVERS`; only the id crosses the bridge.
  */
-export type SeedLinkServerId = 'earthscope' | 'geonet' | 'geofon';
+export type SeedLinkServerId = 'earthscope' | 'geonet' | 'geofon' | 'bgr' | 'orfeus' | 'ipgp' | 'croatia' | 'usp';
 
-export const SEEDLINK_SERVER_IDS: readonly SeedLinkServerId[] = ['earthscope', 'geonet', 'geofon'];
+/**
+ * In priority order: a station two servers carry is kept from the first. GEOFON
+ * precedes BGR, which re-serves some GE stations.
+ */
+export const SEEDLINK_SERVER_IDS: readonly SeedLinkServerId[] = [
+  'earthscope',
+  'geonet',
+  'geofon',
+  'bgr',
+  'orfeus',
+  'ipgp',
+  'croatia',
+  'usp',
+];
 
 /** The server a channel streams from — EarthScope when none is named. */
 export function serverOf(channel: Pick<WaveformChannel, 'server'>): SeedLinkServerId {

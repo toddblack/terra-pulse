@@ -12,8 +12,8 @@ import {
   fetchSeedLinkInventory,
   parseInfoStreams,
   parseStreamIds,
+  seedlinkDialectFrom,
   seedlinkHandshakeScript,
-  seedlinkVersionFrom,
   sourceIdOf,
 } from './seedlink';
 import { MS3_FIXTURES } from './miniseed3.fixtures';
@@ -280,10 +280,13 @@ function startSession(channels: WaveformChannel[]) {
   return { socket, session, records, rejected, streaming, ended };
 }
 
+/** EarthScope's first HELLO line, which is what selects the 3.1 handshake. */
+const RINGSERVER_HELLO = 'SeedLink v4.0 (RingServer/4.5.6) :: SLPROTO:4.0 SLPROTO:3.1 CAP WS:13';
+
 /** Answers HELLO and CAPABILITIES the way RingServer 4.5.6 does. */
 function greet(socket: FakeSocket): void {
   socket.connect();
-  socket.reply('SeedLink v4.0 (RingServer/4.5.6) :: SLPROTO:4.0 SLPROTO:3.1 CAP WS:13', 'EarthScope Ring Server');
+  socket.reply(RINGSERVER_HELLO, 'EarthScope Ring Server');
   socket.reply('OK');
 }
 
@@ -300,7 +303,7 @@ describe('createSeedLinkSession', () => {
     expect(socket.writes).toEqual([]);
     socket.connect();
     expect(socket.writes).toEqual(['HELLO']);
-    socket.reply('SeedLink v4.0');
+    socket.reply(RINGSERVER_HELLO);
     expect(socket.writes).toEqual(['HELLO']); // HELLO answers with two lines
     socket.reply('EarthScope Ring Server');
     expect(socket.writes).toEqual(['HELLO', 'CAPABILITIES SLPROTO:3.1']);
@@ -397,7 +400,7 @@ describe('createSeedLinkSession', () => {
   it('ends rather than streaming v4 framing when CAPABILITIES is refused', () => {
     const { socket, ended } = startSession([ADO]);
     socket.connect();
-    socket.reply('SeedLink v4.0', 'EarthScope Ring Server');
+    socket.reply(RINGSERVER_HELLO, 'EarthScope Ring Server');
     socket.reply('ERROR');
     expect(ended[0]?.message).toMatch(/CAPABILITIES/);
     expect(socket.writes.some((line) => line.startsWith('STATION'))).toBe(false);
@@ -576,19 +579,22 @@ function sePacket(payload: Uint8Array, format = '3', subformat = 'D', id = 'GE_S
 }
 
 const GEOFON_HELLO = 'SeedLink v4.0 [HMB SeedLink v0.2 (2026.110)] :: SLPROTO:4.0';
+const SEISCOMP_HELLO = 'SeedLink v3.3 (2024.020)';
 
-describe('seedlinkVersionFrom', () => {
-  it('prefers 3.1 wherever it is offered, uses 4 only when it is all there is, and defaults to 3', () => {
-    expect(seedlinkVersionFrom('SeedLink v4.0 (RingServer/4.5.6) :: SLPROTO:4.0 SLPROTO:3.1 CAP WS:13')).toBe(3);
-    expect(seedlinkVersionFrom('SeedLink v3.1 (2020.075 RingServer) :: SLPROTO:3.1 CAP EXTREPLY')).toBe(3);
-    expect(seedlinkVersionFrom(GEOFON_HELLO)).toBe(4);
-    expect(seedlinkVersionFrom('SeedLink v3.3 (2024.020)')).toBe(3);
+describe('seedlinkDialectFrom', () => {
+  it('prefers 3.1 wherever it is offered, uses 4 only when it is all there is, and batch when nothing is advertised', () => {
+    expect(seedlinkDialectFrom(RINGSERVER_HELLO)).toBe('v3.1');
+    expect(seedlinkDialectFrom('SeedLink v3.1 (2020.075 RingServer) :: SLPROTO:3.1 CAP EXTREPLY')).toBe('v3.1');
+    expect(seedlinkDialectFrom(GEOFON_HELLO)).toBe('v4');
+    // SeisComP 3.x, as BGR, ORFEUS, Croatia and Brazil answer; Évora runs v3.2.
+    expect(seedlinkDialectFrom(SEISCOMP_HELLO)).toBe('batch');
+    expect(seedlinkDialectFrom('SeedLink v3.2 (2014.071)')).toBe('batch');
   });
 });
 
 describe('the SeedLink 4 handshake script', () => {
   it('opens with SLPROTO 4.0, names stations NET_STA, and selects LOC_B_S_SS with a blank location left blank', () => {
-    expect(seedlinkHandshakeScript([ADO, AFI_10], 4).map((s) => s.line)).toEqual([
+    expect(seedlinkHandshakeScript([ADO, AFI_10], 'v4').map((s) => s.line)).toEqual([
       'HELLO',
       'SLPROTO 4.0',
       'STATION CI_ADO',
@@ -663,6 +669,66 @@ describe('a session against a SeedLink 4 server', () => {
     socket.reply(GEOFON_HELLO, 'GEOFON');
     socket.reply('ERROR UNSUPPORTED');
     expect(ended[0]?.message).toMatch(/SLPROTO 4\.0/);
+    expect(socket.writes.some((line) => line.startsWith('STATION'))).toBe(false);
+  });
+});
+
+describe('a session against a SeisComP 3.x server (batch mode)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('sends BATCH instead of CAPABILITIES, then the whole block and END in one write, and streams without waiting for replies', () => {
+    const { socket, records, streaming } = startSession([AFI_10, AFI_00, ADO]);
+    socket.connect();
+    socket.reply(SEISCOMP_HELLO, 'SZGRF');
+    expect(socket.calls.at(-1)).toEqual(['BATCH']);
+    socket.reply('OK');
+    // The SeisComP servers act on the first line of a pipelined block and drop
+    // the rest — unless BATCH came first, after which nothing is answered.
+    expect(socket.calls.at(-1)).toEqual([
+      'STATION AFI IU',
+      'SELECT 10BHZ',
+      'SELECT 00BHZ',
+      'DATA',
+      'STATION ADO CI',
+      'SELECT HHZ',
+      'DATA',
+      'END',
+    ]);
+    expect(socket.writes).not.toContain('CAPABILITIES SLPROTO:3.1');
+    expect(streaming).toEqual([['IU_AFI_10_BHZ', 'IU_AFI_00_BHZ', 'CI_ADO__HHZ']]);
+
+    socket.send(packet(1, 0x11));
+    expect(records).toHaveLength(1);
+  });
+
+  it('keeps packets that arrive in the same chunk as the BATCH reply', () => {
+    const { socket, records } = startSession([ADO]);
+    socket.connect();
+    socket.reply(SEISCOMP_HELLO, 'SZGRF');
+    socket.send(concat(new TextEncoder().encode('OK\r\n'), packet(1, 0x11)));
+    expect(records).toHaveLength(1);
+  });
+
+  it('does not time out the silence after the block — there is nothing to wait for', () => {
+    const { socket, ended } = startSession([ADO]);
+    socket.connect();
+    socket.reply(SEISCOMP_HELLO, 'SZGRF');
+    socket.reply('OK');
+    vi.advanceTimersByTime(SEEDLINK_COMMAND_TIMEOUT_MS * 3);
+    expect(ended).toEqual([]);
+  });
+
+  it('ends when BATCH is refused, before any station is sent', () => {
+    const { socket, ended } = startSession([ADO]);
+    socket.connect();
+    socket.reply(SEISCOMP_HELLO, 'SZGRF');
+    socket.reply('ERROR');
+    expect(ended[0]?.message).toMatch(/BATCH/);
     expect(socket.writes.some((line) => line.startsWith('STATION'))).toBe(false);
   });
 });
