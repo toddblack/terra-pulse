@@ -4509,6 +4509,41 @@ and turns, the chord is drawn, and the rings spread from where it lands.
   always did (38% of a pale map over black space). With the globe now the
   subject of the view it is more noticeable; the user has not seen it yet.
 
+## Dependency security updates. 2026-10-11.
+
+Prompted by the user finding 46 open Dependabot alerts on GitHub. All 46 are
+closed; the fix was version ranges and `pnpm-lock.yaml` only.
+
+- **46 alerts were nine packages, and two of them ship.** Electron (43.2.0 →
+  43.7.9) and DOMPurify, which Cesium bundles into the renderer. The other
+  seven are under eslint, vitest, vite and electron-builder and never reach
+  the installer. Sort an alert list by "does it ship" before reading
+  severities.
+- **Dependabot marks nearly everything `runtime`**, including electron-builder's
+  own dependencies. Its scope column cannot answer that question here;
+  `pnpm audit --json` prints the dependency path, which can.
+- **The Electron alerts were not reachable.** They concern `<webview>`,
+  sandboxed windows and sandboxed preloads. The app uses none of them and
+  denies `window.open` and navigation. Updated anyway. Still the 43 line: 44
+  is out, and a major bump is its own decision.
+- **The undici in the alerts is not the app's.** It belongs to
+  electron-builder and to Electron's downloader. The app's `fetch` uses the
+  copy built into Electron, which moves only with Electron.
+- **Transitive packages: `pnpm update -r --depth Infinity <names>`.** It
+  refreshes just those lockfile entries. Overrides would have pinned them and
+  gone stale.
+- **A running dev app holds `electron.exe` open**, so an Electron bump cannot
+  be installed beside it on Windows. It was verified in a `git worktree` with
+  its own `node_modules` (copy in the gitignored `data/*.json` files or the
+  renderer build fails), launched with its own `--user-data-dir`. Removing
+  that worktree then fails on Windows path length; mirroring an empty folder
+  over it with `robocopy /MIR` clears it.
+- **One advisory stays open: `sprintf-js` 1.1.3**, moderate, no patched
+  release. Four levels under electron-builder, build-time only. GitHub listed
+  it as alert #49 only after the others closed.
+- There is no `.github/dependabot.yml`, so these arrive as alerts, never as
+  pull requests. Offered to the user; not answered.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.
