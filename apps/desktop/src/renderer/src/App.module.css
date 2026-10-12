@@ -55,20 +55,6 @@
 }
 
 /*
- * The probe toggle and the reset-view button, side by side.
- *
- * `flex: none` because the column is bounded: something has to give when it
- * runs short, and it is the archive rather than a one-line row of buttons,
- * which would simply clip.
- */
-.globeControls {
-  display: flex;
-  flex: none;
-  gap: 0.5rem;
-  align-items: stretch;
-}
-
-/*
  * The top-right stack: the event list, and the legend pinned to the bottom.
  *
  * A column rather than two independently-positioned panels, because the legend

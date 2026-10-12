@@ -1612,12 +1612,29 @@ server-side proxying of all third-party API calls.
 ### Phase 6 — Optimization & Polish
 - Profile the engine, identify hot paths
 - C++/Rust Monte Carlo kernel with validation harness
-- Export: figures, CSV, reproducible analysis configs
+- Export: figures, CSV, reproducible analysis configs — **shelved 2026-10-11,
+  the user's call.** Nobody has asked for it; build it when someone does. The
+  shape proposed that day, so a later start is not from nothing:
+  - An **Export** button on each hypothesis tab in Analyze, enabled once that
+    tab has a result. It asks for a folder and writes a subfolder such as
+    `terra-pulse-H4c-2026-10-11`.
+  - `tests.csv` (one row per test, every number in the results table),
+    `null-distributions.csv` (the histogram behind each null chart), and
+    `run.json` (registered parameters, seed, engine and contract versions, and
+    a SHA-256 of the input data, so a later run can be shown to have used the
+    same inputs).
+  - One standalone SVG per test: axes, labels, light background. The on-screen
+    charts have no axes, so this is new chart design, not a copy.
+  - No bulk catalogue data in the export (`SOURCES.md` rule 1).
+  - Main does not keep a run's request or result today; it would need to, per
+    hypothesis, for the session. Export stays inside Analyze (non-negotiable
+    #1): it carries p-values.
 - Packaging and code signing
 - ~~**Home location, asked on first launch**~~ — **dropped 2026-10-11, and the
   reset button below built.** The watch pin (§5.13) took over the prompt's
   job: it is where the alert is measured to, and the user sets it when they
-  want it. What shipped instead: a reset-view button beside the probe toggle,
+  want it. What shipped instead: a home button in the mode switch, between
+  Explore and Analyze (first placed beside the probe toggle, and hard to find),
   and a starting view that faces the reader's own longitude (from the system
   clock's UTC offset) instead of North America for everyone. Details in
   `CLAUDE.md` ("Reset view"). The original item, for the record:

@@ -4334,10 +4334,21 @@ it was written before the watch pin existed, and the pin now does its job (it
 is where the alert is measured to). What was left is the camera reset the
 `homeButton: false` note has always said would be wanted.
 
-- **A globe icon beside "Probe a location"** (`ResetViewButton`) flies back to
-  the view the app opened on: whole globe, level. A destination with no
-  orientation also undoes a tilt, which is harder to fix by hand than a zoom.
-  It moves the camera only.
+- **A home button in the mode switch, between Explore and Analyze**
+  (`ResetViewButton`) flies back to the view the app opened on: whole globe,
+  level. A destination with no orientation also undoes a tilt, which is harder
+  to fix by hand than a zoom. It moves the camera only.
+  - **It shipped first as a globe icon beside "Probe a location", and the user
+    took a minute to find it.** A small unlabelled icon at the foot of a column
+    of controls is not where anyone looks for the way back; top-centre is. His
+    words were "a home button", so it is a house now, not a globe.
+  - **It is not a mode, so it is not in the tablist.** The tablist is
+    `display: contents` and CSS `order` puts the button between the two tabs.
+    Keyboard order is both modes, then home.
+  - **`.switch button` became `.modes > button`.** Left as it was, that rule
+    (0,1,1) would have out-specified the home button's own class and restyled
+    it as a mode: the trap this file already records for `.active`.
+  - It works in Analyze too, where the globe shows either side of the panel.
 - **The user's question was where "the starting position" is for someone
   else.** Until now it was Cesium's default, over North America for everyone.
   It now faces **the reader's own longitude, from the system clock's UTC
@@ -4355,11 +4366,8 @@ is where the alert is measured to). What was left is the camera reset the
 - **Launch and reset are one `Cartesian3`**, fixed when the viewer is created.
   Verified in a built instance: after zooming in and pressing reset, the
   screenshot is **byte-identical** to the launch screenshot.
-- **An icon, not a word**, because `.leftColumn` is as wide as its widest
-  child. Measured: the column is 239 px with the probe toggle idle or armed,
-  the same as before the button existed.
-- The probe toggle is `flex: 1` inside a new `.globeControls` row now; the
-  row carries the `flex: none` the toggle used to.
+- The left column is back exactly as it was before the button: the
+  `.globeControls` row and the probe toggle's `flex: 1` are gone.
 
 ## Non-negotiables
 
