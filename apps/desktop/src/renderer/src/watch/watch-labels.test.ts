@@ -49,6 +49,13 @@ describe('watchDetail', () => {
     expect(detail).toMatch(/M4\.5\+ and predicted to be felt/);
     expect(watchDetail({ ...WATCHING, limit: 'too-few-stations' })).toMatch(/cannot declare anything/);
   });
+
+  it('says where a named pin is, and does not repeat a pin already named by its coordinates', () => {
+    // A fault's name says what was clicked; the trace may be 500 km long.
+    expect(watchDetail(WATCHING)).toMatch(/^Pin at 34\.18°N 118\.31°W\./);
+    const unnamed = { ...WATCHING, pin: { ...PIN, label: '34.18°N 118.31°W' } };
+    expect(watchDetail(unnamed)).not.toMatch(/Pin at/);
+  });
 });
 
 describe('alertWords', () => {

@@ -13,10 +13,28 @@
   z-index: 10;
 }
 
-/* No `background` here, deliberately — see `.active` below. Every button gets
+/* The tablist adds no box of its own: its tabs lay out as children of the
+   pill, so the home button — a sibling of the tablist, not a tab — can sit
+   between them. `order` does that: first mode, home, then the rest. */
+.modes {
+  display: contents;
+}
+
+.modes > :not(:first-child) {
+  order: 2;
+}
+
+.switch > button {
+  order: 1;
+}
+
+/* No `background` here, deliberately — see `.active` below. Every tab gets
    its background from its state class instead, so the UA default is still
-   overridden. */
-.switch button {
+   overridden.
+
+   Scoped to the tabs, not to every button in the pill: `.switch button` would
+   out-specify the home button's own class and restyle it as a mode. */
+.modes > button {
   padding: 0.35rem 0.9rem;
   border: none;
   border-radius: 0.35rem;

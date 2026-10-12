@@ -1,4 +1,5 @@
 import { WAVEFORM_MAX_CHANNELS, bearingDeg, haversineKm, type WaveformStation } from '@terra-pulse/schema';
+import { plateBoundaryLabel } from '../layers/plate-association';
 
 /**
  * "Click a spot, get its stations" — the rule that turns a point into a set of
@@ -158,6 +159,26 @@ export function pickStationsNear(
   }
 
   return chosen.sort((a, b) => a.distanceKm - b.distanceKm);
+}
+
+/**
+ * What to call a pick made on a drawn line: the fault's own name, or the plate
+ * pair. Null when there is nothing better than the coordinates — bare globe,
+ * or one of the 55% of GEM traces that carry no name.
+ *
+ * The name is GEM's as given (`San Andreas (Mojave N)`, `Nagai`), the same
+ * string the location panel heads itself with, so the pick and the panel beside
+ * it cannot call one trace two things. **It names what was clicked, not where:**
+ * a trace can run for hundreds of kilometres, and the pick is still the one
+ * point under the pointer. The watch chip's tooltip prints the coordinates for
+ * that reason.
+ */
+export function pickLabelFor(
+  feature: { kind: 'fault'; fault: { n?: string } } | { kind: 'boundary'; pair: string } | null | undefined,
+): string | null {
+  if (feature == null) return null;
+  if (feature.kind === 'fault') return feature.fault.n ?? null;
+  return `${plateBoundaryLabel(feature.pair)} boundary`;
 }
 
 /** `47.61°N 122.33°W` — how an unlabelled pick is named. */

@@ -259,3 +259,44 @@ describe('timeline row visibility', () => {
     }
   });
 });
+
+describe('centring on a point', () => {
+  it('asks again for the same place, since the reader may have rotated away', () => {
+    // The nonce is the whole mechanism: with the same coordinates and no
+    // nonce, a second press on the watch chip would change nothing and the
+    // camera effect would not re-run.
+    useGlobeStore.setState({ pointFocusRequest: null });
+    useGlobeStore.getState().requestPointFocus(PARKFIELD);
+    const first = useGlobeStore.getState().pointFocusRequest;
+    useGlobeStore.getState().requestPointFocus(PARKFIELD);
+    const second = useGlobeStore.getState().pointFocusRequest;
+    expect(first).toMatchObject(PARKFIELD);
+    expect(second).toMatchObject(PARKFIELD);
+    expect(second?.nonce).not.toBe(first?.nonce);
+  });
+
+  it('moves the camera only: the dock and the open panel stay as they are', () => {
+    useGlobeStore.getState().selectLocation(clickedFault);
+    const { dock, location } = useGlobeStore.getState();
+    useGlobeStore.getState().requestPointFocus(PARKFIELD);
+    expect(useGlobeStore.getState().dock).toBe(dock);
+    expect(useGlobeStore.getState().location).toBe(location);
+  });
+});
+
+describe('resetting the view', () => {
+  it('counts every press, so a second one flies home again', () => {
+    useGlobeStore.setState({ homeViewRequest: 0 });
+    useGlobeStore.getState().requestHomeView();
+    useGlobeStore.getState().requestHomeView();
+    expect(useGlobeStore.getState().homeViewRequest).toBe(2);
+  });
+
+  it('moves the camera only: what is selected stays selected', () => {
+    useGlobeStore.getState().selectLocation(clickedFault);
+    const { location, dock } = useGlobeStore.getState();
+    useGlobeStore.getState().requestHomeView();
+    expect(useGlobeStore.getState().location).toBe(location);
+    expect(useGlobeStore.getState().dock).toBe(dock);
+  });
+});

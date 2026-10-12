@@ -1,5 +1,5 @@
 import { bearingDeg, intensityNumeral, type QuakeWatchAlert, type QuakeWatchStatus } from '@terra-pulse/schema';
-import { compassPoint } from '../waveforms/station-pick';
+import { compassPoint, formatPickCoordinates } from '../waveforms/station-pick';
 
 /**
  * Words for the live watch, kept apart from the components so every case is a
@@ -51,6 +51,13 @@ export function watchChipLabel(status: QuakeWatchStatus): string {
 export function watchDetail(status: QuakeWatchStatus): string {
   if (status.state === 'off') return '';
   const lines: string[] = [];
+  // A pin named for a fault or a quake says what was clicked, not where — a
+  // trace can run for hundreds of kilometres. A pin named by its coordinates
+  // has already said it.
+  if (status.pin !== null) {
+    const coordinates = formatPickCoordinates(status.pin);
+    if (status.pin.label !== coordinates) lines.push(`Pin at ${coordinates}.`);
+  }
   if (status.state === 'unavailable') lines.push(`Not watching: ${status.reason ?? 'unavailable'}.`);
   if (status.state === 'watching') {
     lines.push(

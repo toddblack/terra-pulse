@@ -1,19 +1,18 @@
 import * as Cesium from 'cesium';
-import type {
-  AntipodalEvent,
-  BackdropTone,
-  EarthquakeEvent,
-  GlobeLayer,
-} from '@terra-pulse/schema';
+import type { AntipodalEvent, EarthquakeEvent, GlobeLayer } from '@terra-pulse/schema';
 import { ANTIPODAL_RINGS_KM } from '@terra-pulse/schema';
-import { antipodeOf, chordProgress } from './antipode';
+import { antipodeOf } from './antipode';
+import { antipodeMoment, ringRadiusKm } from './antipode-sequence';
+import { circlePoints } from '../waveforms/replay-playback';
 
 /**
  * The antipode chord — PROJECT_PLAN §5.3.
  *
  * A straight line through the Earth's interior from a selected event to the
  * point diametrically opposite, with the globe made translucent so the line is
- * visible rather than buried.
+ * visible rather than buried. When the line lands, the distance rings spread
+ * out from that point like a ripple, and any event the catalogue recorded
+ * there appears as the ripple reaches it.
  *
  * Built as a `GlobeLayer` like everything else, but **not registered** in the
  * layer registry: it isn't a thing you switch on in the layer panel, it is a
@@ -21,13 +20,18 @@ import { antipodeOf, chordProgress } from './antipode';
  * mount/unmount discipline non-negotiable #5 requires — and this layer mutates
  * global scene state, so leaking an unmount would leave the whole globe
  * see-through.
+ *
+ * **Built once per entry into the mode; nothing is rebuilt as it plays.** The
+ * hits arrive from an async lookup after the layer is up, and they used to be
+ * a constructor argument — so their arrival tore the layer down and restarted
+ * the chord. That was a blink when the chord took 900 ms under a still camera.
+ * With a camera move and a ripple it would restart the whole sequence, so
+ * hits are pushed in through `setHits` instead: built set stable, the rule the
+ * rest of the globe follows. The timing lives in `antipode-sequence.ts`.
  */
 
 /** How see-through the globe goes. Enough to read the chord, not so much that the planet stops being a planet. */
 const GLOBE_FRONT_FACE_ALPHA = 0.38;
-
-/** Long enough to read as travel, short enough not to be waiting on it. */
-const CHORD_DURATION_MS = 900;
 
 /**
  * Red, for the same reason the recency stroke is: it means *look at this*.
@@ -51,20 +55,32 @@ export function antipodeEntityId(eventId: string): string {
   return `${eventId}::antipode`;
 }
 
+/** The layer, plus the one thing pushed into it after it is built. */
+export type AntipodeLayer = GlobeLayer & {
+  /** What the catalogue recorded near the antipode, once the lookup lands. */
+  setHits(hits: readonly AntipodalEvent[]): void;
+};
+
+const MAX_RING_KM = Math.max(...ANTIPODAL_RINGS_KM);
+
 export function createAntipodeLayer(
-  event: EarthquakeEvent,
-  _tone: BackdropTone,
+  event: Pick<EarthquakeEvent, 'id' | 'latitude' | 'longitude'>,
   /**
-   * What the catalogue recorded near this antipode inside H5's window, or an
-   * empty list. Passed in rather than fetched here so the layer stays pure
-   * Cesium and the IPC lives with the rest of the renderer's data loading.
+   * What the catalogue recorded near this antipode inside H5's window, if it
+   * is already known. Normally it is not, and arrives through `setHits`.
    */
-  hits: readonly AntipodalEvent[] = [],
+  initialHits: readonly AntipodalEvent[] = [],
   now: () => number = () => performance.now(),
-): GlobeLayer {
+  /**
+   * How long the chord waits before it starts — the camera's flight, when
+   * there is one, so the line is not drawn while the view is still turning.
+   */
+  { flyMs = 0 }: { flyMs?: number } = {},
+): AntipodeLayer {
   let viewer: Cesium.Viewer | null = null;
   let dataSource: Cesium.CustomDataSource | null = null;
   let visible = true;
+  let hitEntityIds: string[] = [];
 
   /** Restored on unmount — the globe is shared, so this must be given back. */
   let previousTranslucencyEnabled = false;
@@ -76,6 +92,7 @@ export function createAntipodeLayer(
 
   const startedAt = now();
   const chordColor = Cesium.Color.fromCssColorString(CHORD_COLOR);
+  const moment = () => antipodeMoment(now() - startedAt, MAX_RING_KM, flyMs);
 
   /**
    * The chord's far end, interpolated so the line grows out from the event.
@@ -85,9 +102,77 @@ export function createAntipodeLayer(
    * real path rather than an arc over the surface.
    */
   function chordPositions(): Cesium.Cartesian3[] {
-    const progress = chordProgress(now() - startedAt, CHORD_DURATION_MS);
-    const tip = Cesium.Cartesian3.lerp(origin, antipode, progress, new Cesium.Cartesian3());
+    const tip = Cesium.Cartesian3.lerp(origin, antipode, moment().chord, new Cesium.Cartesian3());
     return [origin, tip];
+  }
+
+  /**
+   * One ring's outline, following the front until it reaches its own radius.
+   *
+   * Cached on the rounded radius, because the callback runs every frame: once
+   * the ripple has passed, a ring is the same array for the rest of the mode.
+   */
+  function ringPositions(ringKm: number): Cesium.CallbackProperty {
+    let cachedKm = -1;
+    let cached: Cesium.Cartesian3[] = [];
+    return new Cesium.CallbackProperty(() => {
+      const radius = ringRadiusKm(ringKm, moment().ringFrontKm);
+      if (radius === null) return [];
+      const rounded = Math.max(1, Math.round(radius));
+      if (rounded !== cachedKm) {
+        cachedKm = rounded;
+        cached = circlePoints(target, rounded, 96).map(([lon, lat]) => Cesium.Cartesian3.fromDegrees(lon, lat));
+      }
+      return cached;
+    }, false);
+  }
+
+  /** A hit shows once the ripple has reached it — nearest first, as it spreads. */
+  function addHits(source: Cesium.CustomDataSource, hits: readonly AntipodalEvent[]): void {
+    for (const id of hitEntityIds) source.entities.removeById(id);
+    hitEntityIds = [];
+
+    /**
+     * Any events the catalogue recorded there inside the window.
+     *
+     * Marked, not interpreted. Measured across 714 declustered M7+ triggers,
+     * these appear at 0.91× the rate the antipodes' own background predicts —
+     * i.e. exactly chance — so a marker here means "one happened", never "one
+     * was triggered". The panel carries the background rate that says so.
+     */
+    for (const hit of hits) {
+      const reached = new Cesium.CallbackProperty(() => {
+        const front = moment().ringFrontKm;
+        // Past the widest ring the front never arrives; those show once it
+        // has gone as far as it goes.
+        return front !== null && front >= Math.min(hit.distanceKm, MAX_RING_KM);
+      }, false);
+      const id = `${antipodeEntityId(event.id)}::hit-${hit.event.id}`;
+      hitEntityIds.push(id);
+      source.entities.add({
+        id,
+        position: Cesium.Cartesian3.fromDegrees(hit.event.longitude, hit.event.latitude),
+        point: {
+          pixelSize: 12,
+          color: Cesium.Color.TRANSPARENT,
+          outlineColor: HIT_COLOR,
+          outlineWidth: 2,
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          show: reached,
+        },
+        label: {
+          text: `M${hit.event.magnitude.toFixed(1)} +${hit.delayHours.toFixed(1)}h`,
+          font: '11px sans-serif',
+          fillColor: HIT_COLOR,
+          outlineColor: Cesium.Color.BLACK,
+          outlineWidth: 3,
+          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+          pixelOffset: new Cesium.Cartesian2(0, -18),
+          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          show: reached,
+        },
+      });
+    }
   }
 
   function build(target_: Cesium.CustomDataSource): void {
@@ -115,10 +200,7 @@ export function createAntipodeLayer(
 
     // The far end, revealed only once the chord reaches it — a marker sitting
     // there from the first frame would give away the ending.
-    const arrived = new Cesium.CallbackProperty(
-      () => chordProgress(now() - startedAt, CHORD_DURATION_MS) >= 1,
-      false,
-    );
+    const arrived = new Cesium.CallbackProperty(() => moment().chord >= 1, false);
 
     target_.entities.add({
       id: `${antipodeEntityId(event.id)}::point`,
@@ -128,6 +210,10 @@ export function createAntipodeLayer(
         color: Cesium.Color.TRANSPARENT,
         outlineColor: chordColor,
         outlineWidth: 2,
+        // The camera turns 45°, which leaves the antipode on the far side of
+        // the planet: without this the marker is hidden by the globe it is
+        // being shown through.
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
         show: arrived,
       },
     });
@@ -138,64 +224,34 @@ export function createAntipodeLayer(
      * **Readability only. These carry no statistical meaning**, and §5.3 is
      * emphatic about it: the registered H5 test uses the whole distance
      * distribution precisely so that no radius has to be guessed. They exist so
-     * a human can see "that hit was inside 250 km" without measuring.
+     * a human can see "that hit was inside 250 km" without measuring. The
+     * ripple that draws them is presentation too — it is not a wave, and its
+     * speed means nothing.
      *
-     * Drawn as ellipses rather than polylines so they follow the curve of the
-     * globe rather than cutting a chord across it — a 1000 km circle is wide
-     * enough for the difference to show at grazing angles.
+     * **Polylines through points on the sphere, not `ellipse` outlines.** An
+     * ellipse outline is one pixel wide on most GPUs and has no
+     * `depthFailMaterial` — and the camera now ends 45° from the event, so the
+     * rings sit on the far side and would be hidden by the planet. The same
+     * choice the replay's P and S rings made.
      */
     for (const radiusKm of ANTIPODAL_RINGS_KM) {
+      // Fainter as they widen, so the innermost reads as the tightest claim
+      // and the outermost doesn't dominate the view.
+      const alpha = radiusKm <= 250 ? 0.9 : radiusKm <= 500 ? 0.65 : 0.45;
       target_.entities.add({
         id: `${antipodeEntityId(event.id)}::ring-${String(radiusKm)}`,
-        position: antipode,
-        ellipse: {
-          semiMajorAxis: radiusKm * 1000,
-          semiMinorAxis: radiusKm * 1000,
-          material: Cesium.Color.TRANSPARENT,
-          outline: true,
-          // Fainter as they widen, so the innermost reads as the tightest claim
-          // and the outermost doesn't dominate the view.
-          outlineColor: chordColor.withAlpha(radiusKm <= 250 ? 0.55 : radiusKm <= 500 ? 0.35 : 0.2),
-          outlineWidth: 1,
-          height: 0,
-          show: arrived,
+        polyline: {
+          positions: ringPositions(radiusKm),
+          width: 1.5,
+          arcType: Cesium.ArcType.GEODESIC,
+          material: chordColor.withAlpha(alpha),
+          // Seen through the planet, like the buried half of the chord.
+          depthFailMaterial: chordColor.withAlpha(alpha * 0.8),
         },
       });
     }
 
-    /**
-     * Any events the catalogue recorded there inside the window.
-     *
-     * Marked, not interpreted. Measured across 714 declustered M7+ triggers,
-     * these appear at 0.91× the rate the antipodes' own background predicts —
-     * i.e. exactly chance — so a marker here means "one happened", never "one
-     * was triggered". The panel carries the background rate that says so.
-     */
-    for (const hit of hits) {
-      target_.entities.add({
-        id: `${antipodeEntityId(event.id)}::hit-${hit.event.id}`,
-        position: Cesium.Cartesian3.fromDegrees(hit.event.longitude, hit.event.latitude),
-        point: {
-          pixelSize: 12,
-          color: Cesium.Color.TRANSPARENT,
-          outlineColor: HIT_COLOR,
-          outlineWidth: 2,
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          show: arrived,
-        },
-        label: {
-          text: `M${hit.event.magnitude.toFixed(1)} +${hit.delayHours.toFixed(1)}h`,
-          font: '11px sans-serif',
-          fillColor: HIT_COLOR,
-          outlineColor: Cesium.Color.BLACK,
-          outlineWidth: 3,
-          style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-          pixelOffset: new Cesium.Cartesian2(0, -18),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-          show: arrived,
-        },
-      });
-    }
+    addHits(target_, initialHits);
   }
 
   return {
@@ -256,6 +312,13 @@ export function createAntipodeLayer(
     setVisible(v) {
       visible = v;
       if (dataSource) dataSource.show = v;
+    },
+
+    setHits(hits) {
+      // Before mount there is no data source; `build` reads `initialHits`, so
+      // a push that early would be lost. It does not happen: the effect that
+      // pushes runs after the one that mounts.
+      if (dataSource) addHits(dataSource, hits);
     },
   };
 }

@@ -1,51 +1,27 @@
+/* Placed by `.selectionColumn` in `App.module.css`: top-aligned with the range
+   controls, immediately to their right, and bounded below by the dock.
+
+   **It used to float beside the selected mark** — vertically centred, its right
+   edge pinned 4rem left of the viewport's centre, with a pointer aimed at the
+   event. The user moved it (2026-10-11): there it sat over the middle of the
+   globe, in the way of the thing it described. A column at the edge gives the
+   globe back and makes one home for everything that was clicked — the fault
+   and flare panels stack beneath it.
+
+   That move also deleted the arithmetic this rule used to carry. Centred, every
+   rem of height cost half a rem of clearance, so the dock's height had to be
+   subtracted twice. In a bounded flex column there is nothing to compute: the
+   column ends above the dock, and this panel shrinks to fit it.
+
+   The flex column *inside* is still what makes scrolling work: `.scrollArea`
+   takes `min-height: 0` and scrolls when the content exceeds what is left. */
 .inspector {
-  position: absolute;
-  /* Floats beside the selected event rather than docking to the window edge.
-     A selected event is flown to the viewport centre, so anchoring the panel's
-     right edge to the centreline keeps it adjacent to the mark at any window
-     size. The 4rem gap clears both the selection reticle and the emphasis
-     ring on large events. */
-  top: 50%;
-  right: calc(50% + 4rem);
-  /* Grows *away* from the globe centre, because the right edge is pinned beside
-     the centred event. At the window's 1000px minimum this leaves ~52px of left
-     margin before it would reach the range controls — that margin is what
-     `minWidth` in main/index.ts exists to guarantee, so the two move together. */
-  width: 24rem;
-  transform: translateY(-50%);
-  padding: 0.875rem 1rem 1rem;
-
-  /* The height budget lives here, on the whole panel, **not** on `.scrollArea`.
-
-     It was on the scroll area and that was an off-by-the-padding error: the
-     budget below is derived for the panel's *outer* box, but the scroll area
-     sits inside 1.875rem of padding, so the panel came out that much taller
-     than the arithmetic allowed. Centred, half of it shows — about 15px of
-     overlap onto the scrubber, which is exactly what got reported.
-
-     `box-sizing: border-box` is global (index.css), so a max-height here
-     includes the padding and any future change to it is absorbed rather than
-     needing a matching edit to a magic number.
-
-     The flex column is what makes it work: `.scrollArea` gets `min-height: 0`
-     and scrolls when the content exceeds what is left. Same mechanism
-     `App.module.css` uses for the side columns, and its note applies here too
-     — in a column, overlap is unreachable.
-
-     The arithmetic, because it is not guessable: the panel is centred
-     (`top: 50%` + `translateY(-50%)`), so its bottom edge sits at
-     `(100vh + height) / 2` and **every rem of height costs only half a rem of
-     clearance** — which is why the dock's height is subtracted *twice*, as are
-     its own `bottom: 3rem` and the 0.75rem gap left between them.
-
-     `--dock-height` is published by `BottomDock` from its own measured box —
-     timeline, waveforms or minimised to its tab strip; see `published-size.ts`.
-     The fallback applies on the first paint, and is the timeline's measured
-     height with every track row shown, so the un-measured frame errs toward
-     too little room rather than an overlap. */
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
-  max-height: calc(100vh - 2 * var(--dock-height, 22.25rem) - 7.5rem);
+  width: 24rem;
+  min-height: 0;
+  padding: 0.875rem 1rem 1rem;
   border-radius: 0.5rem;
   background-color: rgb(15 23 42 / 88%);
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 40%);
@@ -53,27 +29,13 @@
   font-size: 0.8125rem;
 }
 
-/* Pointer aimed at the selected mark. Lives on .inspector rather than the
-   scroll area because an overflow container would clip it. */
-.inspector::after {
-  position: absolute;
-  top: 50%;
-  left: 100%;
-  width: 0;
-  height: 0;
-  border: 0.5rem solid transparent;
-  border-left-color: rgb(15 23 42 / 88%);
-  content: '';
-  transform: translateY(-50%);
-}
-
 .scrollArea {
   /* Takes whatever height the panel has left, and scrolls past that.
 
-     The constraint itself lives on `.inspector` — see the note there for the
-     arithmetic and for why it moved. `min-height: 0` is the load-bearing part:
-     without it a flex item refuses to shrink below its content and the panel
-     grows past its own max-height instead of scrolling, which is the same trap
+     The bound comes from `.selectionColumn`, which ends above the dock; the
+     panel shrinks to fit it. `min-height: 0` is the load-bearing part: without
+     it a flex item refuses to shrink below its content and the panel grows
+     past the column instead of scrolling, which is the same trap
      `App.module.css` documents for the side columns.
 
      This replaced a hand-maintained `calc(100vh - 37rem)` that had grown

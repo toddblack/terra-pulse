@@ -3,10 +3,10 @@
  *
  * §5.5 asks for tracks "each independently toggleable" and they were not: all
  * of them rendered, always, and the panel's height grew with every one added.
- * That cost is paid twice over — the inspector is centred, so clearance it
- * needs at the bottom is also reserved at the top (see
- * `EarthquakeInspector.module.css`) — which is why a fifth row is the point at
- * which toggling stopped being optional.
+ * That cost was paid twice over while the inspector was centred — clearance it
+ * needed at the bottom was also reserved at the top — which is why a fifth row
+ * was the point at which toggling stopped being optional. The inspector is in
+ * a column above the dock now and pays it once.
  *
  * ## Why a registry rather than a list in the component
  *

@@ -1,16 +1,17 @@
-/* Placed by `.topCentreColumn` in `App.module.css`, which is what actually
-   makes "a large event arriving while this is open stacks above it" true. It
-   used to be a 7.5rem offset picked to clear a banner at 1rem and a digest at
-   4.25rem — three coupled constants, and the arithmetic broke as soon as one
-   of them moved. */
+/* Placed by `.selectionColumn` in `App.module.css`, under the earthquake
+   inspector when both are open: everything that was clicked lives in one
+   column. It was top-centre until the inspector became a column, where the two
+   would have overlapped at most window widths. */
 
 .panel {
   display: flex;
   flex-direction: column;
-  width: 20rem;
-  /* Bounded so a tall recurrence section scrolls inside the panel instead of
-     running past the time scrubber. The body scrolls; the header stays put. */
-  max-height: calc(100vh - 15rem);
+  /* The column's width, so stacked panels share both edges. */
+  width: 24rem;
+  /* The column is bounded above the dock; this shrinks to fit it, and the body
+     scrolls while the header stays put. */
+  flex: 0 1 auto;
+  min-height: 0;
   padding: 0.75rem 0.875rem 0.5rem;
   border-radius: 0.5rem;
   background-color: rgb(15 23 42 / 92%);
@@ -67,7 +68,7 @@
 .body {
   overflow-y: auto;
   /* Lets the flex child actually shrink; without it the body refuses to go
-     below its content height and max-height on the panel does nothing. */
+     below its content height and the panel cannot shrink into its column. */
   min-height: 0;
 }
 

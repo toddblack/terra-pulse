@@ -5,7 +5,9 @@ import { isDockShowing } from '../panels/dock-state';
 import { routeGlobeClick } from './click-route';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { eventIdFromEntityId } from '../layers/earthquake-layer';
-import { focusAltitudeM } from './camera-focus';
+import { HOME_LATITUDE_DEG, focusAltitudeM, homeAltitudeM, homeLongitudeDeg } from './camera-focus';
+import { flyToAntipodeView } from './antipode-camera';
+import { flyToInClearArea } from './clear-area';
 import {
   cursorForHover,
   describeBoundary,
@@ -37,6 +39,7 @@ import {
 } from '../layers/waveform-stations-overlay';
 import { useAppModeStore } from '../state/useAppModeStore';
 import { useWaveformStore } from '../waveforms/useWaveformStore';
+import { pickLabelFor } from '../waveforms/station-pick';
 import { selectReplayOpen, useReplayStore } from '../waveforms/useReplayStore';
 import { createReplayWavesOverlay } from '../layers/replay-waves-overlay';
 import { createWatchPinOverlay } from '../layers/watch-pin-overlay';
@@ -71,6 +74,7 @@ const EMPTY_HITS: readonly AntipodalEvent[] = [];
 export function CesiumViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
+  const homeViewRef = useRef<Cesium.Cartesian3 | null>(null);
   // The viewer lives in a ref (it must not trigger re-renders), so this is
   // what tells dependent effects that it now exists.
   const [viewerReadyToken, setViewerReadyToken] = useState(0);
@@ -109,6 +113,8 @@ export function CesiumViewer() {
   const selectSolarEvent = useGlobeStore((state) => state.selectSolarEvent);
   const setHover = useGlobeStore((state) => state.setHover);
   const location = useGlobeStore((state) => state.location);
+  const pointFocusRequest = useGlobeStore((state) => state.pointFocusRequest);
+  const homeViewRequest = useGlobeStore((state) => state.homeViewRequest);
   const fieldQuantity = useGlobeStore((state) => state.fieldQuantity);
   const auroraGrid = useGlobeStore((state) => state.auroraGrid);
   const magnetometerReadings = useGlobeStore((state) => state.magnetometerReadings);
@@ -143,6 +149,26 @@ export function CesiumViewer() {
    * must describe the chord that is actually drawn.
    */
   const antipodalState = useAntipodal(antipodeEvent);
+
+  /**
+   * The same event reduced to what the chord and the camera are built from,
+   * and stable while those three values are.
+   *
+   * `antipodeEvent` is a new object whenever the catalogue reloads, even when
+   * nothing about this event changed. Keyed on it, a poll that brought in an
+   * unrelated quake would rebuild the chord and fly the camera back to its
+   * starting pose, undoing whatever rotating the reader had done.
+   */
+  const antipodeId = antipodeEvent?.id ?? null;
+  const antipodeLatitude = antipodeEvent?.latitude ?? null;
+  const antipodeLongitude = antipodeEvent?.longitude ?? null;
+  const antipodePoint = useMemo(
+    () =>
+      antipodeId === null || antipodeLatitude === null || antipodeLongitude === null
+        ? null
+        : { id: antipodeId, latitude: antipodeLatitude, longitude: antipodeLongitude },
+    [antipodeId, antipodeLatitude, antipodeLongitude],
+  );
   const antipodeHits =
     antipodalState.status === 'ready' ? antipodalState.window.events : EMPTY_HITS;
 
@@ -243,6 +269,17 @@ export function CesiumViewer() {
     // later that nobody has thought about coverage for.
     viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#22221f');
 
+    // The home view: Cesium's own starting height, turned to face the reader's
+    // side of the planet rather than North America for everyone. Fixed here,
+    // once, so the reset button returns to exactly what the app opened on.
+    const home = Cesium.Cartesian3.fromDegrees(
+      homeLongitudeDeg(-new Date().getTimezoneOffset()),
+      HOME_LATITUDE_DEG,
+      homeAltitudeM(viewer.camera.positionCartographic.height),
+    );
+    viewer.camera.setView({ destination: home });
+    homeViewRef.current = home;
+
     viewerRef.current = viewer;
     setViewerReadyToken((token) => token + 1);
 
@@ -268,7 +305,7 @@ export function CesiumViewer() {
     solarFlares,
     cmeArrivals,
     solarWind,
-    antipodeEvent,
+    antipodeEvent: antipodePoint,
     antipodeHits,
     timeWindow,
     viewerReadyToken,
@@ -613,8 +650,8 @@ export function CesiumViewer() {
       );
 
       /** Re-aims the stations at `point`, reopening the dock if it is minimised. */
-      const pickStationsAt = (point: { latitude: number; longitude: number }) => {
-        useWaveformStore.getState().pickAt({ ...point, label: null });
+      const pickStationsAt = (point: { latitude: number; longitude: number }, label: string | null = null) => {
+        useWaveformStore.getState().pickAt({ ...point, label });
         useGlobeStore.getState().showDockTab('waveforms');
       };
 
@@ -641,7 +678,9 @@ export function CesiumViewer() {
           if (point && feature) {
             selectLocation({ ...point, ...feature });
             // Same point the panel answers for — see `click-route.ts` rule 4.
-            if (route.pickStations) pickStationsAt(point);
+            // Named for the line that was clicked, so a watch pinned from here
+            // reads "San Andreas (Mojave N)" rather than a pair of coordinates.
+            if (route.pickStations) pickStationsAt(point, pickLabelFor(feature));
             // Cesium's Viewer runs its own left-click handler and sets
             // `selectedEntity` for any entity it picks — including a plate
             // boundary — which paints the *earthquake* reticle onto it. Geology
@@ -896,11 +935,68 @@ export function CesiumViewer() {
     // which is when it matters and is exactly what the old floor broke.
     const height = focusAltitudeM(viewer.camera.positionCartographic.height);
 
+    // To the middle of what is visible, not of the window: between the
+    // inspector column and the right column, above the dock. See
+    // `clear-area.ts`.
+    flyToInClearArea(viewer, event, height, 1);
+  }, [focusRequest]);
+
+  // The same move for a place that is not an event — the watch pin, from its
+  // chip on the dock. Height kept for the same reason.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !pointFocusRequest) return;
     viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(event.longitude, event.latitude, height),
+      destination: Cesium.Cartesian3.fromDegrees(
+        pointFocusRequest.longitude,
+        pointFocusRequest.latitude,
+        focusAltitudeM(viewer.camera.positionCartographic.height),
+      ),
       duration: 1,
     });
-  }, [focusRequest]);
+  }, [pointFocusRequest]);
+
+  // The reset button: back to the view the app opened on. A destination with
+  // no orientation also levels the camera, which is half of what "reset" is
+  // for — a tilt is harder to undo by hand than a zoom.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const home = homeViewRef.current;
+    if (!viewer || !home || homeViewRequest === 0) return;
+    viewer.camera.flyTo({ destination: home, duration: 1 });
+  }, [homeViewRequest]);
+
+  // The antipode view's camera: pull back and turn so the chord is seen from
+  // the side, and return to the event on the way out. See `antipode-camera.ts`.
+  //
+  // **Declared after the focus effect on purpose.** Entering the mode also
+  // parks a `focusRequest` for the event, and both effects run in the same
+  // commit; the later `flyTo` cancels the earlier, so this one has to be last.
+  //
+  // The height to return to is kept in a ref that only an *exit* clears, so
+  // going straight from one event's antipode to another's still returns to
+  // the zoom the reader had before either.
+  const antipodeRestoreHeightRef = useRef<number | null>(null);
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    if (antipodePoint === null) {
+      antipodeRestoreHeightRef.current = null;
+      return;
+    }
+
+    antipodeRestoreHeightRef.current ??= viewer.camera.positionCartographic.height;
+    flyToAntipodeView(viewer, antipodePoint);
+
+    return () => {
+      if (viewer.isDestroyed()) return;
+      // Back to whatever is selected now — usually this event, but the chord
+      // can outlive a selection change — at the zoom the reader came in with.
+      const selectedId = useEarthquakeStore.getState().selectedEventId;
+      const back = eventsRef.current.find((candidate) => candidate.id === selectedId) ?? antipodePoint;
+      flyToInClearArea(viewer, back, focusAltitudeM(antipodeRestoreHeightRef.current ?? Number.NaN), 1.2);
+    };
+  }, [antipodePoint]);
 
   return <div id="cesium-viewport" ref={containerRef} className={styles.viewport} />;
 }

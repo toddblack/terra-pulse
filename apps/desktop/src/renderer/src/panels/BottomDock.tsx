@@ -16,9 +16,8 @@ import { watchChipLabel, watchDetail, watchHealth } from '../watch/watch-labels'
 import styles from './BottomDock.module.css';
 
 /**
- * Publishes the dock's height for the inspector and the top-centre column to
- * clear. The inspector is centred, so it subtracts this twice; see
- * `EarthquakeInspector.module.css` and `published-size.ts`.
+ * Publishes the dock's height for the selection column and the top-centre
+ * column to end above; see `App.module.css` and `published-size.ts`.
  */
 const publishDockHeight = publishSize('--dock-height', 'height');
 
@@ -97,19 +96,38 @@ function PlayheadChip({ onOpen }: { onOpen: () => void }) {
  * paused-but-present state). On the strip, so a running watch is visible on
  * both tabs and minimised. Everything the strip has no room for, the limits
  * above all, is in the tooltip.
+ *
+ * **The label is a button that centres the globe on the pin** — the user's ask
+ * (2026-10-11). A watch outlives whatever you were looking at when you set it,
+ * so the chip is the one thing on screen that still knows where it is. It
+ * moves the camera only; the dock, the pick and the selection stay as they are.
  */
 function WatchChip() {
   const status = useQuakeWatchStore((state) => state.status);
   const stopWatching = useQuakeWatchStore((state) => state.stopWatching);
   const testAlert = useQuakeWatchStore((state) => state.testAlert);
+  const requestPointFocus = useGlobeStore((state) => state.requestPointFocus);
   const health = watchHealth(status);
-  if (health === 'off') return null;
+  const pin = status.pin;
+  if (health === 'off' || pin === null) return null;
   const dotClass =
     health === 'running' ? styles.watchDotRunning : health === 'limited' ? styles.watchDotLimited : styles.dotTrouble;
   return (
-    <div id="watch-chip" className={styles.watchChip} title={watchDetail(status)}>
-      <span role="img" className={dotClass} aria-label={`watch ${health}`} />
-      <span className={styles.watchLabel}>{watchChipLabel(status)}</span>
+    <div id="watch-chip" className={styles.watchChip}>
+      <button
+        type="button"
+        id="watch-recentre"
+        className={styles.watchLabel}
+        onClick={() => {
+          requestPointFocus(pin);
+        }}
+        // One tooltip, not two: a title on the chip as well would show the
+        // status over Test and Stop, which have their own.
+        title={`${watchDetail(status)}\nClick to centre the globe on the pin.`}
+      >
+        <span role="img" className={dotClass} aria-label={`watch ${health}`} />
+        <span className={styles.watchText}>{watchChipLabel(status)}</span>
+      </button>
       {/* Works whatever the health: it tests the alert, not the stations. */}
       <button
         type="button"
@@ -165,7 +183,7 @@ export function BottomDock() {
   ];
 
   return (
-    <div className={styles.dock} ref={publishDockHeight}>
+    <div id="bottom-dock" className={styles.dock} ref={publishDockHeight}>
       <div className={styles.strip}>
         <div className={styles.tabs} role="tablist" aria-label="Bottom panel">
           {tabs.map((tab) => {

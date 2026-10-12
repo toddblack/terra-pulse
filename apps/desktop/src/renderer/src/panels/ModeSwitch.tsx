@@ -1,4 +1,5 @@
 import { useAppModeStore, type AppMode } from '../state/useAppModeStore';
+import { ResetViewButton } from './ResetViewButton';
 import styles from './ModeSwitch.module.css';
 
 /**
@@ -13,6 +14,12 @@ import styles from './ModeSwitch.module.css';
  * dock instead, which is why there are two again. The switch grows
  * *horizontally* as modes are added (~180px for two, ~270px for three), well
  * inside `MIN_WIDTH` (1000px, see `main/index.ts`).
+ *
+ * **The home button sits between the two modes** (see `ResetViewButton`). It
+ * is not a mode, so it stays outside the tablist: the tablist is
+ * `display: contents`, which makes the tabs flex children of the pill, and
+ * CSS `order` puts the button between them. Keyboard order is therefore both
+ * modes, then home.
  */
 const MODES: readonly { id: AppMode; label: string }[] = [
   { id: 'explore', label: 'Explore' },
@@ -24,21 +31,24 @@ export function ModeSwitch() {
   const setMode = useAppModeStore((state) => state.setMode);
 
   return (
-    <div className={styles.switch} role="tablist" aria-label="App mode">
-      {MODES.map((candidate) => (
-        <button
-          key={candidate.id}
-          type="button"
-          role="tab"
-          aria-selected={mode === candidate.id}
-          className={mode === candidate.id ? styles.active : styles.inactive}
-          onClick={() => {
-            setMode(candidate.id);
-          }}
-        >
-          {candidate.label}
-        </button>
-      ))}
+    <div id="mode-switch" className={styles.switch}>
+      <div className={styles.modes} role="tablist" aria-label="App mode">
+        {MODES.map((candidate) => (
+          <button
+            key={candidate.id}
+            type="button"
+            role="tab"
+            aria-selected={mode === candidate.id}
+            className={mode === candidate.id ? styles.active : styles.inactive}
+            onClick={() => {
+              setMode(candidate.id);
+            }}
+          >
+            {candidate.label}
+          </button>
+        ))}
+      </div>
+      <ResetViewButton />
     </div>
   );
 }

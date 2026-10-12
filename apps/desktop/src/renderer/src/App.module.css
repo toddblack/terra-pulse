@@ -55,6 +55,47 @@
 }
 
 /*
+ * Everything that was clicked: the earthquake inspector, then the fault or
+ * boundary panel, then the flare or CME panel. Immediately right of the left
+ * column, top-aligned with it, and ending above the dock.
+ *
+ * The inspector used to float beside the selected mark, over the middle of the
+ * globe, and the other two sat top-centre. The user moved the inspector here
+ * (2026-10-11) to get it out of the way; the other two followed because all
+ * three can be open at once and a column at this spot would have run into
+ * them at most window widths.
+ *
+ * `left` is the dock's own, so the column and the dock share an edge. No
+ * width: the panels carry theirs (24rem each), and an empty column measures
+ * zero — which is what `--selection-column-width` publishes, so the top-centre
+ * column knows when it has room.
+ *
+ * `top` drops below the live watch's alert banner when there is one. The
+ * banner is centred and wide, and at 1rem this column's top-right corner —
+ * the inspector's close button — would sit under it. With no banner the
+ * fallback makes the second term hugely negative and `max` picks 1rem.
+ */
+.selectionColumn {
+  position: absolute;
+  top: max(1rem, calc(4.5rem + var(--watch-banner-height, -100rem)));
+  bottom: calc(3.75rem + var(--dock-height, 22.25rem));
+  left: calc(2rem + var(--left-column-width, 19rem));
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  pointer-events: none;
+}
+
+.selectionColumn > * {
+  pointer-events: auto;
+  /* Lets each panel shrink below its content, so two open at once share the
+     column instead of the second running onto the dock. Each scrolls inside. */
+  min-height: 0;
+}
+
+/*
  * The top-right stack: the event list, and the legend pinned to the bottom.
  *
  * A column rather than two independently-positioned panels, because the legend
@@ -119,7 +160,19 @@
 
   position: absolute;
   top: calc(4rem + var(--watch-banner-space));
-  left: 50%;
+  /* Centred, unless the selection column has grown out to where a centred
+     panel would land on it — then just clear of it, and never so far right
+     that it runs under the right column instead. 11rem is half the widest
+     panel here (the digest, 22rem). Both neighbours' widths are measured; see
+     `published-size.ts`. On a window too narrow for all three it stays
+     centred and overlaps, rather than leaving the screen. */
+  left: max(
+    50%,
+    min(
+      calc(2.5rem + var(--left-column-width, 19rem) + var(--selection-column-width, 0px) + 11rem),
+      calc(100% - 1.5rem - var(--right-column-width, 20rem) - 11rem)
+    )
+  );
   /* Matches what LocationPanel and SolarEventPanel already carried. The banner
      and the digest had no z-index at all, so anything at 10 painted over them
      regardless of DOM order — which is how the alert could be hidden by a
@@ -127,8 +180,8 @@
   z-index: 10;
   display: flex;
   flex-direction: column;
-  /* Each panel keeps its own width and centres, rather than all four
-     stretching to the widest — they range from 18rem to 22rem. */
+  /* Each panel keeps its own width and centres, rather than stretching to
+     the widest. */
   align-items: center;
   gap: 0.5rem;
   /* Bounded so a full stack shrinks instead of running onto the bottom dock:

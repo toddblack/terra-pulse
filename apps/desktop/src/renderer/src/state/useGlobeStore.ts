@@ -136,6 +136,26 @@ interface GlobeState {
   selectedSolarEvent: SolarEventSelection | null;
 
   /**
+   * A request to centre the globe on a place that is not an earthquake — the
+   * watch pin, from its chip on the dock.
+   *
+   * The counterpart of the earthquake store's `focusRequest`, which is keyed by
+   * event id and so cannot name a bare point. Same nonce, for the same reason:
+   * asking for the same place twice must fly twice, since the reader may have
+   * rotated away in between.
+   */
+  pointFocusRequest: { latitude: number; longitude: number; nonce: number } | null;
+
+  /**
+   * Counts presses of the reset-view button; 0 means none yet.
+   *
+   * A bare counter because the request carries nothing: the home view is fixed
+   * when the viewer is created (see `homeLongitudeDeg`), so all a press says is
+   * "again".
+   */
+  homeViewRequest: number;
+
+  /**
    * Region size and magnitude floor for the recurrence panel.
    *
    * Kept in the store rather than in the panel so the choice survives changing
@@ -219,6 +239,8 @@ interface GlobeState {
   toggleFaultProbe: () => void;
   selectLocation: (selection: LocationSelection | null) => void;
   selectSolarEvent: (selection: SolarEventSelection | null) => void;
+  requestPointFocus: (point: { latitude: number; longitude: number }) => void;
+  requestHomeView: () => void;
   setRecurrenceRadiusKm: (radiusKm: number) => void;
   setRecurrenceFloor: (floor: number) => void;
   setHover: (hover: HoverState | null) => void;
@@ -257,6 +279,8 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   faultProbeActive: false,
   location: null,
   selectedSolarEvent: null,
+  pointFocusRequest: null,
+  homeViewRequest: 0,
   recurrenceRadiusKm: DEFAULT_RECURRENCE_RADIUS_KM,
   recurrenceFloor: DEFAULT_RECURRENCE_FLOOR,
   hover: null,
@@ -276,6 +300,13 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   pressDockTab: (tab) => set((state) => ({ dock: pressDockTab(state.dock, tab) })),
   showDockTab: (tab) => set((state) => ({ dock: showDockTab(state.dock, tab) })),
   toggleDock: () => set((state) => ({ dock: toggleDockOpen(state.dock) })),
+
+  requestPointFocus: ({ latitude, longitude }) =>
+    set((state) => ({
+      pointFocusRequest: { latitude, longitude, nonce: (state.pointFocusRequest?.nonce ?? 0) + 1 },
+    })),
+
+  requestHomeView: () => set((state) => ({ homeViewRequest: state.homeViewRequest + 1 })),
 
   /**
    * Leaving probe mode drops a probed *point* with it, but leaves a clicked

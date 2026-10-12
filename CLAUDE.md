@@ -4284,6 +4284,231 @@ Croatia, 83 ORFEUS, 44 USP), built in 3.4 s in the running app.
   placeable). Both take `BATCH`, so each is one entry if ever wanted. Replays
   are still EarthScope-only.
 
+## Watch pin: named picks, and a chip that flies home. 2026-10-11.
+
+Two small things, both the user's asks, on `dev` after `watch-here` merged.
+
+- **A pick made on a fault or plate boundary is named for it**
+  (`pickLabelFor`, `station-pick.ts`). It was always named by coordinates,
+  because the globe click passed `label: null`. So a watch pinned from there
+  now reads "Watching San Andreas (Parkfield) · 47/48".
+  - **The name is GEM's as given**, the string the location panel heads itself
+    with, so the pick and the panel cannot call one trace two things. GEM's
+    names are uneven (`Nagai`, `BT2`, `Calaveras (So) - Paicines extension
+    2011 CFM`); they are not tidied.
+  - **An unnamed fault keeps its coordinates.** That is 55% of traces.
+    "Unnamed fault" names nothing, and two such pins would read the same.
+  - **A boundary reads "North America–Pacific boundary"**, through
+    `plateBoundaryLabel`, so subduction polarity stays undecoded.
+  - **The name says what was clicked, not where.** A trace can run hundreds of
+    kilometres, so the chip's tooltip leads with "Pin at 36.00°N 120.56°W"
+    whenever the label is not already the coordinates.
+  - The alert still says "100 km NE of <label>", which reads oddly for a fault
+    name and already did for a quake's ("of M6.1 · 12 km SW of Kamaishi").
+    Left alone; it is a wording choice for the user.
+- **The chip's label is a button that centres the globe on the pin.** A watch
+  outlives whatever you were looking at when you set it, so the chip is the one
+  thing on screen that still knows where it is.
+  - `pointFocusRequest` in `useGlobeStore`, the counterpart of the earthquake
+    store's `focusRequest`, which is keyed by event id and cannot name a bare
+    point. Same nonce, so a second press flies again. Same height rule
+    (`focusAltitudeM`): the reader's zoom survives.
+  - **It moves the camera only.** The dock tab, the pick and the selection stay
+    as they are; a test pins it.
+  - **One tooltip, on the button.** A title on the chip as well would show the
+    status over Test and Stop, which have their own.
+- **Verified in a built, isolated instance over CDP**: the chip press put the
+  pin at the viewport's centre (792, 465 of 1584×935); a click on a drawn trace
+  named the pick and then the watch; and the longest fault name in the dataset
+  (61 characters) fits the strip with no overlap at that width.
+- **A scripted click on a fault needs aiming.** Wheel zoom drifts the centre
+  (0.5° here), so "recentre, zoom, click the middle" misses the trace. Stepping
+  the click a few pixels at a time until the note stops reading coordinates
+  found it on the second try. The watch pin also sits on top of the trace at
+  its own spot, so stop the watch before clicking there.
+
+## Reset view, and a starting view that faces the reader. 2026-10-11.
+
+Phase 6's "home" item, cut down. **The first-launch home prompt is dropped**:
+it was written before the watch pin existed, and the pin now does its job (it
+is where the alert is measured to). What was left is the camera reset the
+`homeButton: false` note has always said would be wanted.
+
+- **A home button in the mode switch, between Explore and Analyze**
+  (`ResetViewButton`) flies back to the view the app opened on: whole globe,
+  level. A destination with no orientation also undoes a tilt, which is harder
+  to fix by hand than a zoom. It moves the camera only.
+  - **It shipped first as a globe icon beside "Probe a location", and the user
+    took a minute to find it.** A small unlabelled icon at the foot of a column
+    of controls is not where anyone looks for the way back; top-centre is. His
+    words were "a home button", so it is a house now, not a globe.
+  - **It is not a mode, so it is not in the tablist.** The tablist is
+    `display: contents` and CSS `order` puts the button between the two tabs.
+    Keyboard order is both modes, then home.
+  - **`.switch button` became `.modes > button`.** Left as it was, that rule
+    (0,1,1) would have out-specified the home button's own class and restyled
+    it as a mode: the trap this file already records for `.active`.
+  - It works in Analyze too, where the globe shows either side of the panel.
+- **The user's question was where "the starting position" is for someone
+  else.** Until now it was Cesium's default, over North America for everyone.
+  It now faces **the reader's own longitude, from the system clock's UTC
+  offset** (`homeLongitudeDeg`): 15° per hour, by definition. No location
+  permission, no network, no account. It is coarse (zones are political, and
+  daylight saving moves it 15°) and that is fine at whole-globe zoom.
+- **Latitude is 20°N for everyone**, because a clock says nothing about north
+  or south. **Known gap:** the dock covers the lower part of the globe, so a
+  reader in Sydney or Santiago opens with home behind the timeline. Fixing it
+  needs a hemisphere per time-zone name, which is a table to maintain. Not
+  built; the old default had the same gap.
+- **Height is read from Cesium's camera at construction**, so the globe opens
+  the size it always has. `Camera`'s constructor sets the default view
+  synchronously, so the read is valid before the first frame.
+- **Launch and reset are one `Cartesian3`**, fixed when the viewer is created.
+  Verified in a built instance: after zooming in and pressing reset, the
+  screenshot is **byte-identical** to the launch screenshot.
+- The left column is back exactly as it was before the button: the
+  `.globeControls` row and the probe toggle's `flex: 1` are gone.
+
+## The selection column, and the antipode as a sequence. 2026-10-11.
+
+Branch `inspector-column`. Two asks from the user in one message; the first
+makes room for the second.
+
+**This supersedes several older entries above**, which describe what was true
+when written: "The inspector's clearance is measured now" and "Collapsible
+inspector sections" (the centred inspector and its doubled arithmetic),
+"Panel placement" (three panels were top-centre), "Antipode view" and
+"Antipode rings" (a still camera, `ellipse` rings, hits as a constructor
+argument), and the `MIN_WIDTH` note under "Window size".
+
+### Everything you clicked, in one column
+
+- **The earthquake inspector is no longer centred beside the selected mark.**
+  It is the top of a new `.selectionColumn`: immediately right of the left
+  column, top-aligned with the Magnitude panel, ending above the dock. The
+  user's reason: floating over the middle of the globe, it got in the way of
+  the thing it described. Its pointer arrow went with it.
+- **The fault/boundary panel and the flare/CME panel moved into the same
+  column**, under the inspector — the user's pick of two options. All three can
+  be open at once, and left top-centre they would have run into the new column
+  at most window widths. All three are 24rem now, so stacked panels share both
+  edges.
+- **The doubled arithmetic is gone, not ported.** Centred, every rem of the
+  inspector's height cost half a rem of clearance, so the dock's height was
+  subtracted twice. A bounded flex column has nothing to compute: `bottom` is
+  the dock's top, and each panel takes `flex: 0 1 auto; min-height: 0` and
+  scrolls inside. Measured with the timeline open: inspector alone 16–537 px
+  against a dock top of 549; inspector plus location panel 16–338 and 346–537.
+- **`publishSize` gained `publishZero`.** It skips a zero by default, because
+  for an always-filled panel zero only means "not laid out yet". The selection
+  column is legitimately empty, and skipped there, its last real width stayed
+  published after the inspector closed.
+- **The top-centre column (large-event banner, "while you were away") slides
+  right when it would land on the selection column**, and back when the column
+  empties: `left: max(50%, min(clear of the column, clear of the right
+  column))`, both widths measured. Checked: 839 px with the inspector open,
+  792 px (centre) with it closed, on a 1584 px window. On a window too narrow
+  for all three it stays centred and overlaps.
+- **The column drops below the live watch's alert banner when there is one.**
+  The banner is centred and wide; at `top: 1rem` the inspector's close button
+  would sit under it.
+- `MIN_WIDTH` stays 1000. Its reason changed: left column + selection column +
+  right column is ~895 px before any globe shows.
+
+### A selected quake lands in the middle of what is visible
+
+- **Selecting an earthquake used to fly it to the centre of the window.** With
+  the inspector in a column, that is no longer the centre of what can be seen.
+  It now lands in the middle of the clear area: between the inspector column
+  and the right column, and between the mode switch and the dock
+  (`flyToInClearArea`, `globe/clear-area.ts`). The user's ask. The inspector's
+  Recenter, the event list, the banners and the antipode exit all go through
+  the same call.
+- **The camera stays directly above the quake and is aimed off-centre**, the
+  same move the antipode view makes (`offAxisOrientation`). The alternative,
+  shifting the camera sideways, fails at whole-globe zoom: the clear area's
+  centre is ~83% of the way to the limb there, so the quake would sit near the
+  edge of the globe, seen at a slant.
+  - **The cost: the view is not quite straight down.** About 11° off on a
+    typical window. Invisible at whole-globe zoom, a slight tilt zoomed in
+    close. The home button levels it.
+- **The inspector's place is reserved even if it is not there yet**
+  (`reserveInspector`), so a mark is never centred for a window with no
+  inspector and then covered by it.
+- **The watch chip and the home button still use the window's centre.** Not
+  asked for, and neither opens the inspector.
+- **Not checked in the running app by me** — the user said he would look.
+
+### The antipode view is a sequence now
+
+Pressing Antipode used to draw the chord under a camera that did not move —
+and a selected event is flown to the centre of the view, so the chord pointed
+straight away from the reader and drew as a dot. Now: the camera pulls back
+and turns, the chord is drawn, and the rings spread from where it lands.
+
+- **45°, the user's choice over the 90° first proposed.** At 90° the chord
+  spans the disc but both ends are on the limb, so the rings are edge-on. At
+  45° the chord shows at 71% of the diameter, the event stays on the near face,
+  and the antipode is seen through the translucent planet.
+- **The chord is level, and that took a specific viewpoint**
+  (`antipodeViewpoint`). With north up, the event appears due west of the
+  camera only if the great circle joining them runs east–west *at the camera*,
+  i.e. the camera sits at that circle's highest latitude:
+  `asin(sin(lat) / cos(45°))`. Heading due east from the event puts the crest
+  at the event instead, and the chord came out tilted 13° for a quake at 18°S
+  (51° at 60°N). **Beyond ±40° no such point exists** (the formula reaches the
+  pole at 45°), so the camera heads east and the view is rolled instead; "up"
+  is built from the geometry, which covers both cases.
+- **Framed to the chord, not to the whole disc** (`frameGlobe`). The first
+  version fitted the entire globe into the clear area: with the timeline open,
+  a 410 px planet whose 250 km ring was 8 px across. A level chord needs the
+  clear area's width and only a band of its height, so the disc's top stays in
+  view and its foot goes under the dock, as the opening view's already does.
+  Result: ~640 px with the timeline open, ~770 px minimised.
+- **The chord's two ends are not the same distance from the disc's centre**,
+  and the framing assumed they were. From a real camera the near end is drawn
+  further out and the far end nearer in: 0.82 of a radius against 0.60 at 4.5
+  radii. Framed as symmetric, the event's reticle touched the inspector while
+  a strip twice as wide stood empty on the right. `chordExtentInRadii` computes
+  both, and the framing iterates because the extent depends on the distance.
+- **The camera is aimed off the planet's centre** so the globe sits in the
+  clear area (`antipode-camera.ts`). That is a rotation of the view, not a real
+  off-centre projection, which would mean replacing Cesium's frustum. The clear
+  area is measured from the panels at the moment of pressing.
+- **The rings are polylines with a `depthFailMaterial`, not `ellipse`
+  outlines.** At 45° they sit on the far side, where an ellipse outline is
+  hidden by the planet. The antipode marker got `disableDepthTestDistance` for
+  the same reason.
+- **The ripple is presentation and its speed means nothing.** One front leaves
+  the landing point; each ring grows with it to its own radius and stays; a
+  hit appears when the front reaches it. The rings still carry no statistical
+  meaning (§5.3), and the layer says so.
+- **One clock for all three acts** (`antipodeMoment`): flight 1.6 s, chord
+  1.3 s, spread 1.4 s. The chord waits for the camera and the rings wait for
+  the chord, so they cannot drift.
+- **Hits are pushed in through `setHits`; the layer is built once per entry.**
+  They used to be a constructor argument, so the lookup landing rebuilt the
+  layer and restarted the chord. That was a blink under a still camera; now it
+  would replay the whole sequence. The unused basemap tone left the signature
+  for the same reason: a basemap switch must not replay it either.
+- **The layer and the camera key on `{id, latitude, longitude}`, not on the
+  event object**, which is a new object whenever the catalogue reloads. Keyed
+  on the object, a poll that brought in an unrelated quake would fly the camera
+  back to its starting pose and undo the reader's rotating.
+- **On exit the camera flies back to the quake at the zoom it had before** —
+  the user's pick. The height is kept in a ref that only an exit clears, so
+  going straight from one antipode to another still returns to the original
+  zoom. The camera effect is declared after the focus effect on purpose:
+  entering also parks a `focusRequest`, both run in one commit, and the later
+  `flyTo` wins.
+- **Verified in a built instance** on the 2026-10-12 Tonga M5.5 and the
+  2026-10-09 Panama M7.7: level chord, both ends clear of the panels with the
+  timeline open and minimised, rings and the M5.2 hit appearing as the front
+  reached them, and the exit returning to the quake at its earlier zoom.
+- **Not changed: the translucent globe looks grey on the light basemap.** It
+  always did (38% of a pale map over black space). With the globe now the
+  subject of the view it is more noticeable; the user has not seen it yet.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

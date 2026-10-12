@@ -9,8 +9,8 @@
    GEM and PB2002 — runs up to 28rem in from the left edge at the very bottom
    (`CesiumViewer.module.css`). The old scrubber was centred and never reached
    it; a dock that starts right after the left column would sit on top of it at
-   `bottom: 1rem`. The cost is paid by the centred inspector, which loses twice
-   the 2rem — minimising the dock gives it all back.
+   `bottom: 1rem`. The cost is paid by the selection column above it, which
+   loses the 2rem — minimising the dock gives it all back.
 
    `min-width` is the narrow-window escape: below it the dock would rather run
    under a column than squeeze traces to nothing. */
@@ -175,7 +175,30 @@
   cursor: default;
 }
 
+/* The dot and the words, as one button: click to centre the globe on the pin.
+   Styled as the chip's own text, not as a control — the hover underline is
+   what says it can be pressed. */
 .watchLabel {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.watchLabel:hover .watchText,
+.watchLabel:focus-visible .watchText {
+  color: rgb(241 245 249);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.watchText {
   overflow: hidden;
   text-overflow: ellipsis;
 }

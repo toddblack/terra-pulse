@@ -1,0 +1,36 @@
+/* Sits inside the mode switch's pill, between the two modes. Flat like an
+   unselected mode, and it never takes the selected fill: it is an action, not
+   a place to be. A hairline either side sets it apart from the modes. */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  margin: 0 0.2rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.35rem;
+  background-color: transparent;
+  box-shadow:
+    -0.2rem 0 0 -0.14rem rgb(148 163 184 / 30%),
+    0.2rem 0 0 -0.14rem rgb(148 163 184 / 30%);
+  color: rgb(148 163 184);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.button:hover {
+  background-color: rgb(30 41 59 / 90%);
+  color: rgb(226 232 240);
+}
+
+.icon {
+  width: 0.9375rem;
+  height: 0.9375rem;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
