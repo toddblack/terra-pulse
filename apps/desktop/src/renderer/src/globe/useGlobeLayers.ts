@@ -26,7 +26,8 @@ import {
 } from '../layers/magnetopause-layer';
 import type { FieldQuantity } from '../layers/igrf';
 import { INITIAL_FIRST_PAINT, observeTileQueue } from './first-paint';
-import { createAntipodeLayer } from '../layers/antipode-layer';
+import { createAntipodeLayer, type AntipodeLayer } from '../layers/antipode-layer';
+import { ANTIPODE_FLY_MS } from '../layers/antipode-sequence';
 
 /** Show data layers regardless if basemap tiles haven't settled by now. */
 const TILE_WAIT_FALLBACK_MS = 5_000;
@@ -55,7 +56,7 @@ interface UseGlobeLayersOptions {
    * something toggled in the layer panel — so it is mounted here alongside
    * them instead of through the registry.
    */
-  antipodeEvent: EarthquakeEvent | null;
+  antipodeEvent: Pick<EarthquakeEvent, 'id' | 'latitude' | 'longitude'> | null;
   /**
    * What the catalogue recorded near the antipode inside H5's window.
    *
@@ -346,24 +347,38 @@ export function useGlobeLayers({
 
   // --- Antipode: a mode, not a registered layer ---------------------------
   //
-  // Rebuilt only when the event changes. It owns globe translucency, so its
+  // Built once per entry into the mode. It owns globe translucency, so its
   // unmount is what gives the planet back — an early return that skipped
   // cleanup would leave the whole globe see-through.
+  //
+  // **Not keyed on the hits or the basemap's tone, and it used to be.** Either
+  // changing rebuilt the layer, which restarts its clock: the chord would draw
+  // again when the antipodal lookup landed. With a camera move ahead of the
+  // chord and a ripple after it, that would replay the whole sequence. The
+  // hits are pushed in below instead.
+  const antipodeLayerRef = useRef<AntipodeLayer | null>(null);
   useEffect(() => {
     const viewer = viewerRef.current;
     if (!viewer || !firstPaintReady || !antipodeEvent) return;
 
-    const layer = createAntipodeLayer(antipodeEvent, backdropTone, antipodeHits);
+    // The chord waits out the camera's flight (`CesiumViewer` starts it in the
+    // same commit), so the line is not drawn while the view is still turning.
+    const layer = createAntipodeLayer(antipodeEvent, [], undefined, { flyMs: ANTIPODE_FLY_MS });
     layer.mount(viewer);
+    antipodeLayerRef.current = layer;
 
     return () => {
+      antipodeLayerRef.current = null;
       layer.unmount();
     };
-    // `antipodeHits` is a dependency on purpose: the lookup resolves after the
-    // chord is already drawn, and the rings and markers have to appear when it
-    // does. The rebuild is cheap — a handful of entities — and only happens
-    // once per entry into the mode.
-  }, [viewerRef, antipodeEvent, antipodeHits, backdropTone, firstPaintReady, viewerReadyToken]);
+  }, [viewerRef, antipodeEvent, firstPaintReady, viewerReadyToken]);
+
+  // Declared after the effect above, so on entry it runs second and finds the
+  // layer it has to push into. It shares that effect's dependencies for the
+  // same reason: a layer rebuilt for any of them needs its hits again.
+  useEffect(() => {
+    antipodeLayerRef.current?.setHits(antipodeHits);
+  }, [antipodeHits, viewerRef, antipodeEvent, firstPaintReady, viewerReadyToken]);
 
   // Fades the event marks while the chord is up, so 26,000 dots visible through
   // a translucent globe don't drown the one line that was asked for. Pushed to

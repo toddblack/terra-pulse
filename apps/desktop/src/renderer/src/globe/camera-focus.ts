@@ -75,3 +75,32 @@ export function homeAltitudeM(startingHeightM: number): number {
   if (!Number.isFinite(startingHeightM) || startingHeightM < 1_000_000) return FALLBACK_HOME_ALTITUDE_M;
   return startingHeightM;
 }
+
+export interface ScreenRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * How far off its axis a camera must be aimed for whatever is straight ahead
+ * of it to appear at `target` instead of the middle of the window — as the
+ * tangents of the two angles, right and up positive.
+ *
+ * `fovRad` is Cesium's frustum angle, which spans the **larger** of the
+ * viewport's two dimensions; the focal length follows from it.
+ */
+export function aimForPixel(
+  viewport: { width: number; height: number },
+  target: { x: number; y: number },
+  fovRad: number,
+): { tanRight: number; tanUp: number } {
+  const focalPx = Math.max(viewport.width, viewport.height) / 2 / Math.tan(fovRad / 2);
+  if (!Number.isFinite(focalPx) || focalPx <= 0) return { tanRight: 0, tanUp: 0 };
+  return {
+    tanRight: (target.x - viewport.width / 2) / focalPx,
+    // Screen y runs down; "up" is positive here.
+    tanUp: (viewport.height / 2 - target.y) / focalPx,
+  };
+}

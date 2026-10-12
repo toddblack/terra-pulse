@@ -31,7 +31,7 @@ export function ModeSwitch() {
   const setMode = useAppModeStore((state) => state.setMode);
 
   return (
-    <div className={styles.switch}>
+    <div id="mode-switch" className={styles.switch}>
       <div className={styles.modes} role="tablist" aria-label="App mode">
         {MODES.map((candidate) => (
           <button
