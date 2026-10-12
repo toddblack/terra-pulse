@@ -37,6 +37,7 @@ import {
 } from '../layers/waveform-stations-overlay';
 import { useAppModeStore } from '../state/useAppModeStore';
 import { useWaveformStore } from '../waveforms/useWaveformStore';
+import { pickLabelFor } from '../waveforms/station-pick';
 import { selectReplayOpen, useReplayStore } from '../waveforms/useReplayStore';
 import { createReplayWavesOverlay } from '../layers/replay-waves-overlay';
 import { createWatchPinOverlay } from '../layers/watch-pin-overlay';
@@ -109,6 +110,7 @@ export function CesiumViewer() {
   const selectSolarEvent = useGlobeStore((state) => state.selectSolarEvent);
   const setHover = useGlobeStore((state) => state.setHover);
   const location = useGlobeStore((state) => state.location);
+  const pointFocusRequest = useGlobeStore((state) => state.pointFocusRequest);
   const fieldQuantity = useGlobeStore((state) => state.fieldQuantity);
   const auroraGrid = useGlobeStore((state) => state.auroraGrid);
   const magnetometerReadings = useGlobeStore((state) => state.magnetometerReadings);
@@ -613,8 +615,8 @@ export function CesiumViewer() {
       );
 
       /** Re-aims the stations at `point`, reopening the dock if it is minimised. */
-      const pickStationsAt = (point: { latitude: number; longitude: number }) => {
-        useWaveformStore.getState().pickAt({ ...point, label: null });
+      const pickStationsAt = (point: { latitude: number; longitude: number }, label: string | null = null) => {
+        useWaveformStore.getState().pickAt({ ...point, label });
         useGlobeStore.getState().showDockTab('waveforms');
       };
 
@@ -641,7 +643,9 @@ export function CesiumViewer() {
           if (point && feature) {
             selectLocation({ ...point, ...feature });
             // Same point the panel answers for — see `click-route.ts` rule 4.
-            if (route.pickStations) pickStationsAt(point);
+            // Named for the line that was clicked, so a watch pinned from here
+            // reads "San Andreas (Mojave N)" rather than a pair of coordinates.
+            if (route.pickStations) pickStationsAt(point, pickLabelFor(feature));
             // Cesium's Viewer runs its own left-click handler and sets
             // `selectedEntity` for any entity it picks — including a plate
             // boundary — which paints the *earthquake* reticle onto it. Geology
@@ -901,6 +905,21 @@ export function CesiumViewer() {
       duration: 1,
     });
   }, [focusRequest]);
+
+  // The same move for a place that is not an event — the watch pin, from its
+  // chip on the dock. Height kept for the same reason.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || !pointFocusRequest) return;
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(
+        pointFocusRequest.longitude,
+        pointFocusRequest.latitude,
+        focusAltitudeM(viewer.camera.positionCartographic.height),
+      ),
+      duration: 1,
+    });
+  }, [pointFocusRequest]);
 
   return <div id="cesium-viewport" ref={containerRef} className={styles.viewport} />;
 }

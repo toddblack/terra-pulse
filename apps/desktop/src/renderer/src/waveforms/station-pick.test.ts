@@ -7,6 +7,7 @@ import {
   compassPoint,
   formatDistanceKm,
   formatPickCoordinates,
+  pickLabelFor,
   pickStationsNear,
 } from './station-pick';
 
@@ -160,6 +161,19 @@ describe('formatting', () => {
   it('names a bare pick by its coordinates with hemisphere letters', () => {
     expect(formatPickCoordinates({ latitude: 47.6062, longitude: -122.3321 })).toBe('47.61°N 122.33°W');
     expect(formatPickCoordinates({ latitude: -33.45, longitude: 151.2 })).toBe('33.45°S 151.20°E');
+  });
+
+  it('names a pick on a drawn line for the line', () => {
+    expect(pickLabelFor({ kind: 'fault', fault: { n: 'San Andreas (Mojave N)' } })).toBe('San Andreas (Mojave N)');
+    expect(pickLabelFor({ kind: 'boundary', pair: 'NA-PA' })).toBe('North America–Pacific boundary');
+  });
+
+  it('leaves an unnamed fault and bare globe to their coordinates', () => {
+    // Most GEM traces carry no name. "Unnamed fault" would name nothing, and
+    // two pins on two such traces would read the same.
+    expect(pickLabelFor({ kind: 'fault', fault: {} })).toBeNull();
+    expect(pickLabelFor(null)).toBeNull();
+    expect(pickLabelFor(undefined)).toBeNull();
   });
 
   it('rounds distances and groups thousands', () => {

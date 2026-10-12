@@ -175,7 +175,30 @@
   cursor: default;
 }
 
+/* The dot and the words, as one button: click to centre the globe on the pin.
+   Styled as the chip's own text, not as a control — the hover underline is
+   what says it can be pressed. */
 .watchLabel {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.watchLabel:hover .watchText,
+.watchLabel:focus-visible .watchText {
+  color: rgb(241 245 249);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.watchText {
   overflow: hidden;
   text-overflow: ellipsis;
 }

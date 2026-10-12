@@ -4284,6 +4284,49 @@ Croatia, 83 ORFEUS, 44 USP), built in 3.4 s in the running app.
   placeable). Both take `BATCH`, so each is one entry if ever wanted. Replays
   are still EarthScope-only.
 
+## Watch pin: named picks, and a chip that flies home. 2026-10-11.
+
+Two small things, both the user's asks, on `dev` after `watch-here` merged.
+
+- **A pick made on a fault or plate boundary is named for it**
+  (`pickLabelFor`, `station-pick.ts`). It was always named by coordinates,
+  because the globe click passed `label: null`. So a watch pinned from there
+  now reads "Watching San Andreas (Parkfield) · 47/48".
+  - **The name is GEM's as given**, the string the location panel heads itself
+    with, so the pick and the panel cannot call one trace two things. GEM's
+    names are uneven (`Nagai`, `BT2`, `Calaveras (So) - Paicines extension
+    2011 CFM`); they are not tidied.
+  - **An unnamed fault keeps its coordinates.** That is 55% of traces.
+    "Unnamed fault" names nothing, and two such pins would read the same.
+  - **A boundary reads "North America–Pacific boundary"**, through
+    `plateBoundaryLabel`, so subduction polarity stays undecoded.
+  - **The name says what was clicked, not where.** A trace can run hundreds of
+    kilometres, so the chip's tooltip leads with "Pin at 36.00°N 120.56°W"
+    whenever the label is not already the coordinates.
+  - The alert still says "100 km NE of <label>", which reads oddly for a fault
+    name and already did for a quake's ("of M6.1 · 12 km SW of Kamaishi").
+    Left alone; it is a wording choice for the user.
+- **The chip's label is a button that centres the globe on the pin.** A watch
+  outlives whatever you were looking at when you set it, so the chip is the one
+  thing on screen that still knows where it is.
+  - `pointFocusRequest` in `useGlobeStore`, the counterpart of the earthquake
+    store's `focusRequest`, which is keyed by event id and cannot name a bare
+    point. Same nonce, so a second press flies again. Same height rule
+    (`focusAltitudeM`): the reader's zoom survives.
+  - **It moves the camera only.** The dock tab, the pick and the selection stay
+    as they are; a test pins it.
+  - **One tooltip, on the button.** A title on the chip as well would show the
+    status over Test and Stop, which have their own.
+- **Verified in a built, isolated instance over CDP**: the chip press put the
+  pin at the viewport's centre (792, 465 of 1584×935); a click on a drawn trace
+  named the pick and then the watch; and the longest fault name in the dataset
+  (61 characters) fits the strip with no overlap at that width.
+- **A scripted click on a fault needs aiming.** Wheel zoom drifts the centre
+  (0.5° here), so "recentre, zoom, click the middle" misses the trace. Stepping
+  the click a few pixels at a time until the note stops reading coordinates
+  found it on the second try. The watch pin also sits on top of the trace at
+  its own spot, so stop the watch before clicking there.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.
