@@ -147,6 +147,15 @@ interface GlobeState {
   pointFocusRequest: { latitude: number; longitude: number; nonce: number } | null;
 
   /**
+   * Counts presses of the reset-view button; 0 means none yet.
+   *
+   * A bare counter because the request carries nothing: the home view is fixed
+   * when the viewer is created (see `homeLongitudeDeg`), so all a press says is
+   * "again".
+   */
+  homeViewRequest: number;
+
+  /**
    * Region size and magnitude floor for the recurrence panel.
    *
    * Kept in the store rather than in the panel so the choice survives changing
@@ -231,6 +240,7 @@ interface GlobeState {
   selectLocation: (selection: LocationSelection | null) => void;
   selectSolarEvent: (selection: SolarEventSelection | null) => void;
   requestPointFocus: (point: { latitude: number; longitude: number }) => void;
+  requestHomeView: () => void;
   setRecurrenceRadiusKm: (radiusKm: number) => void;
   setRecurrenceFloor: (floor: number) => void;
   setHover: (hover: HoverState | null) => void;
@@ -270,6 +280,7 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   location: null,
   selectedSolarEvent: null,
   pointFocusRequest: null,
+  homeViewRequest: 0,
   recurrenceRadiusKm: DEFAULT_RECURRENCE_RADIUS_KM,
   recurrenceFloor: DEFAULT_RECURRENCE_FLOOR,
   hover: null,
@@ -294,6 +305,8 @@ export const useGlobeStore = create<GlobeState>((set) => ({
     set((state) => ({
       pointFocusRequest: { latitude, longitude, nonce: (state.pointFocusRequest?.nonce ?? 0) + 1 },
     })),
+
+  requestHomeView: () => set((state) => ({ homeViewRequest: state.homeViewRequest + 1 })),
 
   /**
    * Leaving probe mode drops a probed *point* with it, but leaves a clicked

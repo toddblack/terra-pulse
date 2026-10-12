@@ -5,6 +5,7 @@ import { MissedEventsPanel } from './panels/MissedEventsPanel';
 import { LayerPanel } from './panels/LayerPanel';
 import { RangeControls } from './panels/RangeControls';
 import { FaultProbeToggle } from './panels/FaultProbeToggle';
+import { ResetViewButton } from './panels/ResetViewButton';
 import { DepthLegend } from './panels/DepthLegend';
 import { BottomDock } from './panels/BottomDock';
 import { publishSize } from './panels/published-size';
@@ -134,7 +135,10 @@ export function ExploreShell() {
       <div className={styles.leftColumn} ref={publishLeftColumnWidth}>
         <RangeControls />
         <HistoricalDataPanel />
-        <FaultProbeToggle />
+        <div className={styles.globeControls}>
+          <FaultProbeToggle />
+          <ResetViewButton />
+        </div>
         <LayerPanel />
       </div>
       {/* Order in the column is reading order, top to bottom: what just

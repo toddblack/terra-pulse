@@ -283,3 +283,20 @@ describe('centring on a point', () => {
     expect(useGlobeStore.getState().location).toBe(location);
   });
 });
+
+describe('resetting the view', () => {
+  it('counts every press, so a second one flies home again', () => {
+    useGlobeStore.setState({ homeViewRequest: 0 });
+    useGlobeStore.getState().requestHomeView();
+    useGlobeStore.getState().requestHomeView();
+    expect(useGlobeStore.getState().homeViewRequest).toBe(2);
+  });
+
+  it('moves the camera only: what is selected stays selected', () => {
+    useGlobeStore.getState().selectLocation(clickedFault);
+    const { location, dock } = useGlobeStore.getState();
+    useGlobeStore.getState().requestHomeView();
+    expect(useGlobeStore.getState().location).toBe(location);
+    expect(useGlobeStore.getState().dock).toBe(dock);
+  });
+});

@@ -4327,6 +4327,40 @@ Two small things, both the user's asks, on `dev` after `watch-here` merged.
   found it on the second try. The watch pin also sits on top of the trace at
   its own spot, so stop the watch before clicking there.
 
+## Reset view, and a starting view that faces the reader. 2026-10-11.
+
+Phase 6's "home" item, cut down. **The first-launch home prompt is dropped**:
+it was written before the watch pin existed, and the pin now does its job (it
+is where the alert is measured to). What was left is the camera reset the
+`homeButton: false` note has always said would be wanted.
+
+- **A globe icon beside "Probe a location"** (`ResetViewButton`) flies back to
+  the view the app opened on: whole globe, level. A destination with no
+  orientation also undoes a tilt, which is harder to fix by hand than a zoom.
+  It moves the camera only.
+- **The user's question was where "the starting position" is for someone
+  else.** Until now it was Cesium's default, over North America for everyone.
+  It now faces **the reader's own longitude, from the system clock's UTC
+  offset** (`homeLongitudeDeg`): 15° per hour, by definition. No location
+  permission, no network, no account. It is coarse (zones are political, and
+  daylight saving moves it 15°) and that is fine at whole-globe zoom.
+- **Latitude is 20°N for everyone**, because a clock says nothing about north
+  or south. **Known gap:** the dock covers the lower part of the globe, so a
+  reader in Sydney or Santiago opens with home behind the timeline. Fixing it
+  needs a hemisphere per time-zone name, which is a table to maintain. Not
+  built; the old default had the same gap.
+- **Height is read from Cesium's camera at construction**, so the globe opens
+  the size it always has. `Camera`'s constructor sets the default view
+  synchronously, so the read is valid before the first frame.
+- **Launch and reset are one `Cartesian3`**, fixed when the viewer is created.
+  Verified in a built instance: after zooming in and pressing reset, the
+  screenshot is **byte-identical** to the launch screenshot.
+- **An icon, not a word**, because `.leftColumn` is as wide as its widest
+  child. Measured: the column is 239 px with the probe toggle idle or armed,
+  the same as before the button existed.
+- The probe toggle is `flex: 1` inside a new `.globeControls` row now; the
+  row carries the `flex: none` the toggle used to.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

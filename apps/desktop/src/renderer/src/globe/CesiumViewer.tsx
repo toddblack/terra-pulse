@@ -5,7 +5,7 @@ import { isDockShowing } from '../panels/dock-state';
 import { routeGlobeClick } from './click-route';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { eventIdFromEntityId } from '../layers/earthquake-layer';
-import { focusAltitudeM } from './camera-focus';
+import { HOME_LATITUDE_DEG, focusAltitudeM, homeAltitudeM, homeLongitudeDeg } from './camera-focus';
 import {
   cursorForHover,
   describeBoundary,
@@ -72,6 +72,7 @@ const EMPTY_HITS: readonly AntipodalEvent[] = [];
 export function CesiumViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
+  const homeViewRef = useRef<Cesium.Cartesian3 | null>(null);
   // The viewer lives in a ref (it must not trigger re-renders), so this is
   // what tells dependent effects that it now exists.
   const [viewerReadyToken, setViewerReadyToken] = useState(0);
@@ -111,6 +112,7 @@ export function CesiumViewer() {
   const setHover = useGlobeStore((state) => state.setHover);
   const location = useGlobeStore((state) => state.location);
   const pointFocusRequest = useGlobeStore((state) => state.pointFocusRequest);
+  const homeViewRequest = useGlobeStore((state) => state.homeViewRequest);
   const fieldQuantity = useGlobeStore((state) => state.fieldQuantity);
   const auroraGrid = useGlobeStore((state) => state.auroraGrid);
   const magnetometerReadings = useGlobeStore((state) => state.magnetometerReadings);
@@ -244,6 +246,17 @@ export function CesiumViewer() {
     // backstop for anywhere else it could surface, including a basemap added
     // later that nobody has thought about coverage for.
     viewer.scene.globe.baseColor = Cesium.Color.fromCssColorString('#22221f');
+
+    // The home view: Cesium's own starting height, turned to face the reader's
+    // side of the planet rather than North America for everyone. Fixed here,
+    // once, so the reset button returns to exactly what the app opened on.
+    const home = Cesium.Cartesian3.fromDegrees(
+      homeLongitudeDeg(-new Date().getTimezoneOffset()),
+      HOME_LATITUDE_DEG,
+      homeAltitudeM(viewer.camera.positionCartographic.height),
+    );
+    viewer.camera.setView({ destination: home });
+    homeViewRef.current = home;
 
     viewerRef.current = viewer;
     setViewerReadyToken((token) => token + 1);
@@ -920,6 +933,16 @@ export function CesiumViewer() {
       duration: 1,
     });
   }, [pointFocusRequest]);
+
+  // The reset button: back to the view the app opened on. A destination with
+  // no orientation also levels the camera, which is half of what "reset" is
+  // for — a tilt is harder to undo by hand than a zoom.
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const home = homeViewRef.current;
+    if (!viewer || !home || homeViewRequest === 0) return;
+    viewer.camera.flyTo({ destination: home, duration: 1 });
+  }, [homeViewRequest]);
 
   return <div id="cesium-viewport" ref={containerRef} className={styles.viewport} />;
 }

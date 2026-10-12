@@ -1614,6 +1614,13 @@ server-side proxying of all third-party API calls.
 - C++/Rust Monte Carlo kernel with validation harness
 - Export: figures, CSV, reproducible analysis configs
 - Packaging and code signing
+- ~~**Home location, asked on first launch**~~ — **dropped 2026-10-11, and the
+  reset button below built.** The watch pin (§5.13) took over the prompt's
+  job: it is where the alert is measured to, and the user sets it when they
+  want it. What shipped instead: a reset-view button beside the probe toggle,
+  and a starting view that faces the reader's own longitude (from the system
+  clock's UTC offset) instead of North America for everyone. Details in
+  `CLAUDE.md` ("Reset view"). The original item, for the record:
 - **Home location, asked on first launch** (requested 2026-10-01, not built).
   A one-time prompt for where the user lives — a city or a globe click —
   stored in `app_state` and changeable later. It is what the planned

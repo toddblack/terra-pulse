@@ -1,0 +1,31 @@
+/* Sits beside the probe toggle and matches its surface, so the two read as one
+   row of globe controls. Square, at the toggle's own height. */
+
+.button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.375rem;
+  background-color: rgb(15 23 42 / 88%);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 40%);
+  color: rgb(203 213 225);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.button:hover {
+  background-color: rgb(51 65 85);
+  color: white;
+}
+
+.icon {
+  width: 0.9375rem;
+  height: 0.9375rem;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.2;
+}
