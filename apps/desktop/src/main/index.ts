@@ -12,10 +12,12 @@ import {
 /**
  * First-run size, and the floor below which the layout starts colliding.
  *
- * The minimum is not cosmetic: the inspector sits left of the viewport centre
- * at 24rem wide, so its left edge lands 448px from centre. Below 1000px that
- * reaches the left column. Widening the inspector without raising this is what
- * makes them collide — the two are a pair, see EarthquakeInspector.module.css.
+ * The minimum is not cosmetic. Across the top of the window run the left
+ * column (~255px with its margin), the selection column beside it (the
+ * inspector, 24rem plus a gap: ~400px) and the right column (~240px). That is
+ * ~895px before any globe shows between them, so 1000px leaves about 100px of
+ * it. Widening the inspector, or either column, without raising this is what
+ * makes them meet — see `.selectionColumn` in App.module.css.
  */
 const DEFAULT_WIDTH = 1600;
 const DEFAULT_HEIGHT = 1000;

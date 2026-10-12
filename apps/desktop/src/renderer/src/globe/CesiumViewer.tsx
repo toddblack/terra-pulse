@@ -6,6 +6,8 @@ import { routeGlobeClick } from './click-route';
 import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { eventIdFromEntityId } from '../layers/earthquake-layer';
 import { HOME_LATITUDE_DEG, focusAltitudeM, homeAltitudeM, homeLongitudeDeg } from './camera-focus';
+import { flyToAntipodeView } from './antipode-camera';
+import { flyToInClearArea } from './clear-area';
 import {
   cursorForHover,
   describeBoundary,
@@ -147,6 +149,26 @@ export function CesiumViewer() {
    * must describe the chord that is actually drawn.
    */
   const antipodalState = useAntipodal(antipodeEvent);
+
+  /**
+   * The same event reduced to what the chord and the camera are built from,
+   * and stable while those three values are.
+   *
+   * `antipodeEvent` is a new object whenever the catalogue reloads, even when
+   * nothing about this event changed. Keyed on it, a poll that brought in an
+   * unrelated quake would rebuild the chord and fly the camera back to its
+   * starting pose, undoing whatever rotating the reader had done.
+   */
+  const antipodeId = antipodeEvent?.id ?? null;
+  const antipodeLatitude = antipodeEvent?.latitude ?? null;
+  const antipodeLongitude = antipodeEvent?.longitude ?? null;
+  const antipodePoint = useMemo(
+    () =>
+      antipodeId === null || antipodeLatitude === null || antipodeLongitude === null
+        ? null
+        : { id: antipodeId, latitude: antipodeLatitude, longitude: antipodeLongitude },
+    [antipodeId, antipodeLatitude, antipodeLongitude],
+  );
   const antipodeHits =
     antipodalState.status === 'ready' ? antipodalState.window.events : EMPTY_HITS;
 
@@ -283,7 +305,7 @@ export function CesiumViewer() {
     solarFlares,
     cmeArrivals,
     solarWind,
-    antipodeEvent,
+    antipodeEvent: antipodePoint,
     antipodeHits,
     timeWindow,
     viewerReadyToken,
@@ -913,10 +935,10 @@ export function CesiumViewer() {
     // which is when it matters and is exactly what the old floor broke.
     const height = focusAltitudeM(viewer.camera.positionCartographic.height);
 
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(event.longitude, event.latitude, height),
-      duration: 1,
-    });
+    // To the middle of what is visible, not of the window: between the
+    // inspector column and the right column, above the dock. See
+    // `clear-area.ts`.
+    flyToInClearArea(viewer, event, height, 1);
   }, [focusRequest]);
 
   // The same move for a place that is not an event — the watch pin, from its
@@ -943,6 +965,38 @@ export function CesiumViewer() {
     if (!viewer || !home || homeViewRequest === 0) return;
     viewer.camera.flyTo({ destination: home, duration: 1 });
   }, [homeViewRequest]);
+
+  // The antipode view's camera: pull back and turn so the chord is seen from
+  // the side, and return to the event on the way out. See `antipode-camera.ts`.
+  //
+  // **Declared after the focus effect on purpose.** Entering the mode also
+  // parks a `focusRequest` for the event, and both effects run in the same
+  // commit; the later `flyTo` cancels the earlier, so this one has to be last.
+  //
+  // The height to return to is kept in a ref that only an *exit* clears, so
+  // going straight from one event's antipode to another's still returns to
+  // the zoom the reader had before either.
+  const antipodeRestoreHeightRef = useRef<number | null>(null);
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer) return;
+    if (antipodePoint === null) {
+      antipodeRestoreHeightRef.current = null;
+      return;
+    }
+
+    antipodeRestoreHeightRef.current ??= viewer.camera.positionCartographic.height;
+    flyToAntipodeView(viewer, antipodePoint);
+
+    return () => {
+      if (viewer.isDestroyed()) return;
+      // Back to whatever is selected now — usually this event, but the chord
+      // can outlive a selection change — at the zoom the reader came in with.
+      const selectedId = useEarthquakeStore.getState().selectedEventId;
+      const back = eventsRef.current.find((candidate) => candidate.id === selectedId) ?? antipodePoint;
+      flyToInClearArea(viewer, back, focusAltitudeM(antipodeRestoreHeightRef.current ?? Number.NaN), 1.2);
+    };
+  }, [antipodePoint]);
 
   return <div id="cesium-viewport" ref={containerRef} className={styles.viewport} />;
 }

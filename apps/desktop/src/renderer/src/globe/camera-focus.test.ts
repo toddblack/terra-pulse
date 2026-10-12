@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FALLBACK_FOCUS_ALTITUDE_M,
   FALLBACK_HOME_ALTITUDE_M,
+  aimForPixel,
   focusAltitudeM,
   homeAltitudeM,
   homeLongitudeDeg,
@@ -60,5 +61,29 @@ describe('the home view', () => {
     expect(homeAltitudeM(22_107_000)).toBe(22_107_000);
     expect(homeAltitudeM(Number.NaN)).toBe(FALLBACK_HOME_ALTITUDE_M);
     expect(homeAltitudeM(0)).toBe(FALLBACK_HOME_ALTITUDE_M);
+  });
+});
+
+describe('aimForPixel', () => {
+  const viewport = { width: 1600, height: 900 };
+  const fov = Math.PI / 3;
+
+  it('needs no aim to put something at the middle of the window', () => {
+    expect(aimForPixel(viewport, { x: 800, y: 450 }, fov)).toEqual({ tanRight: 0, tanUp: 0 });
+  });
+
+  it('aims right for a target right of centre, and up for one above it', () => {
+    // The clear area with the inspector open: right of centre and above it.
+    const aim = aimForPixel(viewport, { x: 1000, y: 300 }, fov);
+    expect(aim.tanRight).toBeGreaterThan(0);
+    expect(aim.tanUp).toBeGreaterThan(0);
+  });
+
+  it('measures against the wider dimension, as Cesium does', () => {
+    // 60° across 1600px: the edge of the window is tan(30°) off the axis.
+    expect(aimForPixel(viewport, { x: 1600, y: 450 }, fov).tanRight).toBeCloseTo(Math.tan(Math.PI / 6), 6);
+    // Turned on its side, the same angle spans the height instead.
+    const tall = { width: 900, height: 1600 };
+    expect(aimForPixel(tall, { x: 450, y: 0 }, fov).tanUp).toBeCloseTo(Math.tan(Math.PI / 6), 6);
   });
 });

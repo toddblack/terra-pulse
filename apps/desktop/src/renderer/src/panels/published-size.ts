@@ -33,13 +33,20 @@
 export function publishSize(
   property: string,
   dimension: 'width' | 'height',
+  /**
+   * `publishZero` is for an element that is legitimately empty at times — a
+   * column whose panels all close. By default a zero is skipped, because for
+   * an always-filled panel it only ever means "not laid out yet"; skipped here
+   * it would leave the last real size published after the element emptied.
+   */
+  { publishZero = false }: { publishZero?: boolean } = {},
 ): (node: HTMLElement | null) => (() => void) | undefined {
   return (node) => {
     if (!node) return undefined;
 
     const publish = () => {
       const size = node.getBoundingClientRect()[dimension];
-      if (size > 0) document.documentElement.style.setProperty(property, `${String(size)}px`);
+      if (size > 0 || publishZero) document.documentElement.style.setProperty(property, `${String(size)}px`);
     };
 
     publish();

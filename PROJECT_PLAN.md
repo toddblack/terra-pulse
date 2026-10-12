@@ -438,6 +438,16 @@ mass is at registration time.
 Target catalog must also be declustered — the antipodal quake you find could
 be an aftershock of something entirely local.
 
+**The viewer became a sequence on 2026-10-11.** Pressing Antipode used to draw
+the chord under a still camera, which looks straight down it. Now the camera
+pulls back and turns 45° so the chord is seen from the side and level, the line
+is drawn, and the 250/500/1000 km rings spread out from where it lands, with
+any recorded hit appearing as the ripple reaches it. Leaving the mode flies
+back to the quake. The rings and the ripple are still readability only. The
+earthquake inspector also moved that day, from the middle of the globe to a
+column beside the range controls. Details in `CLAUDE.md` ("The selection
+column, and the antipode as a sequence").
+
 ### 5.4 Statistical Engine
 
 **Pipeline order matters:**

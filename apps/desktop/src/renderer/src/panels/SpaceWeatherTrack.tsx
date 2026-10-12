@@ -633,8 +633,8 @@ export function SpaceWeatherTrack() {
  *
  * ## What the line costs, and why it still pays
  *
- * About 1.3rem — and because the inspector is centred, roughly 2.6rem of its
- * clearance. It buys back far more than that: switching off two rows reclaims
+ * About 1.3rem of the inspector's room (twice that while the inspector was
+ * centred, which is when this was weighed). It buys back far more than that: switching off two rows reclaims
  * ~5.6rem, and the clearance is measured now rather than a hardcoded constant
  * (see `TimeScrubber.tsx`), so turning a row off genuinely gives the inspector
  * the room back instead of merely leaving a gap.

@@ -31,6 +31,9 @@ import { HistoricalDataPanel } from './panels/HistoricalDataPanel';
  */
 const publishLeftColumnWidth = publishSize('--left-column-width', 'width');
 const publishRightColumnWidth = publishSize('--right-column-width', 'width');
+/** Zero when nothing is selected, and published as zero: the top-centre
+ * column slides right by this, and must slide back when the column empties. */
+const publishSelectionColumnWidth = publishSize('--selection-column-width', 'width', { publishZero: true });
 
 /**
  * Everything that isn't the globe itself or the Explore/Analyze switch.
@@ -131,7 +134,7 @@ export function ExploreShell() {
           `bottom: 3rem`, which is where it used to collide with the archive
           above it on a short screen. `margin-top: auto` keeps it at the
           bottom; the archive is what shrinks. See App.module.css. */}
-      <div className={styles.leftColumn} ref={publishLeftColumnWidth}>
+      <div id="left-column" className={styles.leftColumn} ref={publishLeftColumnWidth}>
         <RangeControls />
         <HistoricalDataPanel />
         <FaultProbeToggle />
@@ -142,6 +145,11 @@ export function ExploreShell() {
       <div className={styles.topCentreColumn}>
         <LargeEventBanner />
         <MissedEventsPanel />
+      </div>
+      {/* Everything that was clicked, in one column beside the range controls:
+          the quake, then the fault or boundary, then the flare or CME. */}
+      <div id="selection-column" className={styles.selectionColumn} ref={publishSelectionColumnWidth}>
+        <EarthquakeInspector />
         <LocationPanel />
         <SolarEventPanel />
       </div>
@@ -149,11 +157,10 @@ export function ExploreShell() {
           columns. Before it existed, waveforms were a mode of their own that
           unmounted all of the above. */}
       <BottomDock />
-      <div className={styles.rightColumn} ref={publishRightColumnWidth}>
+      <div id="right-column" className={styles.rightColumn} ref={publishRightColumnWidth}>
         <EventListPanel />
         <DepthLegend />
       </div>
-      <EarthquakeInspector />
       {/* Last, so it draws above every panel — it tracks the pointer and
           must never be occluded by the chrome it passes over. */}
       <HoverTooltip />

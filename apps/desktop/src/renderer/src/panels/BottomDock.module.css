@@ -9,8 +9,8 @@
    GEM and PB2002 — runs up to 28rem in from the left edge at the very bottom
    (`CesiumViewer.module.css`). The old scrubber was centred and never reached
    it; a dock that starts right after the left column would sit on top of it at
-   `bottom: 1rem`. The cost is paid by the centred inspector, which loses twice
-   the 2rem — minimising the dock gives it all back.
+   `bottom: 1rem`. The cost is paid by the selection column above it, which
+   loses the 2rem — minimising the dock gives it all back.
 
    `min-width` is the narrow-window escape: below it the dock would rather run
    under a column than squeeze traces to nothing. */

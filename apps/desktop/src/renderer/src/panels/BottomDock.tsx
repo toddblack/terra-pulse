@@ -16,9 +16,8 @@ import { watchChipLabel, watchDetail, watchHealth } from '../watch/watch-labels'
 import styles from './BottomDock.module.css';
 
 /**
- * Publishes the dock's height for the inspector and the top-centre column to
- * clear. The inspector is centred, so it subtracts this twice; see
- * `EarthquakeInspector.module.css` and `published-size.ts`.
+ * Publishes the dock's height for the selection column and the top-centre
+ * column to end above; see `App.module.css` and `published-size.ts`.
  */
 const publishDockHeight = publishSize('--dock-height', 'height');
 
@@ -184,7 +183,7 @@ export function BottomDock() {
   ];
 
   return (
-    <div className={styles.dock} ref={publishDockHeight}>
+    <div id="bottom-dock" className={styles.dock} ref={publishDockHeight}>
       <div className={styles.strip}>
         <div className={styles.tabs} role="tablist" aria-label="Bottom panel">
           {tabs.map((tab) => {

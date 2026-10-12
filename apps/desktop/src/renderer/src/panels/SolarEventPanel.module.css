@@ -1,19 +1,16 @@
-/* Top-centre, same column LocationPanel uses — the closest precedent for
-   "click something, get an info panel". Independent store slots (see
-   SolarEventSelection's doc), so both can be open at once.
-
-   That used to overlap, and this comment used to say so: the two shared a
-   single 7.5rem offset, "accepted for a first version rather than building a
-   docking system for two panels that are usually not open together". The
-   docking system turned out to be `.topCentreColumn` in `App.module.css`,
-   which had to exist anyway for the banner and the digest — so both panels now
-   stack for free rather than landing on each other. */
+/* The same column LocationPanel and the earthquake inspector use —
+   `.selectionColumn` in `App.module.css`, the home of "click something, get an
+   info panel". Independent store slots (see SolarEventSelection's doc), so all
+   three can be open at once, and they stack rather than landing on each
+   other. */
 
 .panel {
   display: flex;
   flex-direction: column;
-  width: 18rem;
-  max-height: calc(100vh - 15rem);
+  /* The column's width, so stacked panels share both edges. */
+  width: 24rem;
+  flex: 0 1 auto;
+  min-height: 0;
   padding: 0.75rem 0.875rem 0.5rem;
   border-radius: 0.5rem;
   background-color: rgb(15 23 42 / 92%);
