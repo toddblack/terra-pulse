@@ -3986,8 +3986,303 @@ warning moves to a "Watch here" pin (next branch; see `PROJECT_PLAN.md` §5.13).
   `replayEligible`), the home marker, the REPLAY banner, the alert sound on
   playback (`crossedForward`, the store's `lastMove`), `wavefrontRadiusKm`.
   `HOME_LOCATION` stays — the script grades against it.
-- **Not checked in the running app yet**: the camera frame (`replayFrame`,
-  tested for the antimeridian) and how 1,000+ km rings read on the globe.
+- **Seen in the running app by the user, 2026-10-08, and merged**: "looks
+  great". The user accepts that it is mostly useful near dense networks — a
+  Kamchatka–Japan quake replayed with only distant rows, because Japan's dense
+  networks are not on the public ring.
+
+## The live watch — "Watch here". Shipped 2026-10-08, branch `watch-here`.
+
+§5.13's last step: the detector running live. One pin, made from the waveform
+tab's picked spot ("Watch this spot"); the stations around it stream through
+the graded detector for as long as the app is open; an alert when a quake is
+**M4.5+ on the running estimate and predicted MMI ≥ 2.5 at the pin**. The
+user's design throughout: one pin, none on first launch, a dock-strip chip with
+Stop, and **Stop removes the pin** — no paused-but-present state.
+
+- **The button lives in the waveform panel's tab row, and only there — the
+  user's call, the same day.** It shipped first in the location panel and the
+  quake inspector, and felt disconnected: the watch is a waveforms thing. The
+  flow it serves is *pick spots to look at their traces → find one worth
+  keeping an eye on → make it the watch → carry on picking elsewhere*. The pick
+  and the watch are separate connections, so re-picking never moves the watch;
+  on a new pick the button offers "Move watch here". For a quake, the
+  inspector's **Stations** button picks the epicentre and the watch is one
+  click from there.
+  - **Distinct on purpose**: a filled emerald pill with a pin mark, unlike
+    every other control in the panel — they change what you look at, this
+    starts something that keeps running and alerts.
+  - **Disabled, with the reason as tooltip, on a preset tab** (a region has no
+    one spot) **or before a pick**. Active from the click itself: the watch
+    fetches its own stations, so it need not wait for the pick's list.
+  - **Once the pick *is* the pin it shows main's verdict, not just "pinned"**:
+    "Watching this spot", "Watching (limited)" for `too-far`, or amber "Can't
+    watch here · remove" when nothing is in reach. Found by checking in the
+    app: a pick near James Bay (nearest station 318 km) pinned fine and read
+    "Watching" while watching nothing; only the chip said otherwise.
+- **Ring capacity was measured first, and it changed the handshake.** One
+  connection takes all 74 Burbank stations; 71 delivered (3 were offline).
+  Sequential handshake **17.4 s**, pipelined **0.53 s**, all 225 replies OK and
+  in order. Latency unchanged (median ~1.6 s at 74 against 10; at most 0.5 s
+  slower on the same 10 stations). Two connections run side by side.
+  - `createSeedLinkSession` now sends `HELLO` and `CAPABILITIES` one at a time
+    (a refused `CAPABILITIES` must stop before any `STATION` — trap 1) and the
+    whole station block in **one write**, matching replies by position. One
+    thing given up: a station whose `SELECT` was refused still gets its `DATA`
+    (which streams every channel). The ring never refuses — trap 4 — and the
+    controller drops anything unrequested.
+  - The waveform tab gets it free: **10 stations connect in 0.4 s, was 2.7 s.**
+    `WAVEFORM_MAX_CHANNELS` is now a display cap, not a handshake bound.
+- **Station set: the replay's** — every ≥20 Hz station within 300 km — but
+  capped at 100, because the densest circles on the ring hold **349** (Mount St.
+  Helens' volcano network), 201 (West Texas), 150 (Oklahoma). Burbank's 75 are
+  untouched. **The cap thins by spacing, never by distance** (`watchNetwork`):
+  nearest-80 was measured to make Ridgecrest M7.1 read M6.0, and nearest-N
+  around a volcano would be one mountain. Nearest-first greedy with the
+  smallest spacing that fits, found by bisection; the nearest station always
+  survives, since `too-far` is measured from it.
+- **The alert rule was swept before it was built** (`WATCH_ALERT_RULE`, table
+  on the constant). The M4.5 floor costs **no warning on any M5+ quake**; it
+  drops South El Monte M4.5 and Malibu M4.6 (read 4.1-4.4), which would have
+  alerted 1.2 s after and 0.7 s before their shaking. M4.3 wins one back 12 s
+  late. MMI 3.0 halved Searles Valley's warning (36 → 18 s) — the climbing
+  estimate takes longer to get there — so it stays 2.5, not the "about 3"
+  floated to the user. No alert in the distant, random or sequence sets.
+  `AlertRule.minMagnitude` is optional, so every graded run is unchanged.
+- **`LiveQuakeWatch` (ingest, pure) is checked against the graded loop, not
+  just unit-tested**: fed the same records with a Burbank pin across all 75
+  cached replay cases, it raises alerts at **identical instants** in every one.
+  (A first comparison "failed" on magnitude only: the graded loop's
+  `HomeAlert` is updated in place, so it shows the final magnitude, not the one
+  at raising. Compare instants.)
+- **Main owns it, not the renderer** (`main/ipc/quake-watch.ts`). A second
+  `createWaveformController` — different stations, different lifetime from the
+  tab's — so stall detection, backoff and inventory come for free. The pin is
+  stored in `app_state` (`quake_watch_pin`; `deleteAppState` is new) and
+  `restore()` resumes it after the window is up. A reload, Analyze mode or a
+  closed dock leaves it running. Records are fed with `now()` at landing — the
+  live counterpart of the replay's record end + transit.
+- **Failures retry rather than settle.** No station list → `unavailable`,
+  retried every 5 min. **No gains → it streams but cannot estimate magnitude,
+  so cannot alert** — the status says so, the chip goes red, and gains are
+  retried and swapped in. No station within 300 km → `unavailable`, not
+  retried (the ring will not grow one). A pin with stations but none within the
+  associator's 50 km is `too-far`: it watches, but only quakes near the
+  stations can be caught, and the chip's tooltip says so.
+- **The alert lives in `App`, above both shells**, because Explore unmounts in
+  Analyze mode and an alert must still reach someone there.
+  `useQuakeWatchSync` subscribes then pulls (`quake-watch:current-alert` — the
+  §5.8 lesson: a launch with a stored pin can alert before the renderer
+  subscribes). A pulled alert is sounded only while its shaking is still ahead.
+  Dismissal round-trips to main, so it does not come back on reload.
+- **The banner is a warning, unlike `LargeEventBanner`**, which reports the
+  past: bright red, a countdown to the S wave on its own 250 ms clock (the
+  shared 30 s `useNow` is far too coarse), floored at the alert's own raise
+  time so a stale clock cannot count down from the past. It publishes
+  `--watch-banner-height`, and `.topCentreColumn` moves down by it, so it
+  covers nothing.
+- **Emerald is the watch's colour** — the pin, the chip's dot, the active
+  button — because nothing else on the globe uses it: cyan is the streamed
+  stations (a different connection), amber replay/GEM, violet PB2002, red the
+  antipode and the S wave. The inspector's active class was the antipode's red
+  and would have read as the same mode, so the watch has its own.
+- **The pin overlay keys on latitude and longitude, not the pin object**: every
+  status push carries a fresh copy, and a marker rebuilt per station-state
+  change would flicker.
+- **Verified in a built, isolated instance over CDP**: a fresh launch reports
+  `off` and opens nothing; a pin in Pennsylvania streamed **63 of 64** stations
+  (59 with gains) within 20 s; after a restart the pin resumed on its own with
+  the chip and marker drawn; Stop cleared both. After the move to the waveform
+  panel: disabled on a preset; a Rockies pick became a limited watch (14/14,
+  nearest 138 km); re-picking Pennsylvania left the watch on the Rockies and
+  offered "Move watch here".
+- **Not verified, and cannot be without a quake:** a live alert end to end.
+- **The chip's Test button (2026-10-08)** exists because the banner had never
+  been seen: MyShake's answer, a fake quake down the real path. Main builds it
+  (`testWatchAlert`) and sends it through the same `onAlert` push, retention,
+  OS notification, sound and dismissal as a detection. It is shaped like a
+  *typical* alert, not a dramatic one, so what you see is what you will get:
+  M5.0 100 km NE, declared 14 s after origin (the graded median), ~14 s of
+  countdown, MMI ~2.8 from the real equation (just over the 2.5 threshold).
+  After 3 s it climbs to M5.4, the way a real estimate does. `test: true` on
+  the alert; the badge reads "Test — not real" and the notification title
+  "TEST — not a real earthquake". Everything else looks real on purpose.
+  - **The climb must not resurrect a dismissed test.** Main's retained copy
+    updates only if it is still the current alert, the rule real updates
+    follow; a test pins it. Stop cancels a pending climb.
+
+**North of the Andes is a data-policy hole, not a station shortage** (measured
+2026-10-08, after the user found few stations in Colombia and Venezuela). Of
+6°S–13°N / 82°–58°W, the open rings carry 22 stations: 9 Colombian (mostly the
+Caribbean coast), 10 Ecuadorian, **no Venezuelan**. Venezuela's network has 48
+operating stations at IRIS, **all `restricted`**; Colombia's national network
+shares 16 internationally, 6 of them restricted. So the 2026 Venezuela M7.5 and
+M7.2 and the Colombia M7.4 each had 0–1 open stations within 300 km. No
+protocol work fixes that. Ecuador is the exception: most of its M5+ had 7–9
+open stations in range.
+
+## A second SeedLink server: GeoNet New Zealand. 2026-10-08, branch `watch-here`.
+
+Prompted by the user getting "Can't watch here" across Indonesia. A survey of
+every public SeedLink server that answered — ten, ~1,500 stations EarthScope
+does not carry — measured what each would add to the detector's reach over two
+years of M5+ quakes. Full recon in `SOURCES.md` and the memory of the session;
+the decisions:
+
+- **What it buys, measured.** New Zealand M5+ in reach 1 of 21 → **10 of 21**
+  (GeoNet); Chile/Peru 14% → 28% and the Mediterranean 2% → 23% (GEOFON, next);
+  **Indonesia 0 → 0 and Japan 5% → 5%**, because no open real-time source
+  covers either — GEOFON's open stations include none in Indonesia, and Hi-net
+  needs an account (standing rule 2). Worldwide 3% → ~4%: most large quakes are
+  offshore or nowhere near a public station, and no source fixes that.
+- **Order, the user's call on the recommendation:** groundwork + GeoNet (no
+  protocol work), then GEOFON (SeedLink 4 + miniSEED 3), then the SeisComP 3.x
+  servers (need a `BATCH` handshake). Each was tested live before the order was
+  set; the protocol findings are on `SEEDLINK_SERVERS`.
+- **A channel carries an optional `server` id; absent means EarthScope.** That
+  is what kept every preset, stored object and existing test meaning exactly
+  what it did — 1,964 tests passed unchanged before any new one was written.
+  **Only the id crosses the bridge**, validated against `SEEDLINK_SERVER_IDS`;
+  main maps it to a host (`SEEDLINK_SERVERS`), so the renderer cannot point
+  main's socket anywhere.
+- **`createMultiServerController`**: one `createWaveformController` per server
+  behind the same interface, statuses merged — connected only when every active
+  server is, channels in requested order, an error prefixed with its server.
+  One server down leaves the other's rows streaming.
+- **The catalogue merges whichever servers answered** and is unavailable only
+  when all failed. A station on two servers is kept once, **EarthScope's copy**:
+  replays and gains already work there.
+- **GeoNet's inventory comes over `INFO STREAMS`** (`fetchSeedLinkInventory`):
+  its 2020 RingServer has no HTTP listing at all. 2,418 streams in 1.4 s. No
+  `CAPABILITIES` is sent for INFO — SeisComP refuses it, and INFO packets keep
+  `SLINFO` framing either way.
+- **Gains come from each server's own station service** — EarthScope's knows
+  nothing of GeoNet's sensors. Partial gains are kept; null only if every
+  server failed (what the watch's retry keys on).
+- **Replays are EarthScope-only for now**: they read EarthScope's archive, which
+  holds nothing for GeoNet's ring. GeoNet has its own dataselect — a later step.
+- **Verified in a built, isolated instance**: the merged list held 3,398
+  stations (211 GeoNet); a watch on Wellington streamed **95 of 96** stations,
+  nearest 1 km, 51 with magnitude gains, no reach limit — a spot that was
+  unwatchable before; and the tab streamed three GeoNet and two Californian
+  stations at once, all live.
+- Licence: GeoNet is **CC BY 3.0 NZ**, free, no account; its acknowledgement is
+  in the waveform guide and `SOURCES.md`.
+
+## The third server: GEOFON — SeedLink 4 and miniSEED 3. 2026-10-08.
+
+Step 2 of the agreed order. GEOFON (GFZ Potsdam) is the server that adds
+Chile and the eastern Mediterranean, and it needed two pieces of protocol the
+app did not have.
+
+- **The session picks its protocol from `HELLO`** (`seedlinkVersionFrom`, now
+  `seedlinkDialectFrom` — see the SeisComP section):
+  3.1 wherever it is advertised (EarthScope and GeoNet advertise it, EarthScope
+  alongside 4.0), 4 only when 4.0 is all there is (GEOFON's "HMB SeedLink
+  v0.2"), and the 3.x default when nothing is advertised (SeisComP 3.x — step
+  3). The 3.1 path is unchanged: every existing SeedLink test passed before a
+  v4 test was written.
+- **SeedLink 4 differs in four places, each live-tested on GEOFON first**:
+  `SLPROTO 4.0` opens; stations are `NET_STA`; selectors are `LOC_B_S_SS`
+  with a blank location left blank (`_H_H_Z`, exactly one channel); and
+  packets are `SE`-framed and **variable-length** — `SeedLink4Framer` reads
+  the length and is as strict as the 3.x framer (no resync). Pipelining is
+  allowed by the spec and worked: handshake ~1 s.
+- **GEOFON sends miniSEED 3 only**; asking for `.2D` returns nothing.
+  `parseMiniSeedRecord` recognises "MS"+3 (a 2.x record opens with sequence
+  digits, so no collision) and hands it to `parseMiniSeed3Record`: 40-byte
+  little-endian header, FDSN source id, JSON extra headers, Steim frames
+  **still big-endian**. Every caller — tab, watch, replay — reads both formats.
+- **Two independent integrity checks, both proven load-bearing by tests**: the
+  record's CRC-32C over every byte, and Steim's last-sample check. A test
+  corrupts the data *and recomputes the CRC*, so only the Steim check can catch
+  it — and it does. Fixtures are three real GEOFON records, expected values
+  read from the bytes by a separate script (X0/Xn constants), not by the parser.
+- **Station metadata from IRIS's federated catalogue**, networks taken from
+  GEOFON's own inventory (`networks: null`): its ring carries ~27 networks
+  archived at several data centres, and no one centre's service knows them all.
+  It answers the same FDSN text and POST (gains included) as the others; its
+  `#DATACENTER=` comment lines are now skipped by `parseFdsnText`.
+- **GEOFON's `INFO STREAMS` is 1.12 MB, and it failed once inside the app**
+  while succeeding every time in a script. The reader now walks packets by
+  offset instead of slicing per packet, and **every failure logs its reason**;
+  a failed list is never cached, so the next request retries — which is why the
+  first in-app run still had GEOFON's stations for the watch. Not reproduced
+  since; if it recurs the log says why.
+- **Measured, same station list with and without GEOFON** (detector reach:
+  four stations within 300 km and one within 50 km): Antofagasta 4 stations /
+  nearest 187 km → **15 / 22 km, in reach**; Santorini 1 → **8, nearest 6 km**;
+  Kythira 1 → **7, nearest 14 km**; Iquique 5 → 20. **Athens stays out of reach**
+  (nearest 168 km) and Lima and Istanbul stay at a station or few: Greece's,
+  Peru's and Turkey's national networks are not on an open server.
+- Live: a Santorini watch ran 8 stations, all with gains; 4 had delivered
+  within 30 s (several are 20 Hz, which ship records less often).
+- Licence: GE declares none; GEOFON says no permission is needed and asks for
+  an acknowledgement and the GE DOI, both in the guide and `SOURCES.md`. The detector is graded only in Southern
+  California on 100 Hz stations; a pin elsewhere runs on 20-50 Hz stations it
+  was never graded on.
+
+## The SeisComP servers: five more, one handshake. 2026-10-09.
+
+Step 3 of the agreed order: BGR, ORFEUS, IPGP, the Croatian Seismological
+Survey and USP (Brazil). All five run SeisComP's own SeedLink, and one
+handshake covers them all. Eight servers now; the merged list holds **4,001
+stations** (3,201 EarthScope, 210 GeoNet, 170 GEOFON, 105 BGR, 99 IPGP, 89
+Croatia, 83 ORFEUS, 44 USP), built in 3.4 s in the running app.
+
+- **`seedlinkDialectFrom` picks the handshake from the first HELLO line**:
+  `v3.1` when `SLPROTO:3.1` is advertised, `v4` when only 4.0 is, and
+  **`batch` when nothing is**. SeisComP 3.x answers `SeedLink v3.3 (2024.020)`
+  with no capabilities at all. It replaced `seedlinkVersionFrom`, whose "no
+  capabilities → 3" default was a placeholder for exactly this. Two old test
+  fixtures used a bare `SeedLink v4.0` HELLO to stand in for RingServer; they
+  now use RingServer's real line, because "advertises nothing" now means
+  something.
+- **Batch mode means no replies.** These servers answer `ERROR` to
+  `CAPABILITIES`, and to a pipelined block they act on the first line and drop
+  the rest. After `BATCH` (answered `OK`) the server answers **nothing**: not
+  `STATION`, `SELECT` or `DATA`, and not `END`. So the block and `END` go in
+  one write and streaming starts at once. Measured on six servers: first packet
+  1.3-3.4 s after HELLO, and in the app streaming within ~0.6 s of connecting.
+  - **An unknown station or selector gets silence, not an `ERROR` line**,
+    checked on four servers. That matters, because a text line in the packet
+    stream would desynchronise the framer. It is trap 4 by another route, and
+    the inventory check already catches it.
+  - The command timer stops at `BATCH`'s `OK`. A server that then sends
+    nothing is left to the controller's stall detection, like a silent station.
+- **`stationServiceUrls` is a list now**, asked in parallel and merged, for
+  Croatia. The federated catalogue placed 52 of its 126 new stations; the
+  survey's own service (`http://` only, since its https does not answer) knows
+  42 CR stations the catalogue lacks. Together: 89. Listing
+  (`fetchMergedListing`) and gains (`fetchGainsByServer`) both ask every URL.
+  Duplicate rows are harmless: `buildStationCatalogue` keeps one per station,
+  and `velocityGainAt` takes the first epoch that covers the instant.
+- **Order in `SEEDLINK_SERVER_IDS` is priority.** The merge keeps the first
+  server's copy of a duplicated station, and BGR re-serves GE stations, so
+  GEOFON comes before it.
+- **The merged list no longer waits for the slowest server**
+  (`CATALOGUE_SERVER_WAIT_MS`, 10 s). IPGP's host stopped answering three
+  times during this work and came back in between. A connection to it hangs
+  ~21 s before the OS gives up, and `Promise.all` over eight servers meant the
+  picker *and a starting watch* had no stations at all for that long. A late
+  server is left out of that answer, keeps loading, and its result is cached for
+  the next ask. Found by the live check, not by a test. Healthy servers took
+  1.5-3.6 s for stream list plus coordinates.
+- **Verified in a built, isolated instance**: a Zagreb watch ran 85 stations,
+  nearest 11 km, 84 with gains, 46 delivering within 35 s. A Guadeloupe watch
+  ran 55, nearest 17 km, 45 with gains. Neither carries a reach limit; both
+  spots were unwatchable before. The shipped session code also streamed and
+  decoded records from BGR, ORFEUS, Croatia and USP directly.
+- **Licences** (full table in `SOURCES.md`): BGR and ORFEUS are EIDA nodes,
+  licensed per network and mostly CC BY 4.0, asking that each network be cited
+  by DOI. IPGP asks for its own sentence plus the network DOIs. Croatia
+  publishes no licence, but its restrictions were lifted at ORFEUS on the
+  owners' behalf. Brazil's BL network is declared open, with no DOI. Every
+  acknowledgement is in the waveform guide's source section and on
+  `SEEDLINK_SERVERS`.
+- **Left out on purpose:** ICGC Catalonia (11 new) and Évora (14 new, 5
+  placeable). Both take `BATCH`, so each is one entry if ever wanted. Replays
+  are still EarthScope-only.
 
 ## Non-negotiables
 

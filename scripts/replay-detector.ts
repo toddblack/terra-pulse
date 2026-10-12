@@ -14,7 +14,8 @@
  *
  * `--param picker.highPassHz=3` (repeatable) overrides one detector setting,
  * for sweeps. `--min-intensity 3` sets the alert threshold (predicted MMI at
- * home). `--only <text>` keeps the cases whose id or label contains it.
+ * home); `--min-magnitude 4.5` adds a floor on the running magnitude estimate.
+ * `--only <text>` keeps the cases whose id or label contains it.
  * `--quiet` prints only the summary line.
  *
  * **Why there is a held-out set and why it is locked.** Every threshold in the
@@ -422,7 +423,7 @@ async function runCase(c: Case, list: WaveformStation[], gains: readonly FdsnTex
     gains,
     gainAtMs: c.startMs,
     home: HOME,
-    rule: { minIntensity: minIntensity() },
+    rule: { minIntensity: minIntensity(), ...(minMagnitude() === null ? {} : { minMagnitude: minMagnitude() as number }) },
     geometry: { depthKm: DEPTH_KM, sVelocityKmS: S_VELOCITY_KM_S },
     params: detectorParams(),
     onPick,
@@ -505,6 +506,15 @@ async function feltReport(eventId: string): Promise<FeltReport> {
 function minIntensity(): number {
   const value = Number(arg('min-intensity') ?? DEFAULT_ALERT_RULE.minIntensity);
   if (!Number.isFinite(value)) throw new Error('--min-intensity must be a number');
+  return value;
+}
+
+/** `--min-magnitude 4.5` adds a floor on the running estimate; absent, none. */
+function minMagnitude(): number | null {
+  const raw = arg('min-magnitude');
+  if (raw === null) return null;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) throw new Error('--min-magnitude must be a number');
   return value;
 }
 

@@ -61,10 +61,9 @@ export function waveformRegionById(id: string): WaveformRegion | undefined {
  * the bridge for no reason.
  */
 export function channelsOf(stations: readonly WaveformStation[]): WaveformChannel[] {
-  return stations.map(({ network, station, location, channel }) => ({
-    network,
-    station,
-    location,
-    channel,
-  }));
+  // The server travels with the channel when there is one: main needs it to
+  // know which ring to ask, and an absent one means EarthScope.
+  return stations.map(({ network, station, location, channel, server }) =>
+    server === undefined ? { network, station, location, channel } : { network, station, location, channel, server },
+  );
 }

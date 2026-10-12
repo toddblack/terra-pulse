@@ -19,6 +19,11 @@ import { predictIntensity } from './shaking-intensity';
 export interface AlertRule {
   /** Predicted MMI at home that triggers an alert. */
   minIntensity: number;
+  /**
+   * Running magnitude estimate that must also be reached. Absent means no
+   * floor — the intensity rule alone, which is what every graded replay used.
+   */
+  minMagnitude?: number;
 }
 
 /**
@@ -38,6 +43,33 @@ export interface AlertRule {
  * in the distant-quake or random-hour sets.
  */
 export const DEFAULT_ALERT_RULE: AlertRule = { minIntensity: 2.5 };
+
+/**
+ * The live watch's rule: **felt at the pin (MMI 2.5) and M4.5+ on the running
+ * estimate.** The user's call (2026-10-08): the watch is for large quakes, and
+ * the detector reaches ~350 km from the pin, so magnitude alone would alert on
+ * an M4.5 nobody at the pin feels, and intensity alone on a small one under it.
+ *
+ * Swept on the tuning set against `DEFAULT_ALERT_RULE` (graded vs Burbank DYFI):
+ *
+ *   rule                 alerts  agree  missed  extra   warnings before S, s
+ *   MMI 2.5              7       6      1       1       -2.2 -1.2 0.1 0.7 7.5 15.9 36.1
+ *   MMI 2.5 + M4.5       5       4      3       1       -2.6 0.1 7.5 15.9 36.1
+ *   MMI 2.5 + M4.3       6       5      2       1       -12.3 -2.2 0.1 7.5 15.9 36.1
+ *   MMI 3.0 + M4.5       4       1      1       3       -2.6 7.5 15.7 18.0
+ *
+ * **The floor costs no warning on any M5+ quake** (Ridgecrest 35.8 / 40.5 s
+ * unchanged). The two quakes it drops — South El Monte M4.5 and Malibu M4.6,
+ * which the estimate read as 4.1-4.4 — would have alerted 1.2 s after and
+ * 0.7 s before the shaking, so nothing useful goes. M4.3 only wins South El
+ * Monte back 12 s late. MMI 3.0 halves Searles Valley's warning (36 → 18 s)
+ * because the climbing estimate needs longer to get there. No alert in the
+ * distant-quake, random-hour or sequence sets under this rule.
+ *
+ * The estimate reads ~0.3 low at declaration, so in practice this floor is
+ * nearer a true M4.8 early on — which the user accepted when choosing 4.5.
+ */
+export const WATCH_ALERT_RULE: AlertRule = { minIntensity: 2.5, minMagnitude: 4.5 };
 
 export interface HomeLocation {
   latitude: number;
@@ -115,6 +147,7 @@ export class HomeAlerter {
       return null;
     }
     if (intensity < this.rule.minIntensity) return null;
+    if (estimate.magnitude < (this.rule.minMagnitude ?? Number.NEGATIVE_INFINITY)) return null;
 
     const epicentralKm = haversineKm(this.home, event);
     const alert: HomeAlert = {

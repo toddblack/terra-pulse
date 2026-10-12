@@ -4,14 +4,19 @@ import {
   SEEDLINK_COMMAND_TIMEOUT_MS,
   SEEDLINK_PACKET_BYTES,
   SeedLinkDesyncError,
+  SeedLink4Framer,
   SeedLinkFramer,
   type SeedLinkSocket,
   createSeedLinkSession,
   fetchRingInventory,
+  fetchSeedLinkInventory,
+  parseInfoStreams,
   parseStreamIds,
+  seedlinkDialectFrom,
   seedlinkHandshakeScript,
   sourceIdOf,
 } from './seedlink';
+import { MS3_FIXTURES } from './miniseed3.fixtures';
 
 const ADO: WaveformChannel = { network: 'CI', station: 'ADO', location: '', channel: 'HHZ' };
 const BAK: WaveformChannel = { network: 'CI', station: 'BAK', location: '', channel: 'HHZ' };
@@ -209,7 +214,10 @@ describe('SeedLinkFramer', () => {
 });
 
 class FakeSocket implements SeedLinkSocket {
+  /** Every command line written, in order, however they were batched. */
   writes: string[] = [];
+  /** The lines of each `write` call, to see what went out together. */
+  calls: string[][] = [];
   destroyed = false;
   private connectListeners: (() => void)[] = [];
   private dataListeners: ((chunk: Uint8Array) => void)[] = [];
@@ -217,7 +225,9 @@ class FakeSocket implements SeedLinkSocket {
   private closeListeners: (() => void)[] = [];
 
   write(text: string): void {
-    this.writes.push(text.replace('\r\n', ''));
+    const lines = text.split('\r\n').filter((line) => line !== '');
+    this.calls.push(lines);
+    this.writes.push(...lines);
   }
   destroy(): void {
     this.destroyed = true;
@@ -270,10 +280,13 @@ function startSession(channels: WaveformChannel[]) {
   return { socket, session, records, rejected, streaming, ended };
 }
 
+/** EarthScope's first HELLO line, which is what selects the 3.1 handshake. */
+const RINGSERVER_HELLO = 'SeedLink v4.0 (RingServer/4.5.6) :: SLPROTO:4.0 SLPROTO:3.1 CAP WS:13';
+
 /** Answers HELLO and CAPABILITIES the way RingServer 4.5.6 does. */
 function greet(socket: FakeSocket): void {
   socket.connect();
-  socket.reply('SeedLink v4.0 (RingServer/4.5.6) :: SLPROTO:4.0 SLPROTO:3.1 CAP WS:13', 'EarthScope Ring Server');
+  socket.reply(RINGSERVER_HELLO, 'EarthScope Ring Server');
   socket.reply('OK');
 }
 
@@ -285,15 +298,34 @@ describe('createSeedLinkSession', () => {
     vi.useRealTimers();
   });
 
-  it('never writes a command before the previous reply has fully landed', () => {
+  it('sends HELLO and CAPABILITIES one at a time, each only after the previous reply has fully landed', () => {
     const { socket } = startSession([ADO]);
     expect(socket.writes).toEqual([]);
     socket.connect();
     expect(socket.writes).toEqual(['HELLO']);
-    socket.reply('SeedLink v4.0');
+    socket.reply(RINGSERVER_HELLO);
     expect(socket.writes).toEqual(['HELLO']); // HELLO answers with two lines
     socket.reply('EarthScope Ring Server');
     expect(socket.writes).toEqual(['HELLO', 'CAPABILITIES SLPROTO:3.1']);
+  });
+
+  it('writes every STATION, SELECT and DATA in one go once CAPABILITIES is accepted, and END only after their replies', () => {
+    const { socket, streaming } = startSession([AFI_10, AFI_00, ADO]);
+    greet(socket);
+    expect(socket.calls.at(-1)).toEqual([
+      'STATION AFI IU',
+      'SELECT 10BHZ',
+      'SELECT 00BHZ',
+      'DATA',
+      'STATION ADO CI',
+      'SELECT HHZ',
+      'DATA',
+    ]);
+    socket.reply('OK', 'OK', 'OK', 'OK', 'OK', 'OK');
+    expect(socket.writes).not.toContain('END'); // one reply still outstanding
+    socket.reply('OK');
+    expect(socket.calls.at(-1)).toEqual(['END']);
+    expect(streaming).toEqual([['IU_AFI_10_BHZ', 'IU_AFI_00_BHZ', 'CI_ADO__HHZ']]);
   });
 
   it('completes the handshake, sends END, and delivers records', () => {
@@ -317,7 +349,7 @@ describe('createSeedLinkSession', () => {
     socket.send('SeedLink v4.0\r\nEarthScope');
     socket.send(' Ring Server\r');
     socket.send('\nOK\r\n');
-    expect(socket.writes.at(-1)).toBe('STATION ADO CI');
+    expect(socket.writes).toContain('STATION ADO CI');
     socket.reply('OK');
     socket.reply('OK');
     socket.reply('OK');
@@ -333,41 +365,31 @@ describe('createSeedLinkSession', () => {
     expect(records).toHaveLength(1);
   });
 
-  it('rejects a refused station, skips its SELECT and DATA, and carries on with the others', () => {
+  it('rejects a refused station once, whatever its SELECT and DATA lines answer, and carries on with the others', () => {
     const { socket, rejected, streaming } = startSession([BAK, ADO]);
     greet(socket);
-    socket.reply('ERROR'); // STATION BAK
-    expect(socket.writes.at(-1)).toBe('STATION ADO CI');
-    socket.reply('OK');
-    socket.reply('OK');
-    socket.reply('OK');
+    // BAK: STATION refused; its SELECT and DATA were already on the wire.
+    socket.reply('ERROR', 'ERROR', 'ERROR');
+    socket.reply('OK', 'OK', 'OK'); // ADO
     expect(rejected).toEqual([['CI_BAK__HHZ', 'server refused STATION: ERROR']]);
-    // Nothing between the two STATION lines: BAK's SELECT and DATA were skipped.
-    expect(socket.writes).toEqual([
-      'HELLO',
-      'CAPABILITIES SLPROTO:3.1',
-      'STATION BAK CI',
-      'STATION ADO CI',
-      'SELECT HHZ',
-      'DATA',
-      'END',
-    ]);
     expect(streaming).toEqual([['CI_ADO__HHZ']]);
   });
 
-  it('does not send DATA for a station whose only selector was refused, which would stream all its channels', () => {
-    const { socket, rejected } = startSession([BAK, ADO]);
+  it('matches replies by position, so a refused SELECT rejects that channel and no other', () => {
+    const { socket, rejected, streaming } = startSession([AFI_10, AFI_00, ADO]);
     greet(socket);
-    socket.reply('OK'); // STATION BAK
-    socket.reply('ERROR'); // SELECT HHZ for BAK
-    expect(socket.writes.at(-1)).toBe('STATION ADO CI');
-    expect(rejected.map(([id]) => id)).toEqual(['CI_BAK__HHZ']);
+    socket.reply('OK'); // STATION AFI
+    socket.reply('OK'); // SELECT 10BHZ
+    socket.reply('ERROR'); // SELECT 00BHZ
+    socket.reply('OK', 'OK', 'OK', 'OK'); // DATA, then ADO
+    expect(rejected.map(([id]) => id)).toEqual(['IU_AFI_00_BHZ']);
+    expect(streaming).toEqual([['IU_AFI_10_BHZ', 'CI_ADO__HHZ']]);
   });
 
   it('ends with an error when no channel survives the handshake', () => {
     const { socket, ended, streaming } = startSession([ADO]);
     greet(socket);
-    socket.reply('ERROR');
+    socket.reply('ERROR', 'ERROR', 'ERROR');
     expect(streaming).toEqual([]);
     expect(ended).toHaveLength(1);
     expect(ended[0]?.message).toMatch(/no requested channel was accepted/);
@@ -378,7 +400,7 @@ describe('createSeedLinkSession', () => {
   it('ends rather than streaming v4 framing when CAPABILITIES is refused', () => {
     const { socket, ended } = startSession([ADO]);
     socket.connect();
-    socket.reply('SeedLink v4.0', 'EarthScope Ring Server');
+    socket.reply(RINGSERVER_HELLO, 'EarthScope Ring Server');
     socket.reply('ERROR');
     expect(ended[0]?.message).toMatch(/CAPABILITIES/);
     expect(socket.writes.some((line) => line.startsWith('STATION'))).toBe(false);
@@ -453,5 +475,260 @@ describe('createSeedLinkSession', () => {
     vi.advanceTimersByTime(SEEDLINK_COMMAND_TIMEOUT_MS * 2);
     expect(ended).toHaveLength(1);
     expect(ended[0]?.message).toBe('ECONNRESET');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// INFO STREAMS — the inventory for servers with no HTTP listing (GeoNet)
+// ---------------------------------------------------------------------------
+
+/** An info packet: `SLINFO *` (more follow) or `SLINFO  ` (last), wrapping `text` in a log record. */
+function infoPacket(text: string, last: boolean): Uint8Array {
+  const bytes = new Uint8Array(SEEDLINK_PACKET_BYTES);
+  const header = last ? 'SLINFO  ' : 'SLINFO *';
+  for (let i = 0; i < 8; i += 1) bytes[i] = header.charCodeAt(i);
+  const record = bytes.subarray(8);
+  const view = new DataView(record.buffer, record.byteOffset, 512);
+  view.setUint16(30, text.length); // sample count = characters
+  view.setUint16(44, 64); // data offset
+  for (let i = 0; i < text.length; i += 1) record[64 + i] = text.charCodeAt(i);
+  return bytes;
+}
+
+/** A socket that answers HELLO and then INFO STREAMS with these packets. */
+class InfoSocket implements SeedLinkSocket {
+  writes: string[] = [];
+  destroyed = false;
+  private onConnectListener: () => void = () => undefined;
+  private onDataListener: (chunk: Uint8Array) => void = () => undefined;
+  constructor(private readonly reply: Uint8Array) {}
+  write(text: string): void {
+    this.writes.push(text.trim());
+    if (text.startsWith('HELLO')) this.onDataListener(new TextEncoder().encode('SeedLink v3.1\r\nGeoNet\r\n'));
+    if (text.startsWith('INFO STREAMS')) this.onDataListener(this.reply);
+  }
+  destroy(): void {
+    this.destroyed = true;
+  }
+  onConnect(listener: () => void): void {
+    this.onConnectListener = listener;
+  }
+  onData(listener: (chunk: Uint8Array) => void): void {
+    this.onDataListener = listener;
+  }
+  onError(): void {}
+  onClose(): void {}
+  connect(): void {
+    this.onConnectListener();
+  }
+}
+
+describe('parseInfoStreams', () => {
+  it('lists data streams as channel ids, keeping a real location and a blank one', () => {
+    const xml =
+      '<seedlink><station name="ABAZ" network="NZ" description="x">' +
+      '<stream location="12" seedname="HHZ" type="D" /><stream location="12" seedname="LOG" type="L" />' +
+      '</station><station network="CI" name="ADO"><stream seedname="HHZ" location="  " type="D"/></station></seedlink>';
+    expect([...parseInfoStreams(xml)].sort()).toEqual(['CI_ADO__HHZ', 'NZ_ABAZ_12_HHZ']);
+  });
+});
+
+describe('fetchSeedLinkInventory', () => {
+  const XML =
+    '<?xml version="1.0"?><seedlink><station name="WEL" network="NZ"><stream location="10" seedname="HHZ" type="D"/>' +
+    '</station><station name="SNZO" network="NZ"><stream location="10" seedname="HHZ" type="D"/></station></seedlink>';
+
+  it('joins the text of every info packet, in order, and asks without CAPABILITIES', async () => {
+    const half = Math.floor(XML.length / 2);
+    const socket = new InfoSocket(concat(infoPacket(XML.slice(0, half), false), infoPacket(XML.slice(half), true)));
+    const pending = fetchSeedLinkInventory('example.org', 18000, () => socket);
+    socket.connect();
+    expect([...((await pending) ?? [])].sort()).toEqual(['NZ_SNZO_10_HHZ', 'NZ_WEL_10_HHZ']);
+    expect(socket.writes).toEqual(['HELLO', 'INFO STREAMS']);
+    expect(socket.destroyed).toBe(true);
+  });
+
+  it('is unknown, not empty, when the server refuses INFO', async () => {
+    const refusal = new Uint8Array(SEEDLINK_PACKET_BYTES);
+    refusal.set(new TextEncoder().encode('ERROR\r\n'));
+    const socket = new InfoSocket(refusal);
+    const pending = fetchSeedLinkInventory('example.org', 18000, () => socket);
+    socket.connect();
+    expect(await pending).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SeedLink 4 — GEOFON
+// ---------------------------------------------------------------------------
+
+/** One SeedLink 4 data packet: `SE`, format, subformat, u32 LE length, u64 LE sequence, id length, id, payload. */
+function sePacket(payload: Uint8Array, format = '3', subformat = 'D', id = 'GE_STU'): Uint8Array {
+  const out = new Uint8Array(17 + id.length + payload.length);
+  out[0] = 0x53;
+  out[1] = 0x45;
+  out[2] = format.charCodeAt(0);
+  out[3] = subformat.charCodeAt(0);
+  const view = new DataView(out.buffer);
+  view.setUint32(4, payload.length, true);
+  view.setBigUint64(8, 42n, true);
+  out[16] = id.length;
+  for (let i = 0; i < id.length; i += 1) out[17 + i] = id.charCodeAt(i);
+  out.set(payload, 17 + id.length);
+  return out;
+}
+
+const GEOFON_HELLO = 'SeedLink v4.0 [HMB SeedLink v0.2 (2026.110)] :: SLPROTO:4.0';
+const SEISCOMP_HELLO = 'SeedLink v3.3 (2024.020)';
+
+describe('seedlinkDialectFrom', () => {
+  it('prefers 3.1 wherever it is offered, uses 4 only when it is all there is, and batch when nothing is advertised', () => {
+    expect(seedlinkDialectFrom(RINGSERVER_HELLO)).toBe('v3.1');
+    expect(seedlinkDialectFrom('SeedLink v3.1 (2020.075 RingServer) :: SLPROTO:3.1 CAP EXTREPLY')).toBe('v3.1');
+    expect(seedlinkDialectFrom(GEOFON_HELLO)).toBe('v4');
+    // SeisComP 3.x, as BGR, ORFEUS, Croatia and Brazil answer; Évora runs v3.2.
+    expect(seedlinkDialectFrom(SEISCOMP_HELLO)).toBe('batch');
+    expect(seedlinkDialectFrom('SeedLink v3.2 (2014.071)')).toBe('batch');
+  });
+});
+
+describe('the SeedLink 4 handshake script', () => {
+  it('opens with SLPROTO 4.0, names stations NET_STA, and selects LOC_B_S_SS with a blank location left blank', () => {
+    expect(seedlinkHandshakeScript([ADO, AFI_10], 'v4').map((s) => s.line)).toEqual([
+      'HELLO',
+      'SLPROTO 4.0',
+      'STATION CI_ADO',
+      'SELECT _H_H_Z',
+      'DATA',
+      'STATION IU_AFI',
+      'SELECT 10_B_H_Z',
+      'DATA',
+      'END',
+    ]);
+  });
+});
+
+describe('SeedLink4Framer', () => {
+  const record = new Uint8Array(Buffer.from(MS3_FIXTURES.GE_STU, 'base64'));
+
+  it('returns each miniSEED payload whole, however the bytes are chunked', () => {
+    const stream = concat(sePacket(record), sePacket(record, '2'));
+    const framer = new SeedLink4Framer();
+    const out = [...framer.push(stream.subarray(0, 10)).records, ...framer.push(stream.subarray(10, 600)).records, ...framer.push(stream.subarray(600)).records];
+    expect(out.map((r) => r.length)).toEqual([record.length, record.length]);
+    expect([...(out[0] ?? [])]).toEqual([...record]);
+  });
+
+  it('skips non-data payloads by their declared length, staying aligned', () => {
+    const json = new TextEncoder().encode('{"info":true}');
+    const framer = new SeedLink4Framer();
+    const result = framer.push(concat(sePacket(json, 'J', 'I'), sePacket(record)));
+    expect(result.desync).toBeNull();
+    expect(result.records).toHaveLength(1);
+  });
+
+  it('refuses to resynchronise after a bad signature or an impossible length', () => {
+    const bad = sePacket(record);
+    bad[1] = 0x4c; // "SL": a 3.x packet in a 4.x stream
+    expect(new SeedLink4Framer().push(bad).desync).toMatch(/SE/);
+    const huge = sePacket(record);
+    new DataView(huge.buffer).setUint32(4, 0x7fffffff, true);
+    expect(new SeedLink4Framer().push(huge).desync).toMatch(/not a miniSEED record/);
+  });
+});
+
+describe('a session against a SeedLink 4 server', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('switches protocol on HELLO, pipelines the station block, and delivers miniSEED 3 payloads', () => {
+    const GE_STU: WaveformChannel = { network: 'GE', station: 'STU', location: '', channel: 'HHZ' };
+    const { socket, records, streaming } = startSession([GE_STU]);
+    socket.connect();
+    socket.reply(GEOFON_HELLO, 'GEOFON');
+    expect(socket.calls.at(-1)).toEqual(['SLPROTO 4.0']);
+    socket.reply('OK');
+    expect(socket.calls.at(-1)).toEqual(['STATION GE_STU', 'SELECT _H_H_Z', 'DATA']);
+    socket.reply('OK', 'OK', 'OK');
+    expect(socket.calls.at(-1)).toEqual(['END']);
+    expect(streaming).toEqual([['GE_STU__HHZ']]);
+
+    const record = new Uint8Array(Buffer.from(MS3_FIXTURES.GE_STU, 'base64'));
+    socket.send(sePacket(record));
+    expect(records).toHaveLength(1);
+    expect(records[0]?.length).toBe(record.length);
+  });
+
+  it('ends when the server refuses SLPROTO 4.0, before any station is sent', () => {
+    const { socket, ended } = startSession([ADO]);
+    socket.connect();
+    socket.reply(GEOFON_HELLO, 'GEOFON');
+    socket.reply('ERROR UNSUPPORTED');
+    expect(ended[0]?.message).toMatch(/SLPROTO 4\.0/);
+    expect(socket.writes.some((line) => line.startsWith('STATION'))).toBe(false);
+  });
+});
+
+describe('a session against a SeisComP 3.x server (batch mode)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('sends BATCH instead of CAPABILITIES, then the whole block and END in one write, and streams without waiting for replies', () => {
+    const { socket, records, streaming } = startSession([AFI_10, AFI_00, ADO]);
+    socket.connect();
+    socket.reply(SEISCOMP_HELLO, 'SZGRF');
+    expect(socket.calls.at(-1)).toEqual(['BATCH']);
+    socket.reply('OK');
+    // The SeisComP servers act on the first line of a pipelined block and drop
+    // the rest — unless BATCH came first, after which nothing is answered.
+    expect(socket.calls.at(-1)).toEqual([
+      'STATION AFI IU',
+      'SELECT 10BHZ',
+      'SELECT 00BHZ',
+      'DATA',
+      'STATION ADO CI',
+      'SELECT HHZ',
+      'DATA',
+      'END',
+    ]);
+    expect(socket.writes).not.toContain('CAPABILITIES SLPROTO:3.1');
+    expect(streaming).toEqual([['IU_AFI_10_BHZ', 'IU_AFI_00_BHZ', 'CI_ADO__HHZ']]);
+
+    socket.send(packet(1, 0x11));
+    expect(records).toHaveLength(1);
+  });
+
+  it('keeps packets that arrive in the same chunk as the BATCH reply', () => {
+    const { socket, records } = startSession([ADO]);
+    socket.connect();
+    socket.reply(SEISCOMP_HELLO, 'SZGRF');
+    socket.send(concat(new TextEncoder().encode('OK\r\n'), packet(1, 0x11)));
+    expect(records).toHaveLength(1);
+  });
+
+  it('does not time out the silence after the block — there is nothing to wait for', () => {
+    const { socket, ended } = startSession([ADO]);
+    socket.connect();
+    socket.reply(SEISCOMP_HELLO, 'SZGRF');
+    socket.reply('OK');
+    vi.advanceTimersByTime(SEEDLINK_COMMAND_TIMEOUT_MS * 3);
+    expect(ended).toEqual([]);
+  });
+
+  it('ends when BATCH is refused, before any station is sent', () => {
+    const { socket, ended } = startSession([ADO]);
+    socket.connect();
+    socket.reply(SEISCOMP_HELLO, 'SZGRF');
+    socket.reply('ERROR');
+    expect(ended[0]?.message).toMatch(/BATCH/);
+    expect(socket.writes.some((line) => line.startsWith('STATION'))).toBe(false);
   });
 });

@@ -111,8 +111,14 @@
  * warning rather than the constant being the guess.
  */
 .topCentreColumn {
+  /* Below the live watch's alert banner when there is one: it lives in `App`,
+     outside this column, so that it also shows in Analyze mode. It publishes
+     its height; absent, the -0.5rem fallback cancels the gap and this sits at
+     4rem as before. Subtracted from max-height below for the same reason. */
+  --watch-banner-space: calc(var(--watch-banner-height, -0.5rem) + 0.5rem);
+
   position: absolute;
-  top: 4rem;
+  top: calc(4rem + var(--watch-banner-space));
   left: 50%;
   /* Matches what LocationPanel and SolarEventPanel already carried. The banner
      and the digest had no z-index at all, so anything at 10 painted over them
@@ -130,7 +136,7 @@
      and a 0.75rem gap. The dock's height was a guess baked into a constant
      here until it was published. Children opt into shrinking below; each
      already scrolls internally. */
-  max-height: calc(100vh - 7.75rem - var(--dock-height, 22.25rem));
+  max-height: calc(100vh - 7.75rem - var(--dock-height, 22.25rem) - var(--watch-banner-space));
   transform: translateX(-50%);
   pointer-events: none;
 }
