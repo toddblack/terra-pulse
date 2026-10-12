@@ -2,7 +2,7 @@ import { app, BrowserWindow, Notification, screen, session } from 'electron';
 import { join } from 'node:path';
 import dotenv from 'dotenv';
 import type { DatabaseSync } from 'node:sqlite';
-import { openDatabase, readAppState, writeAppState } from '@terra-pulse/db';
+import { deleteAppState, openDatabase, readAppState, writeAppState } from '@terra-pulse/db';
 import {
   parseWindowBounds,
   placeWindow,
@@ -24,6 +24,7 @@ const MIN_HEIGHT = 600;
 import {
   ALERT_MAX_AGE_MS,
   ALERT_MIN_MAGNITUDE,
+  SEEDLINK_SERVER_IDS,
   type EarthquakeSyncResult,
 } from '@terra-pulse/schema';
 import { createArchiveController, registerArchiveIpcHandlers } from './ipc/archive';
@@ -36,11 +37,18 @@ import {
 } from './ipc/earthquakes';
 import { registerAuroraIpcHandlers, startAuroraPolling } from './ipc/aurora';
 import { registerTecIpcHandlers } from './ipc/tec';
-import { createWaveformController, registerWaveformIpcHandlers } from './ipc/waveforms';
+import { createMultiServerController, registerWaveformIpcHandlers } from './ipc/waveforms';
 import { createQuakeReplayController, registerQuakeReplayHandlers } from './ipc/quake-replay';
+import {
+  WATCH_PIN_KEY,
+  createQuakeWatchController,
+  endpointsFor,
+  registerQuakeWatchHandlers,
+} from './ipc/quake-watch';
 import {
   createWaveformStationSources,
   registerWaveformStationHandlers,
+  serverFetchers,
 } from './ipc/waveform-stations';
 import {
   registerMagnetometerIpcHandlers,
@@ -398,15 +406,26 @@ app
     // The ring inventory is shared with the picker's station list, so first
     // opening the waveform tab fetches the 1.2 MB list once rather than once
     // per consumer.
-    const waveformStations = createWaveformStationSources();
-    const waveforms = createWaveformController({
+    //
+    // Several servers since 2026-10-08: EarthScope, GeoNet, GEOFON and the
+    // SeisComP rings. Each stream holds one connection per server it needs,
+    // behind one controller — see `createMultiServerController` and
+    // `SEEDLINK_SERVERS`.
+    const waveformStations = createWaveformStationSources({
+      others: Object.fromEntries(
+        SEEDLINK_SERVER_IDS.filter((id) => id !== 'earthscope').map((id) => [id, serverFetchers(id)]),
+      ),
+    });
+    const inventoryFor = (server: Parameters<typeof waveformStations.inventoryFor>[0]) =>
+      waveformStations.inventoryFor(server).get();
+    const waveforms = createMultiServerController({
       onSegment: (segment) => {
         sendToRenderer(mainWindow, 'waveforms:segment', segment);
       },
       onStatus: (status) => {
         sendToRenderer(mainWindow, 'waveforms:status-changed', status);
       },
-      fetchInventory: () => waveformStations.inventory.get(),
+      servers: endpointsFor(inventoryFor),
     });
     registerWaveformIpcHandlers(waveforms);
     registerWaveformStationHandlers(waveformStations);
@@ -426,6 +445,48 @@ app
     registerQuakeReplayHandlers(quakeReplay);
     app.on('will-quit', () => {
       quakeReplay.cancel();
+    });
+
+    // The live watch (§5.13): one pin, its stations streamed through the
+    // detector for as long as the app is open. Owned by main, not the renderer
+    // — a stored pin resumes here on launch, after the window is up, and a
+    // launch without one opens nothing. Shares the station list and ring
+    // inventory with the waveform tab and the replay.
+    //
+    // The alert is the large-event path's shape: pushed, retained for the
+    // renderer to ask for on mount (a push before it subscribes reaches
+    // nobody), and an OS notification when the window is not what you are
+    // looking at. `sendToRenderer` because the watch can push during teardown.
+    const quakeWatch = createQuakeWatchController({
+      catalogue: () => waveformStations.catalogue(),
+      inventoryFor,
+      readPin: () => readAppState(db, WATCH_PIN_KEY),
+      writePin: (value) => {
+        if (value === null) deleteAppState(db, WATCH_PIN_KEY);
+        else writeAppState(db, WATCH_PIN_KEY, value);
+      },
+      onStatus: (status) => {
+        sendToRenderer(mainWindow, 'quake-watch:status-changed', status);
+      },
+      onAlert: (alert) => {
+        sendToRenderer(mainWindow, 'quake-watch:alert', alert);
+        if (Notification.isSupported() && mainWindow && !mainWindow.isDestroyed() && !mainWindow.isFocused()) {
+          const seconds = Math.round((alert.sArrivalAtPinMs - Date.now()) / 1000);
+          new Notification({
+            title: `${alert.test === true ? 'TEST — not a real earthquake' : 'Earthquake'} — M${alert.magnitude.toFixed(1)}, ${String(Math.round(alert.epicentralKm))} km from ${alert.pin.label}`,
+            body: seconds > 0 ? `Shaking expected in about ${String(seconds)} s` : 'Shaking may already have arrived',
+            urgency: 'critical',
+          }).show();
+        }
+      },
+      onAlertUpdated: (alert) => {
+        sendToRenderer(mainWindow, 'quake-watch:alert-updated', alert);
+      },
+    });
+    registerQuakeWatchHandlers(quakeWatch);
+    quakeWatch.restore();
+    app.on('will-quit', () => {
+      quakeWatch.dispose();
     });
 
     // Kp and Dst. The rolling Kp tail runs always — it is an 8 KB read from

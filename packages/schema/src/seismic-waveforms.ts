@@ -7,10 +7,10 @@
  * arrive continuously over a held-open TCP connection, are never written to the
  * database, and exist only while the mode that shows them is mounted.
  *
- * **Display only.** No detection, no STA/LTA, no association, no alerting — see
- * `PROJECT_PLAN.md` §11. A single station cannot distinguish a quarry blast
- * from an earthquake, and the measured floor before association could even
- * begin is ~5.5 s, by which time the S-wave has covered ~50 km.
+ * **The waveform tab's rows are display only** — a single station cannot tell a
+ * quarry blast from an earthquake. Detection lives elsewhere: the live watch
+ * (`quake-watch.ts`, §5.13) streams its own stations through a four-station
+ * detector, and this file only describes channels both of them stream.
  */
 
 /**
@@ -32,6 +32,45 @@ export interface WaveformChannel {
   location: string;
   /** FDSN channel code, exactly 3 characters. `HHZ`, `BHZ`, `EHZ`. */
   channel: string;
+  /**
+   * Which SeedLink server carries it. **Absent means EarthScope**, the only
+   * server until 2026-10-08 — so the vendored presets, every stored object and
+   * every test written before then mean exactly what they did. Main maps the id
+   * to a host; the renderer never names one.
+   */
+  server?: SeedLinkServerId;
+}
+
+/**
+ * The SeedLink servers the app streams from (§5.13, 2026-10-08). EarthScope
+ * carries the US and the sparse global networks; GeoNet New Zealand's own ring
+ * adds ~220 usable stations there, where EarthScope has almost none — measured,
+ * M5+ quakes within the detector's reach in New Zealand went from 1 of 21 to 10.
+ * GEOFON adds Chile and the eastern Mediterranean, and the SeisComP servers
+ * (2026-10-09) the Caribbean, Germany and the Low Countries, the Balkans and
+ * Brazil. Hosts, station services and attribution live in
+ * `@terra-pulse/ingest`'s `SEEDLINK_SERVERS`; only the id crosses the bridge.
+ */
+export type SeedLinkServerId = 'earthscope' | 'geonet' | 'geofon' | 'bgr' | 'orfeus' | 'ipgp' | 'croatia' | 'usp';
+
+/**
+ * In priority order: a station two servers carry is kept from the first. GEOFON
+ * precedes BGR, which re-serves some GE stations.
+ */
+export const SEEDLINK_SERVER_IDS: readonly SeedLinkServerId[] = [
+  'earthscope',
+  'geonet',
+  'geofon',
+  'bgr',
+  'orfeus',
+  'ipgp',
+  'croatia',
+  'usp',
+];
+
+/** The server a channel streams from — EarthScope when none is named. */
+export function serverOf(channel: Pick<WaveformChannel, 'server'>): SeedLinkServerId {
+  return channel.server ?? 'earthscope';
 }
 
 /**
@@ -185,12 +224,13 @@ export const WAVEFORM_WINDOW_MS = 120_000;
 /**
  * Hard cap on simultaneous channels.
  *
- * Not a performance limit — 10 channels is ~4 KB/s. It bounds the handshake,
- * which is strictly sequential: measured against the live ring, each command
- * costs ~180 ms of round trip, and a station needs three (`STATION`, `SELECT`,
- * `DATA`). Seventeen stations took 9.0-9.4 s to negotiate; eight took ~4.5 s,
- * and ten cost ~5.6 s, which is the dominant term in how long a reader waits for
- * a first trace.
+ * Not a performance limit — 10 channels is ~4 KB/s. It was set by the
+ * handshake, back when that was strictly sequential: ~180 ms of round trip per
+ * command and three commands a station, so ten cost ~5.6 s. **Since 2026-10-08
+ * the station block is pipelined** (see `createSeedLinkSession`) and ten
+ * stations connect in 0.4 s, 74 in 0.5 s — so this is now a display cap, the
+ * rows the panel has room for, and nothing more. The live watch streams far
+ * more on its own connection.
  *
  * **Raised 8 → 10 on 2026-09-30, for the picker's "surround the spot" rule.**
  * That rule spends up to eight slots on eight compass directions, which at 8

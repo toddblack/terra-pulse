@@ -1,5 +1,6 @@
 /**
- * SeedLink v3.1 client for the EarthScope ring.
+ * SeedLink client: v3.1 for the EarthScope and GeoNet rings, v4 for GEOFON,
+ * and `BATCH` mode for SeisComP's own 3.x servers (`seedlinkDialectFrom`).
  *
  * SeedLink is a line-based handshake followed by a binary stream of fixed-size
  * packets, each wrapping one 512-byte miniSEED record. This module owns the
@@ -205,6 +206,148 @@ export async function fetchRingInventory(
   return new Set(channels.map(channelIdOf));
 }
 
+/**
+ * The channel ids an `INFO STREAMS` reply lists, from its XML. Only data
+ * streams (`type="D"`) — the others are logs, events and calibrations, which
+ * no row or detector can use.
+ *
+ * Attribute order is not relied on: each element is matched whole, then its
+ * attributes read by name.
+ */
+export function parseInfoStreams(xml: string): Set<string> {
+  const ids = new Set<string>();
+  for (const stationMatch of xml.matchAll(/<station\b([^>]*)>([\s\S]*?)<\/station>/g)) {
+    const stationAttrs = stationMatch[1] ?? '';
+    const network = /\bnetwork="([^"]*)"/.exec(stationAttrs)?.[1] ?? '';
+    const station = /\bname="([^"]*)"/.exec(stationAttrs)?.[1] ?? '';
+    for (const streamMatch of (stationMatch[2] ?? '').matchAll(/<stream\b([^>]*)\/?>/g)) {
+      const attrs = streamMatch[1] ?? '';
+      if ((/\btype="([^"]*)"/.exec(attrs)?.[1] ?? 'D') !== 'D') continue;
+      const location = (/\blocation="([^"]*)"/.exec(attrs)?.[1] ?? '').trim();
+      const channel = /\bseedname="([^"]*)"/.exec(attrs)?.[1] ?? '';
+      if (network === '' || station === '' || channel === '') continue;
+      ids.add(channelIdOf({ network, station, location, channel }));
+    }
+  }
+  return ids;
+}
+
+/** `INFO STREAMS` from GeoNet is ~300 KB; this bounds a stall, not a slow link. */
+export const SEEDLINK_INFO_TIMEOUT_MS = 30_000;
+/** Stops a server that never sends its last info packet from growing the buffer forever. */
+const SEEDLINK_INFO_MAX_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Every channel a SeedLink server carries, from the protocol's own
+ * `INFO STREAMS` — for servers with no HTTP listing, which is all of them but
+ * RingServer 4 (see `SEEDLINK_SERVERS`). Null when the answer is unknown, with
+ * the same fail-open meaning as `fetchRingInventory`.
+ *
+ * The reply is a sequence of packets headed `SLINFO *` (more follow) and
+ * `SLINFO  ` (the last), each wrapping one 512-byte miniSEED log record whose
+ * text, concatenated, is one XML document. No `CAPABILITIES` is sent: INFO
+ * packets keep this framing on every server version that answers it, and the
+ * SeisComP servers refuse the command outright.
+ */
+export function fetchSeedLinkInventory(
+  host: string,
+  port: number = SEEDLINK_PORT,
+  connect: SeedLinkConnect = connectSeedLinkSocket,
+  timeoutMs: number = SEEDLINK_INFO_TIMEOUT_MS,
+): Promise<Set<string> | null> {
+  return new Promise((resolve) => {
+    const socket = connect(host, port);
+    let settled = false;
+    let buffer: Uint8Array = new Uint8Array(0);
+    let helloLines = 0;
+    let text = '';
+    const decoder = new TextDecoder('latin1');
+    let received = 0;
+    const startedMs = Date.now();
+    /** Null with a logged reason — "unknown" is the answer, but why is worth knowing. */
+    const fail = (reason: string) => {
+      if (settled) return;
+      console.warn(
+        `SeedLink INFO STREAMS from ${host} failed after ${String(Date.now() - startedMs)} ms, ${String(received)} bytes: ${reason}`,
+      );
+      finish(null);
+    };
+    const finish = (result: Set<string> | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      fail('timed out');
+    }, timeoutMs);
+
+    socket.onConnect(() => {
+      socket.write('HELLO\r\n');
+    });
+    socket.onError((error) => {
+      fail(error.message);
+    });
+    socket.onClose(() => {
+      fail('connection closed before the last info packet');
+    });
+    socket.onData((chunk) => {
+      if (settled) return;
+      received += chunk.length;
+      buffer = concatBytes(buffer, chunk);
+      if (received > SEEDLINK_INFO_MAX_BYTES) {
+        fail('reply larger than any stream list');
+        return;
+      }
+      while (helloLines < 2) {
+        let end = -1;
+        for (let i = 0; i + 1 < buffer.length; i += 1) {
+          if (buffer[i] === CRLF[0] && buffer[i + 1] === CRLF[1]) {
+            end = i;
+            break;
+          }
+        }
+        if (end === -1) return;
+        buffer = buffer.slice(end + 2);
+        helloLines += 1;
+        if (helloLines === 2) socket.write('INFO STREAMS\r\n');
+      }
+      // Walk the packets by offset and trim once: GEOFON's list is 1.12 MB,
+      // ~2,160 packets, and slicing per packet would copy the rest each time.
+      let at = 0;
+      while (buffer.length - at >= SEEDLINK_PACKET_BYTES) {
+        const packet = buffer.subarray(at, at + SEEDLINK_PACKET_BYTES);
+        if (decoder.decode(packet.subarray(0, 6)) !== 'SLINFO') {
+          // An ERROR line in place of the packets: the server refuses INFO at
+          // this level. Unknown, not empty.
+          fail(`not an info packet: ${JSON.stringify(decoder.decode(packet.subarray(0, 24)))}`);
+          return;
+        }
+        const more = packet[7] === 0x2a; // '*'
+        const record = packet.subarray(SEEDLINK_HEADER_BYTES);
+        const view = new DataView(record.buffer, record.byteOffset, record.byteLength);
+        const length = view.getUint16(30);
+        const offset = view.getUint16(44);
+        if (offset < 48 || offset + length > record.length) {
+          fail(`info record text out of bounds (offset ${String(offset)}, length ${String(length)})`);
+          return;
+        }
+        text += decoder.decode(record.subarray(offset, offset + length));
+        at += SEEDLINK_PACKET_BYTES;
+        if (!more) {
+          const ids = parseInfoStreams(text);
+          // A document that names nothing is a format we no longer read.
+          if (ids.size === 0) fail('the stream list named no streams');
+          else finish(ids);
+          return;
+        }
+      }
+      buffer = buffer.slice(at);
+    });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Handshake
 // ---------------------------------------------------------------------------
@@ -223,19 +366,75 @@ export async function fetchRingInventory(
 export type HandshakeStep =
   | { kind: 'hello'; line: 'HELLO'; replyLines: 2 }
   | { kind: 'capabilities'; line: 'CAPABILITIES SLPROTO:3.1'; replyLines: 1 }
+  | { kind: 'slproto'; line: 'SLPROTO 4.0'; replyLines: 1 }
+  | { kind: 'batch'; line: 'BATCH'; replyLines: 1 }
   | {
       kind: 'station';
       line: string;
-      replyLines: 1;
+      /** 0 in batch mode, where the server answers none of the station block. */
+      replyLines: 0 | 1;
       stationKey: string;
       channelIds: readonly string[];
     }
-  | { kind: 'select'; line: string; replyLines: 1; stationKey: string; channelId: string }
-  | { kind: 'data'; line: 'DATA'; replyLines: 1; stationKey: string }
+  | { kind: 'select'; line: string; replyLines: 0 | 1; stationKey: string; channelId: string }
+  | { kind: 'data'; line: 'DATA'; replyLines: 0 | 1; stationKey: string }
   | { kind: 'end'; line: 'END'; replyLines: 0 };
 
+/**
+ * Which handshake a server takes, decided from the first line of its `HELLO`:
+ *
+ * - **`v3.1`** when it advertises `SLPROTO:3.1` (RingServer — EarthScope,
+ *   GeoNet). Preferred even where 4.0 is also offered: it is the path measured
+ *   against EarthScope since 2026-09, and the one every trap note above
+ *   describes.
+ * - **`v4`** when it advertises only `SLPROTO:4.0` (GEOFON's server).
+ * - **`batch`** when it advertises nothing — SeisComP's own SeedLink 3.x
+ *   (BGR, ORFEUS, IPGP, Croatia, Brazil), whose `HELLO` is just
+ *   `SeedLink v3.3 (2024.020)`. See `seedlinkHandshakeScript` for why.
+ */
+export type SeedLinkDialect = 'v3.1' | 'v4' | 'batch';
+
+export function seedlinkDialectFrom(helloLine: string): SeedLinkDialect {
+  const capabilities = helloLine.split('::')[1] ?? '';
+  if (/\bSLPROTO:3\.1\b/.test(capabilities)) return 'v3.1';
+  if (/\bSLPROTO:4\.0\b/.test(capabilities)) return 'v4';
+  return 'batch';
+}
+
+/**
+ * The SeedLink 4 stream selector, `LOC_B_S_SS`: the channel code split into
+ * band, source and subsource, and a blank location left blank — `_H_H_Z`.
+ * Measured on GEOFON 2026-10-08: that selects exactly the one channel, as
+ * `00_B_H_Z` does for a real location.
+ */
+export function seedlink4SelectorFor(channel: WaveformChannel): string {
+  const [band = '', source = '', subsource = ''] = channel.channel.split('');
+  return `${channel.location}_${band}_${source}_${subsource}`;
+}
+
+/**
+ * The handshake for a dialect. The station block is the same shape in all
+ * three — `STATION`, a `SELECT` per channel, `DATA` — and only the opener and
+ * the naming differ, except in batch mode, which changes who answers.
+ *
+ * ## Batch mode (SeisComP 3.x), measured 2026-10-09
+ *
+ * These servers reply `ERROR` to `CAPABILITIES`, and to a pipelined block they
+ * act on the first line and drop the rest. `BATCH` is their own answer: it is
+ * acknowledged `OK`, and after it the server **answers nothing** — not the
+ * `STATION`, `SELECT` or `DATA` lines, and not `END`. So the whole block goes
+ * in one write and streaming begins at once. Measured on BGR, ORFEUS,
+ * Croatia, Brazil, Catalonia and Évora: first packet 1.3-3.4 s after `HELLO`.
+ *
+ * Silence covers refusals too: a station that does not exist and a `SELECT`
+ * matching nothing were both met with no reply and no data, on four servers —
+ * no stray `ERROR` in the stream to desynchronise the framer. That is
+ * EarthScope's trap 4 by another route, and the same answer applies: the
+ * controller checks each channel against the server's own stream list.
+ */
 export function seedlinkHandshakeScript(
   channels: readonly WaveformChannel[],
+  dialect: SeedLinkDialect = 'v3.1',
 ): readonly HandshakeStep[] {
   const byStation = new Map<string, WaveformChannel[]>();
   for (const channel of channels) {
@@ -245,30 +444,35 @@ export function seedlinkHandshakeScript(
     else group.push(channel);
   }
 
-  const steps: HandshakeStep[] = [
-    { kind: 'hello', line: 'HELLO', replyLines: 2 },
-    { kind: 'capabilities', line: 'CAPABILITIES SLPROTO:3.1', replyLines: 1 },
-  ];
+  const opener: HandshakeStep =
+    dialect === 'v4'
+      ? { kind: 'slproto', line: 'SLPROTO 4.0', replyLines: 1 }
+      : dialect === 'batch'
+        ? { kind: 'batch', line: 'BATCH', replyLines: 1 }
+        : { kind: 'capabilities', line: 'CAPABILITIES SLPROTO:3.1', replyLines: 1 };
+  const steps: HandshakeStep[] = [{ kind: 'hello', line: 'HELLO', replyLines: 2 }, opener];
+  const replyLines = dialect === 'batch' ? 0 : 1;
   for (const [stationKey, group] of byStation) {
     const first = group[0];
     if (first === undefined) continue;
     steps.push({
       kind: 'station',
-      line: `STATION ${first.station} ${first.network}`,
-      replyLines: 1,
+      // v4 names a station by its FDSN `NET_STA`; 3.x by two fields.
+      line: dialect === 'v4' ? `STATION ${first.network}_${first.station}` : `STATION ${first.station} ${first.network}`,
+      replyLines,
       stationKey,
       channelIds: group.map(channelIdOf),
     });
     for (const channel of group) {
       steps.push({
         kind: 'select',
-        line: `SELECT ${seedlinkSelectorFor(channel)}`,
-        replyLines: 1,
+        line: `SELECT ${dialect === 'v4' ? seedlink4SelectorFor(channel) : seedlinkSelectorFor(channel)}`,
+        replyLines,
         stationKey,
         channelId: channelIdOf(channel),
       });
     }
-    steps.push({ kind: 'data', line: 'DATA', replyLines: 1, stationKey });
+    steps.push({ kind: 'data', line: 'DATA', replyLines, stationKey });
   }
   steps.push({ kind: 'end', line: 'END', replyLines: 0 });
   return steps;
@@ -333,6 +537,69 @@ export class SeedLinkFramer {
         this.buffer.slice(offset + SEEDLINK_HEADER_BYTES, offset + SEEDLINK_PACKET_BYTES),
       );
       offset += SEEDLINK_PACKET_BYTES;
+    }
+    this.buffer = this.buffer.slice(offset);
+    return { records, desync: null };
+  }
+}
+
+/** SeedLink 4 header before the station id: `SE`, format, subformat, u32 length, u64 sequence, u8 id length. */
+const SEEDLINK4_FIXED_HEADER_BYTES = 17;
+/**
+ * A miniSEED record is at most a few kilobytes; a "payload" larger than this
+ * means the stream is misaligned and the length field is reading sample data.
+ */
+const SEEDLINK4_MAX_PAYLOAD_BYTES = 1 << 20;
+
+/**
+ * Splits a SeedLink 4 data stream into payloads (FDSN SeedLink 4 §"Data
+ * packets"). Unlike 3.x, packets are **variable length**: the header carries
+ * the payload's length, so a packet is complete only once that many bytes have
+ * arrived after its station id.
+ *
+ * Only miniSEED data payloads are returned — format `2` or `3` with subformat
+ * `D`. Anything else (logs, JSON info) is skipped whole, by its declared
+ * length, which is what keeps the stream aligned past it.
+ *
+ * **Strict, as the 3.x framer is**: a signature other than `SE`, or a length no
+ * miniSEED record could have, ends the stream rather than scanning for the next
+ * `SE` — the same reason a 3.x desync is never resynchronised.
+ */
+export class SeedLink4Framer {
+  private buffer: Uint8Array = new Uint8Array(0);
+  private desynced = false;
+
+  push(chunk: Uint8Array): FramerResult {
+    if (this.desynced) return { records: [], desync: 'framer already desynchronised' };
+    this.buffer = concatBytes(this.buffer, chunk);
+
+    const records: Uint8Array[] = [];
+    let offset = 0;
+    for (;;) {
+      if (this.buffer.length - offset < SEEDLINK4_FIXED_HEADER_BYTES) break;
+      const first = this.buffer[offset] ?? -1;
+      const second = this.buffer[offset + 1] ?? -1;
+      const view = new DataView(this.buffer.buffer, this.buffer.byteOffset + offset);
+      const payloadLength = view.getUint32(4, true);
+      if (first !== 0x53 || second !== 0x45 || payloadLength > SEEDLINK4_MAX_PAYLOAD_BYTES) {
+        this.desynced = true;
+        this.buffer = new Uint8Array(0);
+        return {
+          records,
+          desync:
+            first !== 0x53 || second !== 0x45
+              ? `expected "SE" packet signature, found bytes ${String(first)}/${String(second)}`
+              : `SeedLink 4 payload length ${String(payloadLength)} is not a miniSEED record`,
+        };
+      }
+      const idLength = this.buffer[offset + 16] ?? 0;
+      const start = offset + SEEDLINK4_FIXED_HEADER_BYTES + idLength;
+      const end = start + payloadLength;
+      if (end > this.buffer.length) break;
+      const format = String.fromCharCode(this.buffer[offset + 2] ?? 0);
+      const subformat = String.fromCharCode(this.buffer[offset + 3] ?? 0);
+      if ((format === '2' || format === '3') && subformat === 'D') records.push(this.buffer.slice(start, end));
+      offset = end;
     }
     this.buffer = this.buffer.slice(offset);
     return { records, desync: null };
@@ -422,10 +689,29 @@ const CRLF = [0x0d, 0x0a] as const;
  * by socket. One connection is one thing to back off, one status and one thing
  * to stop.
  *
- * **Strictly sequential.** No command is written until the previous reply has
- * landed. Pipelining would be faster, but the reply to a `SELECT` is only
- * attributable to its channel by order, and a misattributed rejection would
- * report the wrong station as missing.
+ * **`HELLO` and `CAPABILITIES` go one at a time; every station line goes in one
+ * write.** The two openers must be sequential — a refused `CAPABILITIES` has
+ * to stop the session before any `STATION` is sent (trap 1). The station block
+ * is pipelined, because one command at a time costs a full round trip each,
+ * three per station: measured on the live ring 2026-10-08, **74 stations took
+ * 17.4 s sequentially and 0.53 s pipelined**, all 225 replies OK. That is the
+ * difference between a live watch that starts at once and one that sits
+ * deaf for most of twenty seconds on every reconnect.
+ *
+ * Replies are still matched to commands **by position**, which pipelining does
+ * not disturb: one TCP stream, one reply line per command, answered in order.
+ *
+ * One behaviour this gives up: sequentially, a station whose `SELECT` was
+ * refused never got its `DATA` (which with no selector streams *every* channel
+ * of the station). Pipelined, the `DATA` is already on the wire. The ring has
+ * never refused a `SELECT` — trap 4 — and anything unrequested that did arrive
+ * would be dropped by the caller, which keeps only the channels it asked for.
+ *
+ * **Batch mode (SeisComP 3.x) has no replies to match.** After `BATCH` is
+ * acknowledged the block and `END` go out together and streaming begins; see
+ * `seedlinkHandshakeScript`. The command timer stops with the `OK`, so a
+ * server that then sends nothing is the controller's stall detection to catch,
+ * exactly as a silent station is.
  */
 export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLinkSession {
   const {
@@ -440,16 +726,23 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
     onEnd,
   } = options;
 
-  const script = seedlinkHandshakeScript(channels);
-  const framer = new SeedLinkFramer();
+  // The script and framer are chosen once HELLO says which protocol the server
+  // speaks (`seedlinkDialectFrom`); HELLO itself is step 0 of every script.
+  let script = seedlinkHandshakeScript(channels);
+  let dialect: SeedLinkDialect = 'v3.1';
+  let framer: { push(chunk: Uint8Array): FramerResult } = new SeedLinkFramer();
+  let helloFirstLine: string | null = null;
 
   let phase: 'connecting' | 'handshake' | 'streaming' = 'connecting';
   let done = false;
   let closedByCaller = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
+  /** The step the next reply line belongs to. */
   let stepIndex = -1;
   let repliesOutstanding = 0;
+  /** Set once the station block has been written in one go. */
+  let pipelined = false;
   let lineBuffer: Uint8Array = new Uint8Array(0);
 
   const stationRefused = new Set<string>();
@@ -483,51 +776,82 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
     onChannelRejected?.(channelId, reason);
   }
 
-  /** Whether a step should be skipped given what has been refused so far. */
-  function skipped(step: HandshakeStep): boolean {
-    if (step.kind === 'select') return stationRefused.has(step.stationKey);
-    if (step.kind === 'data') {
-      // DATA with no accepted selector would stream *every* channel of the
-      // station, which is the opposite of what was asked for.
-      return stationRefused.has(step.stationKey) || (accepted.get(step.stationKey) ?? []).length === 0;
-    }
-    return false;
-  }
-
+  /** Writes the next opener, or — once both are answered — the whole station block. */
   function sendNext(): void {
     stepIndex += 1;
-    while (stepIndex < script.length) {
-      const step = script[stepIndex];
-      if (step === undefined || !skipped(step)) break;
-      stepIndex += 1;
-    }
-
     const step = script[stepIndex];
     if (step === undefined) {
       finish(new SeedLinkProtocolError('handshake script ended without END'));
       return;
     }
-
-    if (step.kind === 'end') {
-      const acceptedIds = [...accepted.values()].flat();
-      if (acceptedIds.length === 0) {
-        finish(new SeedLinkProtocolError('no requested channel was accepted by the server'));
-        return;
-      }
-      clearTimer();
+    if (step.kind === 'hello' || step.kind === 'capabilities' || step.kind === 'slproto' || step.kind === 'batch') {
+      repliesOutstanding = step.replyLines;
+      armTimer(step.line);
       socket.write(`${step.line}\r\n`);
-      phase = 'streaming';
-      onStreaming?.(acceptedIds);
-      // Anything already buffered past the last reply belongs to the stream.
-      const leftover = lineBuffer;
-      lineBuffer = new Uint8Array(0);
-      if (leftover.length > 0) handleStreaming(leftover);
+      return;
+    }
+    if (step.kind === 'end') {
+      endHandshake(step.line);
+      return;
+    }
+    if (dialect === 'batch') {
+      // Nothing in the block is answered, END included, so it all goes in one
+      // write — the shape measured on every SeisComP server — and every channel
+      // counts as accepted. An absent one is caught by the inventory check.
+      clearTimer();
+      socket.write(script.slice(stepIndex).map((s) => `${s.line}\r\n`).join(''));
+      for (const s of script) {
+        if (s.kind === 'select') accepted.set(s.stationKey, [...(accepted.get(s.stationKey) ?? []), s.channelId]);
+      }
+      beginStreaming();
       return;
     }
 
+    // Every STATION, SELECT and DATA, in one write. Each answers one line, so
+    // the replies are walked step by step in `handleReply`.
+    const block = script.slice(stepIndex).filter((s) => s.kind !== 'end');
+    pipelined = true;
     repliesOutstanding = step.replyLines;
     armTimer(step.line);
-    socket.write(`${step.line}\r\n`);
+    socket.write(block.map((s) => `${s.line}\r\n`).join(''));
+  }
+
+  /** The step after the current one in the pipelined block; no write, it is already sent. */
+  function advancePipelined(): void {
+    stepIndex += 1;
+    const step = script[stepIndex];
+    if (step === undefined) {
+      finish(new SeedLinkProtocolError('handshake script ended without END'));
+      return;
+    }
+    if (step.kind === 'end') {
+      endHandshake(step.line);
+      return;
+    }
+    repliesOutstanding = step.replyLines;
+    // Re-armed per reply: the bound is on the server going quiet, not on how
+    // long a long block takes to answer in full.
+    armTimer(step.line);
+  }
+
+  function endHandshake(endLine: string): void {
+    if ([...accepted.values()].flat().length === 0) {
+      finish(new SeedLinkProtocolError('no requested channel was accepted by the server'));
+      return;
+    }
+    clearTimer();
+    socket.write(`${endLine}\r\n`);
+    beginStreaming();
+  }
+
+  /** END is written; from here every byte is packets. */
+  function beginStreaming(): void {
+    phase = 'streaming';
+    onStreaming?.([...accepted.values()].flat());
+    // Anything already buffered past the last reply belongs to the stream.
+    const leftover = lineBuffer;
+    lineBuffer = new Uint8Array(0);
+    if (leftover.length > 0) handleStreaming(leftover);
   }
 
   function handleReply(line: string): void {
@@ -537,11 +861,31 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
 
     switch (step.kind) {
       case 'hello':
+        if (helloFirstLine === null) {
+          helloFirstLine = line;
+          // Before the second reply line lands, so the next step sent is the
+          // right protocol's. Steps after HELLO are rebuilt; HELLO is shared.
+          dialect = seedlinkDialectFrom(line);
+          if (dialect !== 'v3.1') script = seedlinkHandshakeScript(channels, dialect);
+          if (dialect === 'v4') framer = new SeedLink4Framer();
+        }
         break;
       case 'capabilities':
         if (refused) {
           // Trap 1: without 3.1 framing every packet would be discarded.
           finish(new SeedLinkProtocolError(`server refused CAPABILITIES SLPROTO:3.1: ${line}`));
+          return;
+        }
+        break;
+      case 'batch':
+        if (refused) {
+          finish(new SeedLinkProtocolError(`server refused BATCH: ${line}`));
+          return;
+        }
+        break;
+      case 'slproto':
+        if (refused) {
+          finish(new SeedLinkProtocolError(`server refused SLPROTO 4.0: ${line}`));
           return;
         }
         break;
@@ -554,6 +898,9 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
         }
         break;
       case 'select':
+        // Its STATION was refused, so the channel is rejected already —
+        // whatever this line says.
+        if (stationRefused.has(step.stationKey)) break;
         if (refused) {
           reject(step.channelId, `server refused SELECT: ${line}`);
         } else {
@@ -563,7 +910,7 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
         }
         break;
       case 'data':
-        if (refused) {
+        if (refused && !stationRefused.has(step.stationKey)) {
           for (const channelId of accepted.get(step.stationKey) ?? []) {
             reject(channelId, `server refused DATA: ${line}`);
           }
@@ -575,7 +922,9 @@ export function createSeedLinkSession(options: SeedLinkSessionOptions): SeedLink
     }
 
     repliesOutstanding -= 1;
-    if (repliesOutstanding <= 0) sendNext();
+    if (repliesOutstanding > 0) return;
+    if (pipelined) advancePipelined();
+    else sendNext();
   }
 
   function handleHandshake(chunk: Uint8Array): void {

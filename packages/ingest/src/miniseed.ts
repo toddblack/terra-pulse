@@ -207,6 +207,9 @@ function readText(bytes: Uint8Array, start: number, end: number): string {
  * down a session carrying seven healthy ones.
  */
 export function parseMiniSeedRecord(bytes: Uint8Array): MiniSeedRecord {
+  // miniSEED 3 opens "MS" + version 3. A 2.x record opens with a six-character
+  // sequence number of digits or spaces, so the two can never be confused.
+  if (bytes[0] === 0x4d && bytes[1] === 0x53 && bytes[2] === 3) return parseMiniSeed3Record(bytes);
   if (bytes.byteLength < FIXED_HEADER_BYTES) {
     throw new MiniSeedParseError(
       `record is ${String(bytes.byteLength)} bytes, shorter than the 48-byte fixed header`,
@@ -284,6 +287,137 @@ export function parseMiniSeedRecord(bytes: Uint8Array): MiniSeedRecord {
     channelId,
     quality,
     encoding: b1000.encoding,
+    startTimeMs,
+    sampleRateHz,
+    samples,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// miniSEED 3
+// ---------------------------------------------------------------------------
+
+/**
+ * miniSEED 3, the FDSN's 2023 successor format — what GEOFON's SeedLink 4
+ * server sends, and the only thing it sends (asking for miniSEED 2 returns
+ * nothing; measured 2026-10-08).
+ *
+ * Simpler than 2.x where it matters: one fixed 40-byte **little-endian**
+ * header, no blockette chain, no byte-order guessing, and the stream named by
+ * an FDSN source identifier rather than four padded fields:
+ *
+ *   0  "MS"            2  version (3)      3  flags
+ *   4  nanoseconds u32 8  year u16         10 day of year u16
+ *   12 hour  13 minute 14 second           15 data encoding
+ *   16 sample rate f64 (positive Hz; negative is a period in seconds)
+ *   24 sample count u32                    28 CRC-32C u32
+ *   32 publication version   33 identifier length   34 extra-header length u16
+ *   36 payload length u32    40 identifier, then extra headers (JSON), then data
+ *
+ * **Steim frames stay big-endian** in 3.x, whatever the header's order; plain
+ * integer encodings are little-endian. Read against GEOFON's real records,
+ * which are fixtures in the tests.
+ *
+ * **Two independent integrity checks**: the record's CRC-32C over every byte,
+ * and Steim's own last-sample check. A header misread that shifted the payload
+ * fails the first; a decode bug fails the second. Either throws.
+ */
+const MS3_HEADER_BYTES = 40;
+
+const CRC32C_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n += 1) {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0x82f63b78 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+/** CRC-32C (Castagnoli), the checksum miniSEED 3 specifies, with the CRC field read as zero. */
+export function miniSeed3Crc(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i += 1) {
+    const byte = i >= 28 && i < 32 ? 0 : (bytes[i] ?? 0);
+    crc = (CRC32C_TABLE[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+/** `FDSN:NET_STA_LOC_B_S_SS` to the four SEED fields, when it maps onto them. */
+function channelFromSourceId(sourceId: string): WaveformChannel | null {
+  const match = /^FDSN:([A-Z0-9]{1,8})_([A-Z0-9]{1,8})_([A-Z0-9]{0,8})_([A-Z0-9])_([A-Z0-9])_([A-Z0-9])$/.exec(sourceId);
+  if (match === null) return null;
+  const [, network = '', station = '', location = '', band = '', source = '', subsource = ''] = match;
+  return { network, station, location, channel: `${band}${source}${subsource}` };
+}
+
+export function parseMiniSeed3Record(bytes: Uint8Array): MiniSeedRecord {
+  if (bytes.byteLength < MS3_HEADER_BYTES) {
+    throw new MiniSeedParseError(`miniSEED 3 record is ${String(bytes.byteLength)} bytes, shorter than its header`);
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const identifierLength = view.getUint8(33);
+  const extraLength = view.getUint16(34, true);
+  const payloadLength = view.getUint32(36, true);
+  const dataOffset = MS3_HEADER_BYTES + identifierLength + extraLength;
+  const recordLength = dataOffset + payloadLength;
+  if (recordLength > bytes.byteLength) {
+    throw new MiniSeedParseError(
+      `miniSEED 3 record declares ${String(recordLength)} bytes, with ${String(bytes.byteLength)} present`,
+    );
+  }
+
+  const sourceId = readText(bytes, MS3_HEADER_BYTES, MS3_HEADER_BYTES + identifierLength);
+  const declaredCrc = view.getUint32(28, true);
+  const actualCrc = miniSeed3Crc(bytes.subarray(0, recordLength));
+  if (declaredCrc !== actualCrc) {
+    throw new MiniSeedParseError(
+      `${sourceId}: CRC-32C mismatch (declared ${declaredCrc.toString(16)}, computed ${actualCrc.toString(16)})`,
+    );
+  }
+
+  const channel = channelFromSourceId(sourceId);
+  if (channel === null) {
+    throw new MiniSeedParseError(`source identifier ${sourceId} does not map onto a SEED channel`);
+  }
+  const channelId = channelIdOf(channel);
+  const encoding = view.getUint8(15);
+  if (encoding === ENCODING_ASCII) return { kind: 'log', channel, channelId };
+
+  const rateOrPeriod = view.getFloat64(16, true);
+  const sampleRateHz = rateOrPeriod > 0 ? rateOrPeriod : rateOrPeriod < 0 ? -1 / rateOrPeriod : 0;
+  if (!(sampleRateHz > 0) || !Number.isFinite(sampleRateHz)) {
+    throw new MiniSeedParseError(`${channelId}: sample rate is unusable (${String(rateOrPeriod)})`);
+  }
+
+  const startTimeMs =
+    Date.UTC(view.getUint16(8, true), 0, 1, view.getUint8(12), view.getUint8(13), view.getUint8(14)) +
+    (view.getUint16(10, true) - 1) * 86_400_000 +
+    view.getUint32(4, true) / 1e6;
+
+  const numSamples = view.getUint32(24, true);
+  const steim = encoding === ENCODING_STEIM1 || encoding === ENCODING_STEIM2;
+  const samples = decodeSamples({
+    view,
+    bytes,
+    encoding,
+    dataOffset,
+    recordLength,
+    numSamples,
+    // Steim is big-endian in every miniSEED version; plain integers in 3.x are not.
+    littleEndian: !steim,
+    stream: channelId,
+  });
+
+  return {
+    kind: 'data',
+    channel,
+    channelId,
+    // 3.x has no quality letter; its publication version is the nearest thing,
+    // and nothing here filters on either.
+    quality: 'D',
+    encoding,
     startTimeMs,
     sampleRateHz,
     samples,

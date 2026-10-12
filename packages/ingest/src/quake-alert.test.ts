@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HomeAlerter } from './quake-alert';
+import { HomeAlerter, WATCH_ALERT_RULE } from './quake-alert';
 import type { MagnitudeEstimate } from './quake-magnitude';
 import { AWW14_CALIFORNIA, intensityNumeral, predictIntensity } from './shaking-intensity';
 
@@ -77,6 +77,20 @@ describe('HomeAlerter', () => {
     const alert = alerter.alertFor(nearby.id)!;
     expect(alert.alertedAtMs).toBe(T0 + 7_000);
     expect(alert.magnitude).toBe(5.0);
+  });
+
+  it('with a magnitude floor, waits for the estimate to reach it even when home would feel it', () => {
+    const alerter = new HomeAlerter(BURBANK, { minIntensity: 2.5, minMagnitude: 4.5 }, GEOMETRY);
+    // An M4.2 20 km away is felt at home (MMI > 2.5) but is under the floor.
+    expect(alerter.intensityAtHome(nearby, 4.2)).toBeGreaterThan(2.5);
+    expect(alerter.evaluate(nearby, estimate(4.2), T0 + 5_000)).toBeNull();
+    expect(alerter.evaluate(nearby, estimate(4.5), T0 + 6_000)?.alertedAtMs).toBe(T0 + 6_000);
+  });
+
+  it('with a magnitude floor, still needs the shaking at home', () => {
+    const alerter = new HomeAlerter(BURBANK, WATCH_ALERT_RULE, GEOMETRY);
+    const far = { ...nearby, id: 2, latitude: BURBANK.latitude + 300 / 111.195 };
+    expect(alerter.evaluate(far, estimate(4.8), T0)).toBeNull();
   });
 
   it('says when strong shaking reaches home, from the origin at S speed', () => {

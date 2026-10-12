@@ -14,7 +14,9 @@ import {
   azimuthalGapDeg,
   formatDistanceKm,
   formatPickCoordinates,
+  type WaveformPickPoint,
 } from './station-pick';
+import { WatchHereButton } from '../watch/WatchHereButton';
 import styles from './WaveformPanel.module.css';
 
 /** The sentence under the tabs: what this set of rows is, and what it is not. */
@@ -42,6 +44,34 @@ function describeSelection(selection: WaveformSelection | null): string {
       )} km apart, out to ${formatDistanceKm(farthest)}. Widest direction with no station: ${String(gap)}°.`;
     }
   }
+}
+
+/**
+ * What the watch button would pin, or why it can't. A preset is a whole region,
+ * so there is no one spot to watch; the picked tab has one from the moment of
+ * the click — the watch fetches its own stations, so it need not wait for the
+ * pick's list.
+ */
+function watchTarget(selection: WaveformSelection | null): {
+  point: WaveformPickPoint | null;
+  label: string;
+  disabledReason: string | null;
+} {
+  if (selection?.kind !== 'picked') {
+    return {
+      point: null,
+      label: '',
+      disabledReason: 'A preset covers a whole region — open “Picked spot” and click the globe to choose one spot to watch',
+    };
+  }
+  if (selection.point === null) {
+    return { point: null, label: '', disabledReason: 'Click the globe to pick a spot first' };
+  }
+  return {
+    point: selection.point,
+    label: selection.point.label ?? formatPickCoordinates(selection.point),
+    disabledReason: null,
+  };
 }
 
 /**
@@ -160,6 +190,7 @@ export function WaveformPanel({ selection, channels, stream, retryCatalogue }: W
             ))}
           </div>
           <span className={styles.pickHint}>or click bare globe to pick a spot</span>
+          <WatchHereButton {...watchTarget(selection)} />
           <span className={styles.connection}>{connectionText}</span>
           <button
             type="button"

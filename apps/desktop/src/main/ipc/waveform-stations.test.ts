@@ -8,7 +8,34 @@ import {
   WAVEFORM_STATIONS_TTL_MS,
   createCachedLoader,
   createWaveformStationSources,
+  fetchMergedListing,
 } from './waveform-stations';
+
+describe('fetchMergedListing', () => {
+  const row = (station: string) => ({ Network: 'CR', Station: station });
+  const listing = (...stations: string[]): StationListing => ({
+    channelRows: stations.map(row),
+    stationRows: stations.map(row),
+  });
+
+  it("asks every service and keeps both halves — Croatia's own service knows stations the federated catalogue does not", async () => {
+    const asked: string[] = [];
+    const merged = await fetchMergedListing(['fed', 'hr'], 'CR', (url) => {
+      asked.push(url);
+      return Promise.resolve(url === 'fed' ? listing('BATN') : listing('CR00'));
+    });
+    expect(asked).toEqual(['fed', 'hr']);
+    expect(merged?.channelRows.map((r) => r.Station)).toEqual(['BATN', 'CR00']);
+  });
+
+  it('keeps what answered when one service fails, and is null only when all do', async () => {
+    const one = await fetchMergedListing(['fed', 'hr'], 'CR', (url) =>
+      Promise.resolve(url === 'fed' ? null : listing('CR00')),
+    );
+    expect(one?.channelRows.map((r) => r.Station)).toEqual(['CR00']);
+    expect(await fetchMergedListing(['fed', 'hr'], 'CR', () => Promise.resolve(null))).toBeNull();
+  });
+});
 
 const RATT: WaveformStation = {
   network: 'UW',
@@ -175,5 +202,120 @@ describe('createWaveformStationSources', () => {
     clock = WAVEFORM_STATIONS_TTL_MS - 1;
     await sources.catalogue();
     expect(fetchListing).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('createWaveformStationSources with more than one server', () => {
+  const WEL_LISTING: StationListing = {
+    channelRows: [
+      {
+        Network: 'NZ',
+        Station: 'WEL',
+        Location: '10',
+        Channel: 'HHZ',
+        Latitude: '-41.28',
+        Longitude: '174.77',
+        SampleRate: '100',
+      },
+    ],
+    stationRows: [],
+  };
+  const geonet = (listing: StationListing | null = WEL_LISTING) => ({
+    fetchInventory: () => Promise.resolve(new Set(['NZ_WEL_10_HHZ'])),
+    fetchListing: () => Promise.resolve(listing),
+  });
+
+  it("merges every server's stations, each tagged with its own", async () => {
+    const sources = createWaveformStationSources({
+      fetchInventory: RATT_ON_RING,
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: { geonet: geonet() },
+    });
+    const catalogue = await sources.catalogue();
+    if (catalogue.status !== 'ready') throw new Error('expected a list');
+    expect(catalogue.stations.map((s) => [s.station, s.server ?? 'earthscope'])).toEqual([
+      ['RATT', 'earthscope'],
+      ['WEL', 'geonet'],
+    ]);
+    expect([...((await sources.inventoryFor('geonet').get()) ?? [])]).toEqual(['NZ_WEL_10_HHZ']);
+  });
+
+  it("keeps one server's stations when another fails, so New Zealand cannot take California with it", async () => {
+    const sources = createWaveformStationSources({
+      fetchInventory: RATT_ON_RING,
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: { geonet: geonet(null) },
+    });
+    const catalogue = await sources.catalogue();
+    expect(catalogue.status === 'ready' ? catalogue.stations.map((s) => s.station) : catalogue).toEqual(['RATT']);
+  });
+
+  it('does not wait for a server that hangs, and has its stations on the next ask once it answers', async () => {
+    // IPGP's host stopped answering twice while this was built; a connection to
+    // it hangs ~21 s, and nothing else may wait that long.
+    const hung = deferred<Set<string> | null>();
+    const sources = createWaveformStationSources({
+      fetchInventory: RATT_ON_RING,
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: { geonet: { fetchInventory: () => hung.promise, fetchListing: () => Promise.resolve(WEL_LISTING) } },
+      serverWaitMs: 20,
+    });
+    const first = await sources.catalogue();
+    expect(first.status === 'ready' ? first.stations.map((s) => s.station) : first).toEqual(['RATT']);
+
+    hung.resolve(new Set(['NZ_WEL_10_HHZ']));
+    const second = await sources.catalogue();
+    expect(second.status === 'ready' ? second.stations.map((s) => s.station) : second).toEqual(['RATT', 'WEL']);
+  });
+
+  it('is unavailable only when every server failed, with EarthScope’s reason', async () => {
+    const sources = createWaveformStationSources({
+      fetchInventory: () => Promise.resolve(null),
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: { geonet: geonet(null) },
+    });
+    expect(await sources.catalogue()).toEqual({
+      status: 'unavailable',
+      reason: "the ring's stream list could not be fetched",
+    });
+  });
+
+  it("keeps EarthScope's copy of a station both servers list", async () => {
+    const sources = createWaveformStationSources({
+      fetchInventory: RATT_ON_RING,
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: {
+        geonet: {
+          fetchInventory: RATT_ON_RING,
+          fetchListing: () => Promise.resolve(RATT_LISTING),
+        },
+      },
+    });
+    const catalogue = await sources.catalogue();
+    if (catalogue.status !== 'ready') throw new Error('expected a list');
+    expect(catalogue.stations).toHaveLength(1);
+    expect(catalogue.stations[0]).not.toHaveProperty('server');
+  });
+});
+
+describe('a server whose networks come from its inventory', () => {
+  it('lists only after the inventory arrives, and is handed it', async () => {
+    const seen: (ReadonlySet<string> | undefined)[] = [];
+    const sources = createWaveformStationSources({
+      fetchInventory: RATT_ON_RING,
+      fetchListing: () => Promise.resolve(RATT_LISTING),
+      others: {
+        geofon: {
+          fetchInventory: () => Promise.resolve(new Set(['GE_STU__HHZ'])),
+          fetchListing: (onRing) => {
+            seen.push(onRing);
+            return Promise.resolve(null);
+          },
+          listingNeedsInventory: true,
+        },
+      },
+    });
+    await sources.catalogue();
+    expect(seen.map((ids) => [...(ids ?? [])])).toEqual([['GE_STU__HHZ']]);
   });
 });

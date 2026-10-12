@@ -1,11 +1,18 @@
 import { ipcMain } from 'electron';
 import {
+  SEEDLINK_SERVERS,
   buildStationCatalogue,
   fetchRingInventory,
+  fetchSeedLinkInventory,
   fetchStationListing,
   type StationListing,
 } from '@terra-pulse/ingest';
-import type { WaveformStation, WaveformStationCatalogue } from '@terra-pulse/schema';
+import {
+  SEEDLINK_SERVER_IDS,
+  type SeedLinkServerId,
+  type WaveformStation,
+  type WaveformStationCatalogue,
+} from '@terra-pulse/schema';
 
 /**
  * The station list behind the waveform picker, and the ring inventory it is
@@ -20,6 +27,19 @@ import type { WaveformStation, WaveformStationCatalogue } from '@terra-pulse/sch
 
 /** Stations join and leave the ring over days, so an hour is plenty fresh. */
 export const WAVEFORM_STATIONS_TTL_MS = 60 * 60_000;
+
+/**
+ * How long the merged list waits for any one server before going without it.
+ *
+ * With eight servers, waiting for all of them means waiting for the worst:
+ * IPGP's host stopped answering twice on 2026-10-09, and a connection to it
+ * hangs ~21 s before the OS gives up — so the picker, and a watch starting up,
+ * had no stations at all for that long. Healthy servers measured 1.5-3.6 s for
+ * stream list and coordinates together, so 10 s leaves a slow one room. A
+ * server that misses it keeps loading, and its answer is cached for the next
+ * ask.
+ */
+export const CATALOGUE_SERVER_WAIT_MS = 10_000;
 
 export interface CachedLoader<T> {
   /** The cached value if fresh, else the in-flight load, else a new one. */
@@ -63,14 +83,71 @@ export function createCachedLoader<T>(
 }
 
 export interface WaveformStationSources {
+  /** EarthScope's ring inventory. */
   inventory: CachedLoader<Set<string>>;
+  /** Any server's ring inventory — what its stream controller marks channels against. */
+  inventoryFor: (server: SeedLinkServerId) => CachedLoader<Set<string>>;
   catalogue: () => Promise<WaveformStationCatalogue>;
 }
 
+export interface ServerFetchers {
+  fetchInventory: () => Promise<Set<string> | null>;
+  /**
+   * The server's station listing. Given the inventory when `listingNeedsInventory`
+   * is set — for a server whose networks are read from what it carries.
+   */
+  fetchListing: (onRing?: ReadonlySet<string>) => Promise<StationListing | null>;
+  listingNeedsInventory?: boolean;
+}
+
 export interface WaveformStationSourceOptions {
+  /** EarthScope's fetchers. */
   fetchInventory?: () => Promise<Set<string> | null>;
   fetchListing?: () => Promise<StationListing | null>;
+  /** Servers beyond EarthScope, merged into the catalogue. None when absent. */
+  others?: Partial<Record<SeedLinkServerId, ServerFetchers>>;
   now?: () => number;
+  /** `CATALOGUE_SERVER_WAIT_MS` unless a test shortens it. */
+  serverWaitMs?: number;
+}
+
+/**
+ * One listing from several station services, asked side by side. Null only
+ * when every one failed; a station two of them list appears twice in the rows,
+ * which `buildStationCatalogue` already collapses to one per station.
+ */
+export async function fetchMergedListing(
+  serviceUrls: readonly string[],
+  networks: string,
+  fetchOne: (serviceUrl: string, networks: string) => Promise<StationListing | null> = (serviceUrl, nets) =>
+    fetchStationListing({ serviceUrl, networks: nets }),
+): Promise<StationListing | null> {
+  const listings = (await Promise.all(serviceUrls.map((url) => fetchOne(url, networks)))).filter(
+    (listing): listing is StationListing => listing !== null,
+  );
+  if (listings.length === 0) return null;
+  return {
+    channelRows: listings.flatMap((l) => l.channelRows),
+    stationRows: listings.flatMap((l) => l.stationRows),
+  };
+}
+
+/** The real fetchers for a server, from `SEEDLINK_SERVERS`. */
+export function serverFetchers(id: SeedLinkServerId): ServerFetchers {
+  const server = SEEDLINK_SERVERS[id];
+  return {
+    fetchInventory:
+      server.inventory === 'streamids'
+        ? () => fetchRingInventory(fetch, server.host, server.port)
+        : () => fetchSeedLinkInventory(server.host, server.port),
+    fetchListing: (onRing) => {
+      const networks =
+        server.networks ?? [...new Set([...(onRing ?? [])].map((id) => id.split('_')[0] ?? ''))].filter(Boolean).join(',');
+      if (networks === '') return Promise.resolve(null);
+      return fetchMergedListing(server.stationServiceUrls, networks);
+    },
+    listingNeedsInventory: server.networks === null,
+  };
 }
 
 /**
@@ -92,43 +169,123 @@ export function createWaveformStationSources(
   const {
     fetchInventory = () => fetchRingInventory(),
     fetchListing = () => fetchStationListing(),
+    others = {},
     now = () => Date.now(),
+    serverWaitMs = CATALOGUE_SERVER_WAIT_MS,
   } = options;
 
-  const inventory = createCachedLoader(fetchInventory, WAVEFORM_STATIONS_TTL_MS, now);
+  const fetchers = new Map<SeedLinkServerId, ServerFetchers>([['earthscope', { fetchInventory, fetchListing }]]);
+  for (const id of SEEDLINK_SERVER_IDS) {
+    const extra = others[id];
+    if (id !== 'earthscope' && extra !== undefined) fetchers.set(id, extra);
+  }
 
-  let lastFailure = '';
-  const stations = createCachedLoader<{ stations: WaveformStation[]; fetchedAtMs: number }>(
-    async () => {
-      const [onRing, listing] = await Promise.all([inventory.get(), fetchListing()]);
-      if (onRing === null) {
-        lastFailure = "the ring's stream list could not be fetched";
-        return null;
-      }
-      if (listing === null) {
-        lastFailure = 'station coordinates could not be fetched from the FDSN station service';
-        return null;
-      }
-      const list = buildStationCatalogue(listing.channelRows, listing.stationRows, onRing);
-      // Both services answered and agree on nothing: one of them has changed
-      // what it means by a channel id. Not "no stations anywhere".
-      if (list.length === 0) {
-        lastFailure = 'none of the listed stations matched the ring — a format may have changed';
-        return null;
-      }
-      return { stations: list, fetchedAtMs: now() };
-    },
-    WAVEFORM_STATIONS_TTL_MS,
-    now,
-  );
+  const inventories = new Map<SeedLinkServerId, CachedLoader<Set<string>>>();
+  const inventoryFor = (id: SeedLinkServerId): CachedLoader<Set<string>> => {
+    let loader = inventories.get(id);
+    if (loader === undefined) {
+      const fetchOne = fetchers.get(id)?.fetchInventory ?? (() => Promise.resolve(null));
+      loader = createCachedLoader(fetchOne, WAVEFORM_STATIONS_TTL_MS, now);
+      inventories.set(id, loader);
+    }
+    return loader;
+  };
+
+  /** One server's stations, or why not — each cached on its own. */
+  const failures = new Map<SeedLinkServerId, string>();
+  const perServer = new Map<SeedLinkServerId, CachedLoader<WaveformStation[]>>();
+  for (const [id, fetcher] of fetchers) {
+    perServer.set(
+      id,
+      createCachedLoader<WaveformStation[]>(
+        async () => {
+          // In parallel unless the listing needs the inventory's networks first.
+          const ring = inventoryFor(id).get();
+          const [onRing, listing] = await Promise.all([
+            ring,
+            fetcher.listingNeedsInventory === true
+              ? ring.then((ids) => (ids === null ? null : fetcher.fetchListing(ids)))
+              : fetcher.fetchListing(),
+          ]);
+          if (onRing === null) {
+            failures.set(id, "the ring's stream list could not be fetched");
+            return null;
+          }
+          if (listing === null) {
+            failures.set(id, 'station coordinates could not be fetched from the FDSN station service');
+            return null;
+          }
+          const list = buildStationCatalogue(listing.channelRows, listing.stationRows, onRing, id);
+          // Both services answered and agree on nothing: one of them has changed
+          // what it means by a channel id. Not "no stations anywhere".
+          if (list.length === 0) {
+            failures.set(id, 'none of the listed stations matched the ring — a format may have changed');
+            return null;
+          }
+          return list;
+        },
+        WAVEFORM_STATIONS_TTL_MS,
+        now,
+      ),
+    );
+  }
 
   return {
-    inventory,
+    inventory: inventoryFor('earthscope'),
+    inventoryFor,
+    /**
+     * Every server that answered, merged. A server that failed is left out
+     * rather than failing the whole list — New Zealand being unreachable must
+     * not take California with it — and the list is unavailable only when every
+     * server failed, with EarthScope's reason, since that is the one most
+     * readers depend on.
+     *
+     * A station on two servers is kept once, **EarthScope's copy first**:
+     * replays and gains have worked against its archive and station service
+     * since the start, and choosing per server would make a row's source depend
+     * on which list answered first.
+     *
+     * A server slower than `serverWaitMs` is left out of this answer, not
+     * waited for — see `CATALOGUE_SERVER_WAIT_MS`.
+     */
     async catalogue() {
-      const result = await stations.get();
-      return result === null
-        ? { status: 'unavailable', reason: lastFailure || 'the station list could not be fetched' }
-        : { status: 'ready', ...result };
+      const lists = await Promise.all(
+        [...perServer.entries()].map(async ([id, loader]) => {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const late = new Promise<'late'>((resolve) => {
+            timer = setTimeout(() => {
+              resolve('late');
+            }, serverWaitMs);
+          });
+          const answer = await Promise.race([loader.get(), late]);
+          clearTimeout(timer);
+          if (answer === 'late') {
+            failures.set(id, `no answer within ${String(serverWaitMs / 1000)} s`);
+            return { id, stations: null };
+          }
+          return { id, stations: answer };
+        }),
+      );
+      const merged: WaveformStation[] = [];
+      const seen = new Set<string>();
+      for (const { stations } of lists) {
+        for (const station of stations ?? []) {
+          const key = `${station.network}_${station.station}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          merged.push(station);
+        }
+      }
+      if (merged.length === 0) {
+        return {
+          status: 'unavailable',
+          reason: failures.get('earthscope') ?? [...failures.values()][0] ?? 'the station list could not be fetched',
+        };
+      }
+      for (const { id, stations } of lists) {
+        if (stations === null) console.warn(`Station list from ${SEEDLINK_SERVERS[id].label} unavailable: ${failures.get(id) ?? 'unknown'}`);
+      }
+      return { status: 'ready', stations: merged, fetchedAtMs: now() };
     },
   };
 }

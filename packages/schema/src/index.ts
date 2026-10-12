@@ -15,4 +15,5 @@ export * from './focal-mechanisms';
 export * from './ephemeris';
 export * from './seismic-waveforms';
 export * from './quake-replay';
+export * from './quake-watch';
 export * from './travel-times';

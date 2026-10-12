@@ -1,0 +1,113 @@
+/* The live watch's one entry point, in the waveform panel's tab row. Filled
+   emerald — the pin's colour on the globe and the dock chip's dot — so it
+   reads as the one control here that starts something that keeps running,
+   not one more way to change the view. */
+.button,
+.watching {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.2rem 0.6rem 0.2rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.button {
+  border: 1px solid rgb(52 211 153);
+  background-color: rgb(16 185 129);
+  color: rgb(2 44 34);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.button:hover:not(:disabled) {
+  background-color: rgb(52 211 153);
+}
+
+/* Nothing to watch: present, so the reader knows it exists and where, but
+   plainly unavailable. The tooltip says why. */
+.button:disabled {
+  border-color: rgb(71 85 105);
+  background-color: transparent;
+  color: rgb(100 116 139);
+  cursor: not-allowed;
+}
+
+/* The pick is the watch: an outlined status, not a button to press again. */
+.watching {
+  border: 1px solid rgb(52 211 153 / 70%);
+  background-color: rgb(52 211 153 / 14%);
+  color: rgb(167 243 208);
+}
+
+/* Pinned, but there is nothing in reach to listen with. Amber, the chip's
+   "limited" colour — not red, since nothing has failed; the spot just has no
+   stations. The tooltip carries main's reason. */
+.cannot {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.2rem 0.6rem 0.2rem 0.45rem;
+  border: 1px solid rgb(251 191 36 / 60%);
+  border-radius: 999px;
+  background-color: rgb(251 191 36 / 12%);
+  color: rgb(253 230 138);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cannot .iconHole {
+  fill: rgb(15 23 42);
+}
+
+.cannot .stop {
+  border-color: rgb(251 191 36 / 45%);
+  color: rgb(253 230 138);
+}
+
+.stop {
+  margin-left: 0.15rem;
+  padding: 0 0.4rem;
+  border: 1px solid rgb(52 211 153 / 45%);
+  border-radius: 999px;
+  background: transparent;
+  color: rgb(167 243 208);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.stop:hover {
+  background-color: rgb(52 211 153 / 22%);
+  color: rgb(236 253 245);
+}
+
+.icon {
+  flex: none;
+  width: 0.7rem;
+  height: 0.85rem;
+  fill: currentcolor;
+}
+
+/* Punched through in whatever is behind the button, so the pin reads at 12px. */
+.iconHole {
+  fill: rgb(16 185 129);
+}
+
+.button:hover:not(:disabled) .iconHole {
+  fill: rgb(52 211 153);
+}
+
+.button:disabled .iconHole,
+.watching .iconHole {
+  fill: rgb(15 23 42);
+}
+
+.iconRing {
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 0.9;
+}

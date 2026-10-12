@@ -58,10 +58,6 @@ export function predictIntensity(magnitude: number, hypocentralKm: number): numb
   return c1 + c2 * magnitude + c3 * logR + c4 * r + c5 * b + c6 * magnitude * logR;
 }
 
-const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X'] as const;
-
-/** The Roman numeral for a continuous MMI: rounded to the nearest level, clamped I-X. */
-export function intensityNumeral(mmi: number): string {
-  const index = Math.min(ROMAN.length, Math.max(1, Math.round(mmi))) - 1;
-  return ROMAN[index] as string;
-}
+// Lives in the schema so the renderer's alert banner names intensity the same
+// way; re-exported here so the script and tests keep one import.
+export { intensityNumeral } from '@terra-pulse/schema';

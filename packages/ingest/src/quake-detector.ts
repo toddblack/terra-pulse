@@ -25,9 +25,10 @@ import { DEFAULT_PICKER_PARAMS, StationPicker, type Pick, type PickerParams } fr
  * measured transit), which is the point: what replay measures is what live
  * would have done.
  *
- * Status: validated against archived data (`scripts/replay-detector.ts`), and
- * shown in the app only as a replay of a past quake (`replay-run.ts`, through
- * main's `quake-replay.ts`). It does not run live yet.
+ * Status: validated against archived data (`scripts/replay-detector.ts`),
+ * shown in the app as a replay of a past quake (`replay-run.ts`, through main's
+ * `quake-replay.ts`), and **live since 2026-10-08** as the "Watch here" pin
+ * (`quake-watch.ts`, through main's `ipc/quake-watch.ts`).
  */
 
 export interface DetectorRecord {
