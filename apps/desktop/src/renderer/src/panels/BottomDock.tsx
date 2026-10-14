@@ -10,7 +10,7 @@ import type { WaveformStream } from '../waveforms/useWaveformStream';
 import { isDockShowing, type DockTab } from './dock-state';
 import { publishSize } from './published-size';
 import { TimeScrubber } from './TimeScrubber';
-import { formatPlayhead } from './time-labels';
+import { formatPlayhead, formatRangePlayhead } from './time-labels';
 import { useQuakeWatchStore } from '../watch/useQuakeWatchStore';
 import { watchChipLabel, watchDetail, watchHealth } from '../watch/watch-labels';
 import styles from './BottomDock.module.css';
@@ -75,8 +75,15 @@ function streamHealth(started: boolean, stream: WaveformStream): StreamHealth {
 function PlayheadChip({ onOpen }: { onOpen: () => void }) {
   const playheadMs = useEarthquakeStore((state) => state.playheadMs);
   const isPlaying = useEarthquakeStore((state) => state.isPlaying);
+  const dateRange = useEarthquakeStore((state) => state.dateRange);
   const nowMs = useNow();
-  const label = playheadMs === null ? 'Live' : formatPlayhead(playheadMs, nowMs);
+  const label =
+    playheadMs === null
+      ? 'Live'
+      : dateRange === null
+        ? formatPlayhead(playheadMs, nowMs)
+        : // Same words as the scrubber it stands in for.
+          formatRangePlayhead(playheadMs, dateRange.startMs, dateRange.endMs);
   return (
     <button
       type="button"

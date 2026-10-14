@@ -1,6 +1,7 @@
 export * from './globe-layer';
 export * from './earthquake';
 export * from './archive';
+export * from './date-range';
 export * from './aftershocks';
 export * from './aftershock-forecast';
 export * from './recurrence';
@@ -17,3 +18,4 @@ export * from './seismic-waveforms';
 export * from './quake-replay';
 export * from './quake-watch';
 export * from './travel-times';
+export * from './shakemap';

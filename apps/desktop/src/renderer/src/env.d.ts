@@ -4,6 +4,7 @@ import type {
   MagnetometerReading,
   MagnetometerSeries,
   TecGrid,
+  ShakeMapResult,
   AftershockSequence,
   AuroraGrid,
   SpaceWeatherProgress,
@@ -85,6 +86,10 @@ declare global {
         /** The latest TEC map, or null if none could be fetched. */
         latest(): Promise<TecGrid | null>;
       };
+      shakeMap: {
+        /** Shaking-intensity lines for one quake; `none` when USGS made no map. */
+        contours(eventId: string): Promise<ShakeMapResult>;
+      };
       magnetometer: {
         /** The latest network read, empty before the first successful poll. */
         latest(): Promise<MagnetometerReading[]>;
@@ -164,6 +169,8 @@ declare global {
         /** Settles when the whole backfill finishes — follow onProgress instead. */
         start(): Promise<ArchiveProgress>;
         cancel(): Promise<ArchiveProgress>;
+        /** Years of a span the catalogue does not hold. Empty when all are. */
+        missingYears(request: { startUtc: string; endUtc: string }): Promise<number[]>;
         /** Subscribe to backfill progress; returns an unsubscribe function. */
         onProgress(callback: (progress: ArchiveProgress) => void): () => void;
       };

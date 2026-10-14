@@ -1,5 +1,5 @@
-import { previousWindowHours } from '@terra-pulse/schema';
-import { windowStartMs } from '../state/useEarthquakeStore';
+import { previousWindowHours, type DateRange } from '@terra-pulse/schema';
+import { viewStartMs } from '../state/useEarthquakeStore';
 
 /**
  * How far past "now" the live window's end is pushed.
@@ -68,6 +68,12 @@ export function displayWindow(
    * future should not inflate a total.
    */
   endMarginMs = 0,
+  /**
+   * A date range picked on the calendar, when one is set. Only its start is
+   * read: the store keeps the playhead inside a range and never `null`, so
+   * the end comes from the playhead exactly as it does under playback.
+   */
+  dateRange: DateRange | null = null,
 ): DisplayWindow {
   const liveEndMs = playheadMs ?? nowMs;
   const trailHours = trailingWindow ? previousWindowHours(windowHours) : null;
@@ -83,7 +89,7 @@ export function displayWindow(
     // slide the whole span forward by an hour.
     startMs:
       trailHours === null
-        ? windowStartMs(windowHours, nowMs)
+        ? viewStartMs(windowHours, dateRange, nowMs)
         : liveEndMs - trailHours * 3_600_000,
     endMs: liveEndMs + (playheadMs === null ? endMarginMs : 0),
   };

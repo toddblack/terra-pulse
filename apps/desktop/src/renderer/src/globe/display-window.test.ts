@@ -147,3 +147,53 @@ describe('instantOnScreen', () => {
     expect(hourOf(instantOnScreen(live.endMs, NOW))).toBe(hourOf(NOW));
   });
 });
+
+describe('displayWindow — date range', () => {
+  // March 2011, viewed from 2026. The store keeps the playhead inside a range
+  // and never null, so these all pass one.
+  const RANGE = { startMs: Date.UTC(2011, 2, 1), endMs: Date.UTC(2011, 3, 1) };
+  const HOURS = (RANGE.endMs - RANGE.startMs) / HOUR;
+
+  it('starts where the range starts, not one window back from now', () => {
+    // The whole reason the parameter exists. Without it a 31-day range would
+    // be read as "the last 31 days" and March 2011 would show September 2026.
+    const { startMs } = displayWindow(HOURS, RANGE.endMs, false, NOW, 0, RANGE);
+    expect(startMs).toBe(RANGE.startMs);
+  });
+
+  it('ends at the playhead, with the whole range on screen when it is at the end', () => {
+    expect(displayWindow(HOURS, RANGE.endMs, false, NOW, 0, RANGE).endMs).toBe(RANGE.endMs);
+
+    const midMonth = Date.UTC(2011, 2, 11, 5, 46);
+    expect(displayWindow(HOURS, midMonth, false, NOW, 0, RANGE).endMs).toBe(midMonth);
+  });
+
+  it('does not add the live margin to a range end', () => {
+    // The margin keeps a just-published event from being hidden. Nothing was
+    // just published in 2011.
+    const { endMs } = displayWindow(HOURS, RANGE.endMs, false, NOW, LIVE_END_MARGIN_MS, RANGE);
+    expect(endMs).toBe(RANGE.endMs);
+  });
+
+  it('gives the globe and the count the same start', () => {
+    // The viewer passes the margin and the list does not. They must still
+    // agree on where the view begins, or the count describes another globe.
+    const forGlobe = displayWindow(HOURS, RANGE.endMs, false, NOW, LIVE_END_MARGIN_MS, RANGE);
+    const forCount = displayWindow(HOURS, RANGE.endMs, false, NOW, 0, RANGE);
+    expect(forGlobe.startMs).toBe(forCount.startMs);
+  });
+
+  it('trails behind the playhead the same way a span does', () => {
+    const midMonth = Date.UTC(2011, 2, 20);
+    const trail = previousWindowHours(HOURS);
+    expect(trail).not.toBeNull();
+    const { startMs } = displayWindow(HOURS, midMonth, true, NOW, 0, RANGE);
+    expect(startMs).toBe(midMonth - (trail ?? 0) * HOUR);
+  });
+
+  it('is unchanged for every existing caller that passes no range', () => {
+    expect(displayWindow(168, null, false, NOW, 0, null)).toEqual(
+      displayWindow(168, null, false, NOW),
+    );
+  });
+});

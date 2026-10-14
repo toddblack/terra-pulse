@@ -59,8 +59,9 @@ export function TidalShearField({
   const windowHours = useEarthquakeStore((state) => state.windowHours);
   const playheadMs = useEarthquakeStore((state) => state.playheadMs);
   const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
+  const dateRange = useEarthquakeStore((state) => state.dateRange);
   const nowMs = useNow();
-  const { endMs } = displayWindow(windowHours, playheadMs, trailingWindow, nowMs);
+  const { endMs } = displayWindow(windowHours, playheadMs, trailingWindow, nowMs, 0, dateRange);
   const instant = new Date(instantOnScreen(endMs, nowMs));
 
   const shearKPa = resolvedShearKPa(fault, point, instant);

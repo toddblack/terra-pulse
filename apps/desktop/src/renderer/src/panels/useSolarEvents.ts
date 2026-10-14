@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { CmeArrival, SolarFlare } from '@terra-pulse/schema';
+import type { CmeArrival, DateRange, SolarFlare } from '@terra-pulse/schema';
 
 export interface SolarEventsState {
   flares: SolarFlare[];
@@ -12,7 +12,15 @@ const EMPTY: SolarEventsState = { flares: [], cmeArrivals: [] };
 export function solarEventsQueryRange(
   windowHours: number,
   nowMs: number,
+  /** A picked date range, which has its own two ends instead of ending now. */
+  dateRange: DateRange | null = null,
 ): { startUtc: string; endUtc: string } {
+  if (dateRange !== null) {
+    return {
+      startUtc: new Date(dateRange.startMs).toISOString(),
+      endUtc: new Date(dateRange.endMs).toISOString(),
+    };
+  }
   return {
     startUtc: new Date(nowMs - windowHours * 3_600_000).toISOString(),
     endUtc: new Date(nowMs).toISOString(),
@@ -48,14 +56,17 @@ export function solarEventsQueryRange(
  * slow or empty must not hold the other back, the same reasoning
  * `startDonkiPolling` uses for the live poll.
  */
-export function useSolarEvents(windowHours: number): SolarEventsState {
+export function useSolarEvents(
+  windowHours: number,
+  dateRange: DateRange | null = null,
+): SolarEventsState {
   const [state, setState] = useState<SolarEventsState>(EMPTY);
 
   useEffect(() => {
     let cancelled = false;
 
     const load = () => {
-      const { startUtc, endUtc } = solarEventsQueryRange(windowHours, Date.now());
+      const { startUtc, endUtc } = solarEventsQueryRange(windowHours, Date.now(), dateRange);
 
       void window.terraPulse.solarEvents.queryFlares({ startUtc, endUtc }).then(
         (flares) => {
@@ -83,7 +94,7 @@ export function useSolarEvents(windowHours: number): SolarEventsState {
       cancelled = true;
       unsubscribe();
     };
-  }, [windowHours]);
+  }, [windowHours, dateRange]);
 
   return state;
 }

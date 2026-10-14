@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   FALLBACK_FOCUS_ALTITUDE_M,
   FALLBACK_HOME_ALTITUDE_M,
+  MAX_FIT_ALTITUDE_M,
+  MIN_FIT_ALTITUDE_M,
   aimForPixel,
+  altitudeToFit,
   focusAltitudeM,
   homeAltitudeM,
   homeLongitudeDeg,
@@ -85,5 +88,37 @@ describe('aimForPixel', () => {
     // Turned on its side, the same angle spans the height instead.
     const tall = { width: 900, height: 1600 };
     expect(aimForPixel(tall, { x: 450, y: 0 }, fov).tanUp).toBeCloseTo(Math.tan(Math.PI / 6), 6);
+  });
+});
+
+describe('altitudeToFit', () => {
+  const viewport = { width: 1600, height: 1000 };
+  const fov = Math.PI / 3;
+
+  it('puts the edge of the circle the asked number of pixels from the centre', () => {
+    // Checked by projecting back: at the returned height, a point `radius`
+    // from straight below the camera lands `halfPx` from the middle.
+    const radiusM = 400_000;
+    const halfPx = 300;
+    const altitude = altitudeToFit(radiusM, halfPx, viewport, fov);
+
+    const focalPx = viewport.width / 2 / Math.tan(fov / 2);
+    expect((radiusM / altitude) * focalPx).toBeCloseTo(halfPx, 6);
+  });
+
+  it('backs off for a wider circle and for less room', () => {
+    const base = altitudeToFit(300_000, 300, viewport, fov);
+    expect(altitudeToFit(600_000, 300, viewport, fov)).toBeGreaterThan(base);
+    expect(altitudeToFit(300_000, 150, viewport, fov)).toBeGreaterThan(base);
+  });
+
+  it('never dives closer or backs off further than its limits', () => {
+    expect(altitudeToFit(1_000, 400, viewport, fov)).toBe(MIN_FIT_ALTITUDE_M);
+    expect(altitudeToFit(50_000_000, 400, viewport, fov)).toBe(MAX_FIT_ALTITUDE_M);
+  });
+
+  it('falls back to the far limit instead of returning nonsense', () => {
+    expect(altitudeToFit(300_000, 0, viewport, fov)).toBe(MAX_FIT_ALTITUDE_M);
+    expect(altitudeToFit(Number.NaN, 300, viewport, fov)).toBe(MAX_FIT_ALTITUDE_M);
   });
 });

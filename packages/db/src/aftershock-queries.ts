@@ -4,62 +4,16 @@ import {
   gardnerKnopoffRadiusKm,
   gardnerKnopoffWindowDays,
   haversineKm,
-  longestCoverageHours,
   sequenceSearchBoxes,
   summariseSequence,
   type AftershockSequence,
   type EarthquakeEvent,
 } from '@terra-pulse/schema';
-import { completedArchiveYears } from './archive-queries';
+import { uncoveredArchiveYears } from './archive-queries';
 import { rowToEvent } from './queries';
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
-
-/**
- * Years in `[startMs, endMs]` the catalogue does not hold at M4.5+.
- *
- * Three ways a year can be covered, and all three are needed:
- *
- * - It is a completed archive chunk. The direct case.
- * - The window's overlap with it falls inside the rolling cache, which runs
- *   below M4.5 and so contains everything this panel counts. A sequence from
- *   last week is fully visible with no archive downloaded at all.
- * - It is the current year and the archive is non-empty. The archive refetches
- *   the current year on every run precisely because it is never complete, so
- *   the data is there; it just cannot be recorded as a finished chunk. Inferred
- *   rather than proven, which is why it is spelled out here.
- *
- * `endMs` must already be clamped to now by the caller. An M9's window runs
- * ~1,070 days, so a 2025 mainshock reaches into 2028 — and reporting 2027 as a
- * gap in the archive would be true and completely useless.
- */
-function uncoveredYears(db: DatabaseSync, startMs: number, endMs: number, nowMs: number): number[] {
-  const archiveYears = completedArchiveYears(db, SEQUENCE_MIN_MAGNITUDE);
-  const archiveDownloaded = archiveYears.size > 0;
-  const currentYear = new Date(nowMs).getUTCFullYear();
-  const rollingCacheStartMs = nowMs - longestCoverageHours() * HOUR_MS;
-
-  const missing: number[] = [];
-  const firstYear = new Date(startMs).getUTCFullYear();
-  const lastYear = new Date(endMs).getUTCFullYear();
-
-  for (let year = firstYear; year <= lastYear; year += 1) {
-    if (archiveYears.has(year)) continue;
-    if (year === currentYear && archiveDownloaded) continue;
-
-    // Does this year's slice of the window sit entirely in the rolling cache?
-    const yearStartMs = Date.UTC(year, 0, 1);
-    const yearEndMs = Date.UTC(year + 1, 0, 1) - 1;
-    const sliceStartMs = Math.max(startMs, yearStartMs);
-    const sliceEndMs = Math.min(endMs, yearEndMs);
-    if (sliceStartMs >= rollingCacheStartMs && sliceEndMs <= nowMs) continue;
-
-    missing.push(year);
-  }
-
-  return missing;
-}
 
 /**
  * Every catalogued event inside the mainshock's Gardner-Knopoff window.
@@ -169,6 +123,6 @@ export function queryAftershockSequence(
 
   return {
     summary: summariseSequence(mainshock, events, nowMs),
-    missingYears: uncoveredYears(db, originMs, elapsedEndMs, nowMs),
+    missingYears: uncoveredArchiveYears(db, originMs, elapsedEndMs, nowMs),
   };
 }

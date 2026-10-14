@@ -104,3 +104,28 @@ export function aimForPixel(
     tanUp: (viewport.height / 2 - target.y) / focalPx,
   };
 }
+
+/** Closest and furthest a fit may put the camera, in metres above the ground. */
+export const MIN_FIT_ALTITUDE_M = 150_000;
+export const MAX_FIT_ALTITUDE_M = 12_000_000;
+
+/**
+ * The camera height at which a circle of ground `radiusM` across its radius
+ * spans `halfPx` pixels from its centre, looking straight down.
+ *
+ * Flat-ground geometry, which is close enough for what it frames: a shaking
+ * map reaches a few hundred kilometres, where the curve of the planet moves
+ * the edge by a percent or two. Clamped, so a tiny map does not dive to
+ * street level and a huge one does not back off past the whole globe.
+ */
+export function altitudeToFit(
+  radiusM: number,
+  halfPx: number,
+  viewport: { width: number; height: number },
+  fovRad: number,
+): number {
+  const focalPx = Math.max(viewport.width, viewport.height) / 2 / Math.tan(fovRad / 2);
+  const altitude = (radiusM * focalPx) / halfPx;
+  if (!Number.isFinite(altitude) || altitude <= 0) return MAX_FIT_ALTITUDE_M;
+  return Math.min(MAX_FIT_ALTITUDE_M, Math.max(MIN_FIT_ALTITUDE_M, altitude));
+}

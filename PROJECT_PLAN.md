@@ -281,7 +281,12 @@ engine run to populate.
 
 Two-stage model, deliberately not an infinite scrub:
 
-1. **Select window** — presets (72h default, 7d, 30d) or custom range picker.
+1. **Select window** — presets (72h default, 7d, 30d), archive spans, or a
+   From/To date range picked on a calendar. *The date range shipped
+   2026-10-13:* any two UTC days from 1900 on, under History. It reads only
+   what is already stored — it never fetches — so it is drawn at M4.5+ for a
+   range of a year or less and M5.5+ beyond, the same mark budget as the
+   spans below, and it names any years the archive download has not reached.
 2. **Fetch & cache** — pull from USGS/NOAA into SQLite, with progress feedback.
 3. **Scrub within window** — playback controls, variable speed, events fade in
    at their timestamp and decay over a configurable trail duration.
@@ -1152,6 +1157,32 @@ been alerted live. The home-location prompt (Phase 6) is still to come.
 100 Hz stations within 300 km of Burbank, a fraction of the regional network,
 so the fourth station is often 50-90 km out. That is a data limit, not a
 detector one.
+
+### 5.14 Shaking Intensity Lines — shipped 2026-10-13
+
+Isoseismals around a selected earthquake: the lines of equal shaking, on the
+Modified Mercalli scale, from that event's USGS ShakeMap. Asked for by the
+user. Switched on with a **Shaking** button in the inspector, offered for M5.5+
+quakes that came from USGS; it stays on as the selection moves.
+
+- **USGS publishes the contours ready-made** (`cont_mmi.json` inside each
+  ShakeMap product), so nothing is computed here. The alternative was to draw
+  circles from the intensity equation §5.13 already carries, which would have
+  been this app's model presented beside observations, and wrong in shape:
+  real isoseismals stretch along the rupture and bulge over soft ground.
+- **Coverage sets the magnitude floor**, measured against USGS's count
+  endpoint: 99% of M5.5+ since 2013, 37% for 1970-2012 (81% at M7+), 18% at
+  M5-5.5, 2% at M4.5-5.
+- **Fetched on demand, never stored.** A recent map is revised for days.
+- **Explore-safe.** A map of what shook is descriptive. It is still an
+  estimate — a ShakeMap is a model constrained by whatever instruments and felt
+  reports existed — and the guide behind its `?` says so, because crisp nested
+  lines look measured.
+
+Not done: the filled intensity image USGS also publishes, the other contour
+sets in the product (PGA, PGV, spectral acceleration), and showing which
+stations or reports a map rests on, which would let a reader tell a measured
+map from a modelled one.
 
 ---
 
