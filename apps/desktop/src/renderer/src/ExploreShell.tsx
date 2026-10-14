@@ -12,7 +12,9 @@ import { EarthquakeInspector } from './panels/EarthquakeInspector';
 import { LocationPanel } from './panels/LocationPanel';
 import { SolarEventPanel } from './panels/SolarEventPanel';
 import { HoverTooltip } from './panels/HoverTooltip';
-import { useEarthquakeStore } from './state/useEarthquakeStore';
+import { pollCanReach, selectEventById, useEarthquakeStore } from './state/useEarthquakeStore';
+import { useShakeMapStore } from './state/useShakeMapStore';
+import { shakeMapEligible } from '@terra-pulse/schema';
 import { playAlertSound } from './audio/alert-sound';
 import styles from './App.module.css';
 import { useAurora } from './panels/useAurora';
@@ -61,13 +63,31 @@ export function ExploreShell() {
     void load();
   }, [load]);
 
+  // The shaking lines: with the switch on, ask USGS for the selected quake's
+  // map whenever the selection lands on one that could have it. Here rather
+  // than in the inspector or the viewer because both of those read the answer,
+  // and one asker is what keeps it to one request. Keyed on the id, so a
+  // catalogue reload (a new event object, the same quake) asks nothing.
+  const shakingOn = useShakeMapStore((state) => state.enabled);
+  const loadShakeMap = useShakeMapStore((state) => state.load);
+  const shakingEventId = useEarthquakeStore((state) => {
+    const event = selectEventById(state, state.selectedEventId);
+    return event !== null && shakeMapEligible(event) ? event.id : null;
+  });
+  useEffect(() => {
+    if (!shakingOn || shakingEventId === null) return;
+    void loadShakeMap(shakingEventId);
+  }, [shakingOn, shakingEventId, loadShakeMap]);
+
   // Main polls USGS on a timer and pushes the result. Only re-query when the
   // catalogue actually changed — a quiet poll just moves the freshness label,
   // because replacing the event set would rebuild the globe layer and destroy
   // whichever event the user currently has open in the inspector.
   useEffect(() => {
     return window.terraPulse.earthquakes.onUpdated((result) => {
-      if (result.changed) {
+      // A date range that ended before the rolling cache began holds nothing
+      // a poll can touch, so it is treated as a quiet one. See `pollCanReach`.
+      if (result.changed && pollCanReach(useEarthquakeStore.getState().dateRange)) {
         void load();
       } else {
         noteSynced(result.syncedAt);

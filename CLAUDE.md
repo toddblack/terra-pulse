@@ -4544,6 +4544,171 @@ closed; the fix was version ranges and `pnpm-lock.yaml` only.
 - There is no `.github/dependabot.yml`, so these arrive as alerts, never as
   pull requests. Offered to the user; not answered.
 
+## Date range: From and To on a calendar. 2026-10-13.
+
+Branch `date-range`. The user's ask: pick a span of dates to explore, from one
+day to another. He first thought of the event list, then of the Window group;
+it went under **History**, on the recommendation, and he chose a calendar over
+typed dates ("not make someone type in a date").
+
+- **Why History and not the event list or Window.** The event list only
+  reports what the globe is drawing; a date range changes what is loaded.
+  Window means "the last N hours up to now". A range with both ends fixed
+  behaves like the History spans: it raises the floor, and leaving it returns
+  to the live view it was entered from (`preArchiveView`, shared).
+- **`dateRange` in the store, and while it is set the playhead is never
+  `null`.** This is the decision that kept the change small. `null` means
+  "now" in a dozen files: the dock chip reads "Live", the aurora and TEC
+  legends stop saying they do not follow the scrubber, the field, tide and
+  magnetopause draw the present. A range in 1989 with a `null` playhead would
+  get all of those wrong at once. So "the whole range on screen" is "playhead
+  at the range's end", and none of those readers was touched.
+  - `play()` from the end rewinds to the start, as it does from live.
+  - Playback reaching the end stops there, still in the range. `goLive` leaves
+    the range, since no part of it is live — so the scrubber's Live button is
+    a second way out, beside "clear dates".
+  - `seek` is held inside the range.
+- **`windowHours` is the range's length while a range is set**, so the
+  playback speeds and the trailing window work unchanged. That makes
+  `windowHours === spanHours` an unsafe test for "this button is active": a
+  range can be exactly as long as a tier or a span. Every such check now also
+  requires `dateRange === null`, and `toggleArchiveSpan` would otherwise have
+  toggled the archive *off*. Test pins it.
+- **`viewStartMs` is the one place that knows a range has its own start**, and
+  `displayWindow` takes the range as a last optional argument. Only the start
+  is read; the end comes from the playhead.
+- **The query is bounded at both ends, with no margin.** The live views ask
+  for an hour of slack; here that would draw 28 February in a range starting
+  1 March. `queryEarthquakes`' `endUtc` is inclusive, hence `endMs - 1`.
+- **Floor rule, measured on the real catalogue** (`minMagnitudeForRange`):
+  M4.5+ up to a calendar year, M5.5+ beyond. Busiest window at M4.5+: 1 year
+  9,584 marks, 2 years 16,798, 5 years 39,531 (the widest view drawn today is
+  27,029). **366 days, not 365**, or a leap year falls to M5.5+ for no visible
+  reason. A range that starts inside the rolling cache gets its small floors
+  (M1+ for a week, M2.5+ for thirty days), read from `COVERAGE_TIERS`.
+  - The note says "M4.5+ needs a range of a year or less" there, not "not
+    stored": M4.5+ *is* stored, and the true reason tells the reader the fix.
+- **Days are UTC.** Labels too (`formatUtcDay`, `formatDateRange`,
+  `formatRangePlayhead`): a local-time label names the day before the one that
+  was clicked for anyone west of Greenwich. The calendar's footer says so.
+  - The range's end is the midnight *after* its last day. Printed as an
+    instant, a range ending 31 March read "Apr 1 · 00:00". At the end the
+    playhead label names the range instead.
+  - A range ending today stops at the present and is a snapshot: it does not
+    grow as the day goes on.
+- **The calendar goes year, then month, then day** (`DatePicker`,
+  `date-picker.ts`). A fresh pick opens on the year step: decades, then the
+  ten years of one. That reaches 1989 in four clicks with no scrolling.
+  - Picking a start opens the end's calendar on the same month.
+  - The end's calendar does not offer days before the start. Moving the start
+    past the end drags the end with it (`withFrom`).
+  - **Portalled to the body, fixed position, fixed size.** It is wider than
+    the left column and would open under the selection column (`z-index: 10`).
+    Fixed size so it does not jump between steps.
+  - **A bug found only in the running app:** closing one calendar closed the
+    other. Picking a start opened the end calendar, then the start calendar
+    reported itself closed and a plain "set to null" shut the one just opened.
+    Each calendar now only closes itself.
+- **Undownloaded years are named** (`archive:missing-years`). An empty globe
+  over an undownloaded year looks like a quiet year. The rule was already in
+  the aftershock panel; it moved to `uncoveredArchiveYears` and both use it.
+  New option `deepTierCounts`: a 1960 range with the deep tier downloaded is
+  complete for a *view*, while the aftershock count at M4.5+ still calls 1960
+  missing. When a download finishes under a range, the view reloads.
+- **A poll does not reload a range older than the rolling cache**
+  (`pollCanReach`). The reload would hand the globe an identical array with a
+  new identity, and the layer rebuilds on identity: the 30-second-rebuild bug
+  on a poll's rhythm.
+- **The left column did not widen**: 237 px with and without the two rows,
+  measured in the running app.
+- **Fixed in passing:** the legend printed an archive span's length in hours
+  ("8766h" for `1y`). It uses the selector's own label now.
+- **Verified in a built, isolated instance on a copy of the real database.**
+  March 2011 drew 2,401 events (the count measured beforehand) with peak M9.1.
+  Also checked: playback from 1 March to the end; moving the start past the
+  end; Oct 1989–Dec 1999 at M5.5+ (4,998); Jan 1960–Dec 1999 with the "before
+  1970" warning; Live and "clear dates" both returning to 72h/M4.5; a range
+  inside the last week offering M1+; Escape and a click on the globe closing
+  the calendar.
+- **Not checked:** the "not downloaded" warning on screen (the copy had the
+  whole archive; the rule itself is unit-tested), and keyboard use of the
+  calendar beyond Escape.
+- **After pulling this branch, restart `pnpm dev` fully.** The range controls
+  call a new IPC handler, and a hot-reloaded renderer over an old main process
+  has no such handler.
+
+## Shaking intensity lines for a selected quake. 2026-10-13.
+
+`PROJECT_PLAN.md` §5.14. The user's ask: show a selected quake's isoseismal
+lines on the map, for large quakes. Built on the `date-range` branch, on top
+of the uncommitted date-range work.
+
+- **The lines are USGS's, not computed here.** Every ShakeMap product carries
+  ready-made intensity contours (`download/cont_mmi.json`): 5-99 KB, 4-14
+  levels at half steps, 200-4,500 points. Two requests per quake — the event
+  detail (0.1-1.7 s), then the file. Verified live on eight quakes from
+  Valdivia 1960 to one from that morning. Any id USGS associates with an event
+  resolves, so the catalogue's stored id is passed as it is.
+- **M5.5+ because that is where maps exist**, measured on USGS's count
+  endpoint: 99% of M5.5+ since 2013, 37% for 1970-2012, 18% at M5-5.5, 2% at
+  M4.5-5. In the running app, 9 of the first 14 M5.5+ quakes of 1975 had none.
+  USGS-sourced events only (27,105 of 27,123 at M5.5+ in the real catalogue).
+- **Only the half-step lines are drawn, and each is named for the zone it
+  encloses.** A place rounds to V between 4.5 and 5.5, so the 4.5 line is the
+  edge of V; the whole-number lines run through the middle of a zone. USGS
+  draws the half steps twice as heavy in its own file. Weakest drawn: III.
+- **Specks are dropped, the innermost line never is** (`MIN_LINE_POINTS` 12).
+  Measured on six maps: at outer levels about three quarters of the pieces are
+  under 12 points and hold a quarter of the points or less. But the innermost
+  line is small because the zone is — Panama 2026's edge of VIII is one piece
+  of 9 points. The first rule written would have deleted the peak of the map.
+- **USGS's own colours, read out of real files** (III-IX; X is from its
+  published scale). The one rainbow in the app, on purpose: these are eight
+  named classes drawn as separate lines, each labelled with its numeral, so
+  colour is the second encoding. Dark casing; checked on the light and the
+  relief basemap.
+- **`Primitive`s with `allowPicking: false`, not entities.** The lines sit on
+  the mainshock and its aftershocks. Unpickable, they take none of the hover
+  pick's four slots and get no tooltip or reticle. A click on a line is a
+  click on the globe under it, which deselects — as bare globe always has.
+  Also no asynchronous `dataSources.add()` to guard.
+- **The switch is sticky** (`useShakeMapStore.enabled`): on once, every large
+  quake selected afterwards shows its lines. Off by default and not saved, so
+  nothing is asked of USGS about a selection unprompted. **The user answered
+  "a button in the inspector" without choosing sticky or per-quake; sticky was
+  my recommendation.** Per-quake would be a small change.
+- **Shaking takes Recenter's slot for an eligible quake** — the user's idea, to
+  keep the row at four. Other quakes keep Recenter. Pressing Shaking frames
+  the lines, so it recentres too.
+- **The camera frames the lines once per press, never on selection**
+  (`frameRequest`). With the lines left on, selecting the next quake already
+  flies to it at the reader's zoom; refitting every time would take the zoom
+  away from them. `flyToFitInClearArea` fits the reach of the *drawn* lines.
+- **Stale replies are unrenderable and cannot stick.** The answer is stored
+  against its event id, and a slow reply for an earlier quake is dropped
+  rather than overwriting the current one — which would leave the selected
+  quake on "loading" for good. Test pins it.
+- **Viewer effects key on the map object, not the event.** The event is a new
+  object on every catalogue reload; keyed on it, a poll would rebuild the lines.
+- **`none` is cached, a failure is not** (main, 10 minutes, 24 quakes). "USGS
+  made no map" and "could not reach USGS" are different sentences on screen.
+- **The contour file's URL comes out of the payload**, so it is fetched only
+  from `https://earthquake.usgs.gov/`. The event id is validated in main.
+- **It has a guide** (`shakemap-guide.ts`), a fourth id namespace in
+  `LayerGuideModal`. The limits carry it: an estimate, mostly model for old
+  quakes, revised for days, and a missing map is not a quiet quake.
+- **Verified in a built, isolated instance on a copy of the real database:**
+  Panama M7.7 drew IV-VIII and the M6.9 after it V-VIII, each with its own
+  legend key; a small quake with the lines left on showed Recenter and no note;
+  a 1975 quake read "USGS made no ShakeMap"; hovering a line showed nothing.
+- **Not checked on screen:** the "could not reach USGS" message (unit-tested),
+  a quake near the date line (real maps run to -180.8°; the parser keeps that),
+  and the final line width, which was thinned by half a pixel after the last
+  screenshot.
+- **Restart `pnpm dev` fully**: new IPC handler. With an old main process the
+  button reads "could not reach USGS" instead of crashing — the call is inside
+  the store's `try`.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

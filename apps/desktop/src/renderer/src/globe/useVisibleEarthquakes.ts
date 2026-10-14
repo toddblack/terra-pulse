@@ -136,6 +136,7 @@ export function useEarthquakesUpToPlayhead(): EarthquakeEvent[] {
   const playheadMs = useEarthquakeStore((state) => state.playheadMs);
   const windowHours = useEarthquakeStore((state) => state.windowHours);
   const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
+  const dateRange = useEarthquakeStore((state) => state.dateRange);
   const nowMs = useNow();
 
   return useMemo(() => {
@@ -151,8 +152,15 @@ export function useEarthquakesUpToPlayhead(): EarthquakeEvent[] {
     //
     // No end margin: that exists to keep a fresh mark from being hidden, and a
     // future-dated event should not inflate a count.
-    const { startMs } = displayWindow(windowHours, playheadMs, trailingWindow, nowMs);
+    const { startMs } = displayWindow(
+      windowHours,
+      playheadMs,
+      trailingWindow,
+      nowMs,
+      0,
+      dateRange,
+    );
 
     return narrowToPlayhead(windowEvents, playheadMs, startMs);
-  }, [windowEvents, playheadMs, windowHours, trailingWindow, nowMs]);
+  }, [windowEvents, playheadMs, windowHours, trailingWindow, nowMs, dateRange]);
 }

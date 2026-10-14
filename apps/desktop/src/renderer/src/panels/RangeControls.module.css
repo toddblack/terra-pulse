@@ -108,3 +108,27 @@
   font-size: 0.6875rem;
   font-style: italic;
 }
+
+/* The From and To rows under the span buttons. */
+.dates {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+/* The way back out of a date range. Text-sized, because it sits under the two
+   fields it clears and a full button there would outweigh them. */
+.clear {
+  align-self: flex-start;
+  padding: 0.125rem 0;
+  border: none;
+  background: transparent;
+  color: rgb(125 211 252);
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+
+.clear:hover {
+  text-decoration: underline;
+}

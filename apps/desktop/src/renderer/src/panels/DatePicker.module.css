@@ -1,0 +1,206 @@
+/* One end of the date range: a label and the button that opens its calendar. */
+.row {
+  display: grid;
+  grid-template-columns: 2.25rem 1fr;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.label {
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+/* Sized like the window and magnitude buttons so the History group reads as
+   one set of controls. The border is there in every state and only changes
+   colour, so filling in a date does not shift the row. */
+.field {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 0.375rem;
+  background: transparent;
+  color: rgb(226 232 240);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.field:hover {
+  background-color: rgb(51 65 85);
+}
+
+.fieldEmpty {
+  color: rgb(148 163 184);
+  font-style: italic;
+}
+
+/* The same blue as an active window button: these dates are what the globe
+   is showing. */
+.fieldActive,
+.fieldActive:hover {
+  border-color: rgb(14 165 233);
+  background-color: rgb(14 165 233 / 22%);
+  color: white;
+}
+
+/*
+ * The calendar. Fixed size on purpose: it is placed once when it opens, and
+ * its three steps (year, month, day) hold different amounts, so a box that
+ * grew and shrank between them would jump under the pointer mid-pick.
+ *
+ * Above the selection column (10) and the hover tooltip (20), below the guide
+ * modal (40).
+ */
+.popover {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  width: 16rem;
+  height: 16.5rem;
+  padding: 0.75rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 97%);
+  box-shadow: 0 10px 25px -5px rgb(0 0 0 / 55%);
+  color: rgb(203 213 225);
+  user-select: none;
+}
+
+.step {
+  margin: 0 0 0.5rem;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.title {
+  display: flex;
+  gap: 0.125rem;
+}
+
+.grid5,
+.grid4,
+.grid7 {
+  display: grid;
+  gap: 0.1875rem;
+}
+
+.grid5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.grid4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.grid7 {
+  grid-template-columns: repeat(7, 1fr);
+}
+
+/* The ten years of the chosen decade, set off from the decades above them. */
+.years {
+  margin-top: 0.625rem;
+  padding-top: 0.625rem;
+  border-top: 1px solid rgb(255 255 255 / 10%);
+}
+
+.weekday {
+  padding-bottom: 0.125rem;
+  color: rgb(100 116 139);
+  font-size: 0.625rem;
+  text-align: center;
+}
+
+.cell {
+  padding: 0.3125rem 0;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: rgb(226 232 240);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.cellTall {
+  padding: 0.75rem 0;
+  font-size: 0.8125rem;
+}
+
+.cell:hover:not(:disabled) {
+  background-color: rgb(51 65 85);
+}
+
+/* A day that cannot be picked: in the future, or before the range's start.
+   Dim rather than hidden, so the month keeps its shape. */
+.cell:disabled {
+  color: rgb(71 85 105);
+  cursor: default;
+}
+
+/* The decade whose years are showing — a place in the list, not a choice, so
+   it gets the neutral fill rather than the blue one. */
+.cellCurrent,
+.cellCurrent:hover:not(:disabled) {
+  background-color: rgb(51 65 85);
+  color: white;
+}
+
+/* The date already picked. */
+.cellSelected,
+.cellSelected:hover:not(:disabled) {
+  background-color: rgb(14 165 233);
+  color: white;
+}
+
+.headerButton,
+.arrow {
+  padding: 0.1875rem 0.375rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: rgb(226 232 240);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.headerButton:hover,
+.arrow:hover:not(:disabled) {
+  background-color: rgb(51 65 85);
+}
+
+.arrow {
+  width: 1.625rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.arrow:disabled {
+  color: rgb(71 85 105);
+  cursor: default;
+}
+
+/* Pinned to the bottom of the fixed-height box, whichever step is above it. */
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 0.5rem;
+  color: rgb(100 116 139);
+  font-size: 0.6875rem;
+}

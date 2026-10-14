@@ -39,6 +39,7 @@ import {
 } from './ipc/earthquakes';
 import { registerAuroraIpcHandlers, startAuroraPolling } from './ipc/aurora';
 import { registerTecIpcHandlers } from './ipc/tec';
+import { registerShakeMapIpcHandlers } from './ipc/shakemap';
 import { createMultiServerController, registerWaveformIpcHandlers } from './ipc/waveforms';
 import { createQuakeReplayController, registerQuakeReplayHandlers } from './ipc/quake-replay';
 import {
@@ -300,7 +301,7 @@ app
         mainWindow.webContents.send('archive:progress', progress);
       }
     });
-    registerArchiveIpcHandlers(archive);
+    registerArchiveIpcHandlers(archive, db);
 
     // The window comes up first, before any network work.
     //
@@ -384,6 +385,7 @@ app
     // must not stop the aurora updating, and vice versa.
     // Pulled on demand rather than polled: a TEC map is 2.4 MB.
     registerTecIpcHandlers();
+    registerShakeMapIpcHandlers();
 
     registerMagnetometerIpcHandlers();
     const stopMagnetometerPolling = startMagnetometerPolling((readings) => {

@@ -12,7 +12,11 @@ import { hasSequencePanel } from './useAftershockSequence';
 import { useNow } from '../globe/useNow';
 import { useWaveformStore } from '../waveforms/useWaveformStore';
 import { useReplayStore } from '../waveforms/useReplayStore';
-import { replayEligible } from '@terra-pulse/schema';
+import { replayEligible, shakeMapEligible } from '@terra-pulse/schema';
+import { shakeMapView, useShakeMapStore } from '../state/useShakeMapStore';
+import { shakeMapSummary } from '../layers/shakemap-encoding';
+import { SHAKEMAP_GUIDE_ID } from '../layers/shakemap-guide';
+import { LayerGuideButton } from './LayerGuideModal';
 import { formatAgoFrom } from './time-labels';
 import styles from './EarthquakeInspector.module.css';
 
@@ -46,6 +50,9 @@ export function EarthquakeInspector() {
   const showDockTab = useGlobeStore((state) => state.showDockTab);
   const startReplay = useReplayStore((state) => state.start);
   const closeReplay = useReplayStore((state) => state.close);
+  const shakingOn = useShakeMapStore((state) => state.enabled);
+  const setShakingOn = useShakeMapStore((state) => state.setEnabled);
+  const shakeMapLoaded = useShakeMapStore((state) => state.loaded);
   // Wall clock, not the playhead — the same basis as the event list and the
   // hover tooltip, so the three cannot disagree about one event's age.
   const nowMs = useNow();
@@ -54,6 +61,8 @@ export function EarthquakeInspector() {
 
   const age = formatAgoFrom(event.timeUtc, nowMs);
   const canReplay = replayEligible(event);
+  const canShowShaking = shakeMapEligible(event);
+  const shaking = shakeMapView(shakingOn, event, shakeMapLoaded);
 
   const openUsgsPage = () => {
     void window.terraPulse.shell.openExternal(event.url);
@@ -250,6 +259,21 @@ export function EarthquakeInspector() {
           </p>
         )}
 
+        {/* What the shaking lines found, or why there are none. Only for a quake
+            that could have them: with the lines left on, selecting a small
+            quake should not grow a line of text explaining what it lacks. */}
+        {canShowShaking && shaking.status !== 'off' && shaking.status !== 'ineligible' && (
+          <p className={styles.shakingNote}>
+            {shaking.status === 'loading' && 'shaking: asking USGS…'}
+            {shaking.status === 'available' && `shaking: ${shakeMapSummary(shaking.map)}`}
+            {/* A real answer, and the common one before 2013 — said as a fact
+                about USGS, not as a failure of the app. */}
+            {shaking.status === 'none' && 'shaking: USGS made no ShakeMap for this quake'}
+            {shaking.status === 'error' && 'shaking: could not reach USGS'}
+            <LayerGuideButton layerId={SHAKEMAP_GUIDE_ID} />
+          </p>
+        )}
+
         {/* Its own row, above the others: for an eligible quake it is the
             headline action, not a peer of Recenter. Any M5+, anywhere — see
             `replayEligible`. */}
@@ -292,14 +316,37 @@ export function EarthquakeInspector() {
           >
             {antipodeActive ? 'Exit antipode' : 'Antipode'}
           </button>
-          <button
-            id="inspector-recenter"
-            type="button"
-            className={styles.actionButton}
-            onClick={() => requestFocus(event.id)}
-          >
-            Recenter
-          </button>
+          {/* One slot, two tenants — the user's call, to keep the row at four.
+              A quake that can have shaking lines gets the Shaking switch here;
+              any other keeps Recenter. Switching the lines on frames them, so
+              it recentres too. */}
+          {canShowShaking ? (
+            <button
+              id="inspector-shaking"
+              type="button"
+              aria-pressed={shakingOn}
+              className={
+                shakingOn ? `${styles.actionButton} ${styles.actionButtonOn}` : styles.actionButton
+              }
+              title={
+                shakingOn
+                  ? 'Hide the shaking-intensity lines'
+                  : 'Draw how strongly the ground shook around this quake. Stays on for the next quake you select.'
+              }
+              onClick={() => setShakingOn(!shakingOn)}
+            >
+              Shaking
+            </button>
+          ) : (
+            <button
+              id="inspector-recenter"
+              type="button"
+              className={styles.actionButton}
+              onClick={() => requestFocus(event.id)}
+            >
+              Recenter
+            </button>
+          )}
           {/* Clicking a quake used to re-aim the waveform stations in the old
               waveform mode; in Explore a click inspects instead, so re-aiming
               is asked for here. Centred on the epicentre, not the click: at

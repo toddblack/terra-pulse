@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { useEarthquakeStore, windowStartMs } from '../state/useEarthquakeStore';
+import { useEarthquakeStore, viewStartMs } from '../state/useEarthquakeStore';
 
 /**
  * How often the playhead is written to the store, in ms.
@@ -31,6 +31,7 @@ export function usePlayback(): void {
   // restart the animation on every tick, since the playhead changes constantly.
   const seek = useEarthquakeStore((state) => state.seek);
   const goLive = useEarthquakeStore((state) => state.goLive);
+  const pause = useEarthquakeStore((state) => state.pause);
   const speedRef = useRef(playbackSpeed);
   const windowRef = useRef(windowHours);
 
@@ -52,10 +53,23 @@ export function usePlayback(): void {
       if (elapsed < TICK_INTERVAL_MS) return;
       lastTickAt = frameTime;
 
-      const { playheadMs } = useEarthquakeStore.getState();
-      const start = windowStartMs(windowRef.current);
+      const { playheadMs, dateRange } = useEarthquakeStore.getState();
+      const start = viewStartMs(windowRef.current, dateRange);
       const advanceMs = (elapsed / 1000) * speedRef.current * MS_PER_HOUR;
       const next = (playheadMs ?? start) + advanceMs;
+
+      // A date range ends where it ends, not at the present. Stop there with
+      // the whole range on screen — `goLive` would leave the range entirely,
+      // which is not what reaching the end of a replay should do.
+      if (dateRange !== null) {
+        if (next >= dateRange.endMs) {
+          seek(dateRange.endMs);
+          pause();
+          return;
+        }
+        seek(next);
+        return;
+      }
 
       // Reaching the present is the natural end of a replay. Handing control
       // back to live mode means the globe keeps updating from the poll rather
@@ -72,5 +86,5 @@ export function usePlayback(): void {
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [isPlaying, seek, goLive]);
+  }, [isPlaying, seek, goLive, pause]);
 }

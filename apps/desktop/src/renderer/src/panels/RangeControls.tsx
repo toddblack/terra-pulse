@@ -1,16 +1,29 @@
+import { useEffect, useState } from 'react';
 import {
+  ARCHIVE_ANALYSIS_MIN_MAGNITUDE,
+  ARCHIVE_MIN_MAGNITUDE,
   ARCHIVE_SPANS,
   ARCHIVE_START_YEAR,
+  DATE_RANGE_FIRST_YEAR,
   DEEP_ARCHIVE_MIN_MAGNITUDE,
   COVERAGE_TIERS,
   archiveSpanHours,
+  calendarDayOf,
+  dateRangeFromDays,
+  magnitudeFloorsForRange,
   magnitudeFloorsForWindow,
+  minMagnitudeForRange,
   minMagnitudeForWindow,
   nextMagnitudeFloorAbove,
   previousWindowHours,
+  type CalendarDay,
+  type DateRange,
 } from '@terra-pulse/schema';
-import { useEarthquakeStore } from '../state/useEarthquakeStore';
+import { useEarthquakeStore, viewStartMs } from '../state/useEarthquakeStore';
 import { useNow } from '../globe/useNow';
+import { DatePicker } from './DatePicker';
+import { withFrom } from './date-picker';
+import { formatYearRanges } from './sequence-format';
 import styles from './RangeControls.module.css';
 
 /**
@@ -46,7 +59,7 @@ const COVERAGE_NOTES: Record<number, string> = {
  * Human label for a window length in hours, matching the selector's own labels
  * so the trailing-window text can't disagree with the button that set it.
  */
-function formatWindowLabel(hours: number): string {
+export function formatWindowLabel(hours: number): string {
   const tier = COVERAGE_TIERS.find((entry) => entry.windowHours === hours);
   if (tier) return tier.label;
   const span = ARCHIVE_SPANS.find((entry) => archiveSpanHours(entry) === hours);
@@ -66,6 +79,69 @@ export function formatRange(minMagnitude: number, isolateBand: boolean): string 
   return `${formatMagnitude(minMagnitude)}–${ceiling.toFixed(1)}`;
 }
 
+const FIRST_DAY: CalendarDay = { year: DATE_RANGE_FIRST_YEAR, month: 1, day: 1 };
+
+/** A completed lookup, tagged with the range it describes. */
+interface MissingYears {
+  key: string;
+  years: number[];
+}
+
+/**
+ * Years of the date range that were never downloaded.
+ *
+ * An empty globe over an undownloaded year looks exactly like a quiet one, and
+ * the calendar can land on any year since 1900 — so this asks, and the panel
+ * says which it is.
+ *
+ * Stored against the range it was asked about, the `useAntipodal` shape: two
+ * picks in quick succession fire overlapping requests with no ordering
+ * guarantee, and a late reply for the old range must not caption the new one.
+ */
+function useMissingArchiveYears(dateRange: DateRange | null): number[] {
+  const [result, setResult] = useState<MissingYears | null>(null);
+  const key = dateRange === null ? null : `${String(dateRange.startMs)}|${String(dateRange.endMs)}`;
+  const startMs = dateRange?.startMs ?? null;
+  const endMs = dateRange?.endMs ?? null;
+
+  useEffect(() => {
+    if (key === null || startMs === null || endMs === null) return;
+    let cancelled = false;
+
+    const ask = () => {
+      void window.terraPulse.archive
+        .missingYears({
+          startUtc: new Date(startMs).toISOString(),
+          endUtc: new Date(endMs - 1).toISOString(),
+        })
+        .then(
+          (years) => {
+            if (!cancelled) setResult({ key, years });
+          },
+          (error: unknown) => {
+            console.error('Could not check archive coverage', error);
+          },
+        );
+    };
+
+    ask();
+    // A download running underneath changes the answer year by year, and when
+    // it finishes the globe needs the rows it just gained — nothing else
+    // reloads a view when the archive lands.
+    const unsubscribe = window.terraPulse.archive.onProgress((progress) => {
+      ask();
+      if (progress.state === 'complete') void useEarthquakeStore.getState().load();
+    });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [key, startMs, endMs]);
+
+  return result !== null && result.key === key ? result.years : [];
+}
+
 export function RangeControls() {
   const minMagnitude = useEarthquakeStore((state) => state.minMagnitude);
   const setMinMagnitude = useEarthquakeStore((state) => state.setMinMagnitude);
@@ -77,15 +153,69 @@ export function RangeControls() {
   const setIsolateBand = useEarthquakeStore((state) => state.setIsolateBand);
   const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
   const setTrailingWindow = useEarthquakeStore((state) => state.setTrailingWindow);
+  const dateRange = useEarthquakeStore((state) => state.dateRange);
+  const setDateRange = useEarthquakeStore((state) => state.setDateRange);
+  const clearDateRange = useEarthquakeStore((state) => state.clearDateRange);
   const trailHours = previousWindowHours(windowHours);
   const nowMs = useNow();
+
+  /**
+   * A half-made pick: one end chosen, the other not yet.
+   *
+   * Only ever holds that in-between state. Once both ends exist the range goes
+   * to the store and this is cleared, so the fields read from the store and
+   * empty themselves when the range is left by any route — a History button,
+   * a Window button, the scrubber's Live. Keeping a second copy here would
+   * leave dates showing over a globe that had stopped using them.
+   */
+  const [draft, setDraft] = useState<{ from: CalendarDay | null; to: CalendarDay | null }>({
+    from: null,
+    to: null,
+  });
+  const [openPicker, setOpenPicker] = useState<'from' | 'to' | null>(null);
+
+  // Closing one calendar must not close the other. Picking a start opens the
+  // end calendar and *then* the start calendar reports itself closed; written
+  // as a plain "set to null", that second call shut the calendar that had
+  // just been opened.
+  const setPickerOpen = (which: 'from' | 'to', open: boolean) => {
+    setOpenPicker((current) => (open ? which : current === which ? null : current));
+  };
+
+  const today = calendarDayOf(nowMs);
+  const from = dateRange === null ? draft.from : calendarDayOf(dateRange.startMs);
+  // The range's end is the midnight after its last day, hence the millisecond.
+  const to = dateRange === null ? draft.to : calendarDayOf(dateRange.endMs - 1);
+
+  const applyDays = (nextFrom: CalendarDay | null, nextTo: CalendarDay | null) => {
+    const range =
+      nextFrom !== null && nextTo !== null
+        ? dateRangeFromDays(nextFrom, nextTo, Date.now())
+        : null;
+    if (range === null) {
+      setDraft({ from: nextFrom, to: nextTo });
+      return;
+    }
+    setDraft({ from: null, to: null });
+    setDateRange(range);
+  };
+
+  const missingYears = useMissingArchiveYears(dateRange);
 
   const activeNote = COVERAGE_NOTES[minMagnitude];
   const bandCeiling = nextMagnitudeFloorAbove(minMagnitude);
   // Only the floors this span was actually ingested at. Offering more would
   // mean offering an empty globe that looks like a quiet month.
-  const availableFloors = magnitudeFloorsForWindow(windowHours);
-  const spanFloor = minMagnitudeForWindow(windowHours);
+  const availableFloors =
+    dateRange === null
+      ? magnitudeFloorsForWindow(windowHours)
+      : magnitudeFloorsForRange(dateRange, nowMs);
+  const spanFloor =
+    dateRange === null ? minMagnitudeForWindow(windowHours) : minMagnitudeForRange(dateRange, nowMs);
+  // A long date range is held at M5.5+ by how much it would draw, not by what
+  // is stored — M4.5+ is right there in the archive. Saying "not stored" for
+  // it would be wrong, and would hide the way to get it: a shorter range.
+  const heldByLength = dateRange !== null && spanFloor === ARCHIVE_ANALYSIS_MIN_MAGNITUDE;
 
   /**
    * Whether the current window reaches back past the main archive's 1970 start.
@@ -101,7 +231,7 @@ export function RangeControls() {
   // is impure, and nothing re-renders when it ticks, so the value would go
   // stale until some unrelated state change happened to refresh it.
   const reachesDeepTier =
-    nowMs - windowHours * 3_600_000 < Date.UTC(ARCHIVE_START_YEAR, 0, 1);
+    viewStartMs(windowHours, dateRange, nowMs) < Date.UTC(ARCHIVE_START_YEAR, 0, 1);
 
   return (
     <div id="range-controls" className={styles.panel}>
@@ -155,7 +285,9 @@ export function RangeControls() {
             a bug rather than a limit of what was fetched. */}
         {spanFloor > 1 && (
           <p className={styles.note}>
-            below {formatMagnitude(spanFloor)}+ not stored this far back
+            {heldByLength
+              ? `${formatMagnitude(ARCHIVE_MIN_MAGNITUDE)}+ needs a range of a year or less`
+              : `below ${formatMagnitude(spanFloor)}+ not stored this far back`}
           </p>
         )}
         {/* Louder than the floor note above, because this one says the record
@@ -175,10 +307,12 @@ export function RangeControls() {
               key={tier.windowHours}
               id={`window-option-${tier.windowHours}`}
               type="button"
-              aria-pressed={windowHours === tier.windowHours}
+              aria-pressed={dateRange === null && windowHours === tier.windowHours}
               onClick={() => setWindowHours(tier.windowHours)}
               className={
-                windowHours === tier.windowHours
+                // A date range can be exactly as long as a tier without being
+                // that tier, so the length alone must not light the button.
+                dateRange === null && windowHours === tier.windowHours
                   ? `${styles.button} ${styles.buttonActive}`
                   : styles.button
               }
@@ -202,12 +336,12 @@ export function RangeControls() {
                 key={span.label}
                 id={`archive-span-${span.label}`}
                 type="button"
-                aria-pressed={windowHours === spanHours}
+                aria-pressed={dateRange === null && windowHours === spanHours}
                 // Toggles: clicking the active span returns to the live view
                 // you came from, rather than being a one-way door.
                 onClick={() => toggleArchiveSpan(spanHours)}
                 className={
-                  windowHours === spanHours
+                  dateRange === null && windowHours === spanHours
                     ? `${styles.button} ${styles.buttonActive}`
                     : styles.button
                 }
@@ -217,6 +351,78 @@ export function RangeControls() {
             );
           })}
         </div>
+
+        {/* A range between two picked days, beside the spans because it is the
+            same kind of thing: a way into the archive that raises the floor
+            and that you step back out of. The spans all end today; this is
+            for a span that does not. */}
+        <div className={styles.dates}>
+          <DatePicker
+            id="date-range-from"
+            label="From"
+            value={from}
+            hint={to}
+            min={FIRST_DAY}
+            max={today}
+            active={dateRange !== null}
+            open={openPicker === 'from'}
+            onOpenChange={(open) => {
+              setPickerOpen('from', open);
+            }}
+            onChange={(day) => {
+              const next = withFrom(day, to);
+              applyDays(next.from, next.to);
+              // Straight on to the end date while there is none: a start by
+              // itself shows nothing, and the end is usually close by.
+              if (next.to === null) setOpenPicker('to');
+            }}
+          />
+          <DatePicker
+            id="date-range-to"
+            label="To"
+            value={to}
+            hint={from}
+            // Not before the start. Moving a range earlier therefore begins
+            // with its start, which is the natural order anyway.
+            min={from ?? FIRST_DAY}
+            max={today}
+            active={dateRange !== null}
+            open={openPicker === 'to'}
+            onOpenChange={(open) => {
+              setPickerOpen('to', open);
+            }}
+            onChange={(day) => {
+              applyDays(from, day);
+              if (from === null) setOpenPicker('from');
+            }}
+          />
+          {(from !== null || to !== null) && (
+            <button
+              type="button"
+              id="date-range-clear"
+              className={styles.clear}
+              onClick={() => {
+                setDraft({ from: null, to: null });
+                setOpenPicker(null);
+                clearDateRange();
+              }}
+            >
+              {dateRange === null ? 'clear' : 'clear dates · back to live'}
+            </button>
+          )}
+        </div>
+        {dateRange === null && (from !== null) !== (to !== null) && (
+          <p className={styles.note}>
+            pick {from === null ? 'a start' : 'an end'} date to show the range
+          </p>
+        )}
+        {/* Without this an undownloaded year is an empty globe, which reads as
+            a quiet year. */}
+        {missingYears.length > 0 && (
+          <p className={styles.warning}>
+            {formatYearRanges(missingYears)} not downloaded — see the archive below
+          </p>
+        )}
 
         {/* Only where there's a shorter span to trail by. At the bottom of the
             ladder this would be a checkbox that does nothing — the same reason

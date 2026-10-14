@@ -3,6 +3,7 @@ import type {
   MagnetometerReading,
   MagnetometerSeries,
   TecGrid,
+  ShakeMapResult,
   AftershockSequence,
   AuroraGrid,
   SpaceWeatherSample,
@@ -167,6 +168,15 @@ contextBridge.exposeInMainWorld('terraPulse', {
      */
     latest: (): Promise<TecGrid | null> => ipcRenderer.invoke('tec:latest'),
   },
+  shakeMap: {
+    /**
+     * USGS shaking-intensity lines for one quake. Pulled when the reader turns
+     * the lines on; `none` when USGS made no map. Rejects if USGS could not be
+     * reached, so the two stay different answers.
+     */
+    contours: (eventId: string): Promise<ShakeMapResult> =>
+      ipcRenderer.invoke('shakemap:contours', eventId),
+  },
   magnetometer: {
     /**
      * The most recent network read, or empty before the first successful poll.
@@ -298,6 +308,8 @@ contextBridge.exposeInMainWorld('terraPulse', {
     // The UI follows `onProgress` and doesn't await this.
     start: (): Promise<ArchiveProgress> => ipcRenderer.invoke('archive:start'),
     cancel: (): Promise<ArchiveProgress> => ipcRenderer.invoke('archive:cancel'),
+    missingYears: (request: { startUtc: string; endUtc: string }): Promise<number[]> =>
+      ipcRenderer.invoke('archive:missing-years', request),
 
     onProgress: (callback: (progress: ArchiveProgress) => void): (() => void) => {
       const listener = (_event: unknown, progress: ArchiveProgress) => {

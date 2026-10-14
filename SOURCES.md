@@ -39,6 +39,17 @@ than permissive, and check before relying on it.
 
 | | |
 |---|---|
+| **USGS ShakeMap** | `earthquake.usgs.gov` — event detail, then `download/cont_mmi.json` |
+| Used for | Shaking-intensity lines (isoseismals) around a selected M5.5+ quake |
+| Licence | Public domain (US Government work) |
+| Attribution | Not required; given in the lines' guide and the legend |
+| Redistributable | Yes — but **not stored**, fetched per quake when the lines are switched on |
+| Credential | None |
+| Coverage | Measured 2026-10-13: 99% of M5.5+ since 2013; 37% for 1970-2012 (81% at M7+); 18% at M5-5.5; 2% at M4.5-5 |
+| Note | Model output constrained by instruments and felt reports, not a survey. Older events come from the ShakeMap Atlas and are mostly model. Recent maps are revised for days. |
+
+| | |
+|---|---|
 | **EMSC FDSN** | `www.seismicportal.eu` |
 | Licence | **Not verified** |
 | Redistributable | **Not verified** |

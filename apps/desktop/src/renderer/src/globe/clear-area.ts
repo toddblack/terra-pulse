@@ -1,5 +1,5 @@
 import * as Cesium from 'cesium';
-import { aimForPixel, type ScreenRect } from './camera-focus';
+import { aimForPixel, altitudeToFit, type ScreenRect } from './camera-focus';
 
 /**
  * The part of the window no panel covers, and putting things in the middle of
@@ -156,4 +156,31 @@ export function flyToInClearArea(
     orientation: offAxisOrientation(outward, east, north, aim.tanRight, aim.tanUp),
     duration: durationS,
   });
+}
+
+/** How much of the clear area a fitted circle may fill; the rest is margin. */
+const FIT_FILL = 0.88;
+
+/**
+ * Flies to a point at the height where a circle of `radiusM` around it just
+ * fits the clear area — for something with an extent, where
+ * `flyToInClearArea` alone would centre it at whatever zoom the reader had.
+ */
+export function flyToFitInClearArea(
+  viewer: Cesium.Viewer,
+  point: { latitude: number; longitude: number },
+  radiusM: number,
+  durationS: number,
+): void {
+  const viewport = viewportOf(viewer);
+  const clear = measureClearRect(viewport, { reserveInspector: true });
+  // The smaller side: the circle has to fit both ways.
+  const halfPx = (Math.min(clear.right - clear.left, clear.bottom - clear.top) / 2) * FIT_FILL;
+  flyToInClearArea(
+    viewer,
+    point,
+    // A clear area squeezed to nothing would ask for an infinite height.
+    altitudeToFit(radiusM, Math.max(halfPx, 40), viewport, fovOf(viewer)),
+    durationS,
+  );
 }

@@ -3,6 +3,7 @@ import { useGlobeStore } from '../state/useGlobeStore';
 import { guideFor } from './layer-guides';
 import { trackGuideFor } from './track-guides';
 import { waveformGuideFor } from '../waveforms/waveform-limits';
+import { shakeMapGuideFor } from '../layers/shakemap-guide';
 import styles from './LayerGuideModal.module.css';
 
 /**
@@ -58,7 +59,8 @@ export function LayerGuideModal() {
   const guide =
     guideFor(openGuideLayerId) ??
     trackGuideFor(openGuideLayerId) ??
-    waveformGuideFor(openGuideLayerId);
+    waveformGuideFor(openGuideLayerId) ??
+    shakeMapGuideFor(openGuideLayerId);
   if (!guide) return null;
 
   return (
@@ -125,7 +127,7 @@ export function LayerGuideModal() {
  */
 export function LayerGuideButton({ layerId }: { layerId: string }) {
   const openGuide = useGlobeStore((state) => state.openGuide);
-  if (!guideFor(layerId) && !trackGuideFor(layerId)) return null;
+  if (!guideFor(layerId) && !trackGuideFor(layerId) && !shakeMapGuideFor(layerId)) return null;
 
   return (
     <button

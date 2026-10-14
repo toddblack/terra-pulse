@@ -192,6 +192,7 @@ export function SpaceWeatherTrack() {
   const windowHours = useEarthquakeStore((state) => state.windowHours);
   const playheadMs = useEarthquakeStore((state) => state.playheadMs);
   const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
+  const dateRange = useEarthquakeStore((state) => state.dateRange);
   const nowMs = useNow();
 
   const visibleTracks = useGlobeStore((state) => state.visibleTracks);
@@ -203,8 +204,8 @@ export function SpaceWeatherTrack() {
   const showMagnetometer = isTrackVisible('magnetometer', visibleTracks);
 
   const { startMs, endMs } = useMemo(
-    () => displayWindow(windowHours, playheadMs, trailingWindow, nowMs),
-    [windowHours, playheadMs, trailingWindow, nowMs],
+    () => displayWindow(windowHours, playheadMs, trailingWindow, nowMs, 0, dateRange),
+    [windowHours, playheadMs, trailingWindow, nowMs, dateRange],
   );
 
   const state = useSpaceWeather(startMs, endMs);
