@@ -7,7 +7,7 @@ import { useEarthquakeStore } from '../state/useEarthquakeStore';
 import { eventIdFromEntityId } from '../layers/earthquake-layer';
 import { HOME_LATITUDE_DEG, focusAltitudeM, homeAltitudeM, homeLongitudeDeg } from './camera-focus';
 import { flyToAntipodeView } from './antipode-camera';
-import { flyToInClearArea } from './clear-area';
+import { flyToFitInClearArea, flyToInClearArea } from './clear-area';
 import {
   cursorForHover,
   describeBoundary,
@@ -42,6 +42,9 @@ import { useWaveformStore } from '../waveforms/useWaveformStore';
 import { pickLabelFor } from '../waveforms/station-pick';
 import { selectReplayOpen, useReplayStore } from '../waveforms/useReplayStore';
 import { createReplayWavesOverlay } from '../layers/replay-waves-overlay';
+import { createShakeMapOverlay } from '../layers/shakemap-overlay';
+import { isoseismalReachKm, isoseismalsToDraw } from '../layers/shakemap-encoding';
+import { shakeMapView, useShakeMapStore } from '../state/useShakeMapStore';
 import { createWatchPinOverlay } from '../layers/watch-pin-overlay';
 import { useQuakeWatchStore } from '../watch/useQuakeWatchStore';
 import { useWaveformSelection } from '../waveforms/useWaveformSelection';
@@ -99,9 +102,18 @@ export function CesiumViewer() {
    */
   const nowMs = useNow();
   const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
+  const dateRange = useEarthquakeStore((state) => state.dateRange);
   const timeWindow = useMemo(
-    () => displayWindow(windowHours, playheadMs, trailingWindow, nowMs, LIVE_END_MARGIN_MS),
-    [windowHours, playheadMs, nowMs, trailingWindow],
+    () =>
+      displayWindow(
+        windowHours,
+        playheadMs,
+        trailingWindow,
+        nowMs,
+        LIVE_END_MARGIN_MS,
+        dateRange,
+      ),
+    [windowHours, playheadMs, nowMs, trailingWindow, dateRange],
   );
   const select = useEarthquakeStore((state) => state.select);
   const selectedEventId = useEarthquakeStore((state) => state.selectedEventId);
@@ -132,7 +144,7 @@ export function CesiumViewer() {
   // reaches these two layers, through `setTimeWindow` below, which only flips
   // a `show` flag; see `useSolarEvents`'s own doc for why a version keyed on
   // `timeWindow` directly was a real, measured problem, not just a risk.
-  const { flares: solarFlares, cmeArrivals } = useSolarEvents(windowHours);
+  const { flares: solarFlares, cmeArrivals } = useSolarEvents(windowHours, dateRange);
 
   // Resolved from the loaded set rather than held in the store, so the chord
   // follows revisions to the event like every other view does.
@@ -870,6 +882,64 @@ export function CesiumViewer() {
       overlay.destroy();
     };
   }, [shownReplay, viewerReadyToken]);
+
+  /**
+   * The selected quake's shaking-intensity lines.
+   *
+   * Keyed on the *map object*, which the store replaces only when a new
+   * answer arrives — not on the selected event, which is a fresh object every
+   * time the catalogue reloads. Keyed on the event, a poll that brought in an
+   * unrelated quake would tear the lines down and build them again.
+   */
+  const shakingOn = useShakeMapStore((state) => state.enabled);
+  const shakeMapLoaded = useShakeMapStore((state) => state.loaded);
+  const shakeFrameRequest = useShakeMapStore((state) => state.frameRequest);
+  const shakingEvent = useMemo(
+    () => events.find((candidate) => candidate.id === selectedEventId) ?? null,
+    [events, selectedEventId],
+  );
+  const shakeView = shakeMapView(shakingOn, shakingEvent, shakeMapLoaded);
+  const shakeMap = shakeView.status === 'available' ? shakeView.map : null;
+  const isoseismals = useMemo(
+    () => (shakeMap === null ? null : isoseismalsToDraw(shakeMap.contours)),
+    [shakeMap],
+  );
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || isoseismals === null || isoseismals.length === 0) return;
+    const overlay = createShakeMapOverlay(viewer, isoseismals);
+    return () => {
+      overlay.destroy();
+    };
+  }, [isoseismals, viewerReadyToken]);
+
+  /**
+   * Frames the lines — once per press of the button, and never otherwise.
+   *
+   * Pressing Shaking is a request to look at the lines, so the camera fits
+   * them. With the lines left on, selecting the next quake is not: that
+   * already flies to the quake at the reader's own zoom, and changing the
+   * zoom on every selection would take it away from them. The request number
+   * moves only on a press, and each one is honoured when its map is in hand —
+   * straight away if cached, or when USGS answers.
+   */
+  const framedShakeRequestRef = useRef(0);
+  const shakingLatitude = shakingEvent?.latitude ?? null;
+  const shakingLongitude = shakingEvent?.longitude ?? null;
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    if (!viewer || isoseismals === null || shakingLatitude === null || shakingLongitude === null) {
+      return;
+    }
+    if (framedShakeRequestRef.current === shakeFrameRequest) return;
+    framedShakeRequestRef.current = shakeFrameRequest;
+
+    const epicentre = { latitude: shakingLatitude, longitude: shakingLongitude };
+    const reachKm = isoseismalReachKm(isoseismals, epicentre);
+    if (reachKm <= 0) return;
+    flyToFitInClearArea(viewer, epicentre, reachKm * 1000, 1.5);
+  }, [isoseismals, shakeFrameRequest, shakingLatitude, shakingLongitude, viewerReadyToken]);
 
   // Hovering a waveform row picks out its marker. Its own effect, so moving
   // down the rows is a few property writes rather than a teardown and rebuild.

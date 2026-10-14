@@ -241,6 +241,32 @@
   color: rgb(254 226 226);
 }
 
+/* The shaking lines are on. Neutral, not a hue: every colour this app uses for
+   an active control means the thing it draws (red for the antipode chord,
+   amber for a replay), and these lines are eight colours at once. On a state
+   class alone, so it cannot be out-specified the way the mode tabs once were. */
+.actionButtonOn,
+.actionButtonOn:hover {
+  border-color: rgb(255 255 255 / 45%);
+  background-color: rgb(71 85 105);
+  color: white;
+}
+
+/* What the shaking lines found. Sits where the antipode's coordinate does and
+   is styled like it: a plain statement about the selected quake. */
+.shakingNote {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  margin: 0.875rem 0 0;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+.antipodeNote + .shakingNote {
+  margin-top: 0.25rem;
+}
+
 /* A coordinate, stated plainly. Deliberately not framed as a finding — see the
    note at the call site. */
 .antipodeNote {

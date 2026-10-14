@@ -1,14 +1,11 @@
 import { memo, useMemo } from 'react';
 import { playbackSpeedLabel, playbackSpeedsForWindow } from '@terra-pulse/schema';
-import {
-  useEarthquakeStore,
-  windowStartMs,
-} from '../state/useEarthquakeStore';
+import { useEarthquakeStore, viewStartMs } from '../state/useEarthquakeStore';
 import { useEarthquakesUpToPlayhead } from '../globe/useVisibleEarthquakes';
 import { useNow } from '../globe/useNow';
 import { SpaceWeatherTrack } from './SpaceWeatherTrack';
 import styles from './TimeScrubber.module.css';
-import { formatAgo, formatPlayhead } from './time-labels';
+import { formatAgo, formatPlayhead, formatRangePlayhead, formatUtcDay } from './time-labels';
 
 /**
  * The timeline tab's content: the six-row track and the playhead controls.
@@ -31,17 +28,26 @@ export const TimeScrubber = memo(function TimeScrubber() {
   const seek = useEarthquakeStore((state) => state.seek);
   const goLive = useEarthquakeStore((state) => state.goLive);
   const setPlaybackSpeed = useEarthquakeStore((state) => state.setPlaybackSpeed);
+  const dateRange = useEarthquakeStore((state) => state.dateRange);
 
   const shownCount = useEarthquakesUpToPlayhead().length;
 
   const nowMs = useNow();
+  // A date range has its own two ends; every other view runs up to now.
   const range = useMemo(
-    () => ({ startMs: windowStartMs(windowHours, nowMs), endMs: nowMs }),
-    [windowHours, nowMs],
+    () => ({
+      startMs: viewStartMs(windowHours, dateRange, nowMs),
+      endMs: dateRange?.endMs ?? nowMs,
+    }),
+    [windowHours, dateRange, nowMs],
   );
 
   const isLive = playheadMs === null;
   const position = playheadMs ?? range.endMs;
+  const playheadLabel =
+    dateRange === null
+      ? formatPlayhead(position, range.endMs)
+      : formatRangePlayhead(position, range.startMs, range.endMs);
 
   return (
     <div id="time-scrubber" className={styles.scrubber}>
@@ -63,7 +69,7 @@ export const TimeScrubber = memo(function TimeScrubber() {
 
         <div className={styles.readout}>
           <span className={styles.playhead}>
-            {isLive ? 'Live' : formatPlayhead(position, range.endMs)}
+            {isLive ? 'Live' : playheadLabel}
           </span>
           <span className={styles.count}>{shownCount} shown</span>
         </div>
@@ -96,6 +102,9 @@ export const TimeScrubber = memo(function TimeScrubber() {
           className={styles.liveButton}
           onClick={goLive}
           disabled={isLive}
+          // From a date range this leaves the range: no part of it is "live",
+          // and a way back to the present belongs next to the playhead.
+          title={dateRange === null ? undefined : 'Leave these dates and return to the live view'}
         >
           Live
         </button>
@@ -114,17 +123,30 @@ export const TimeScrubber = memo(function TimeScrubber() {
         value={position}
         onChange={(event) => {
           const next = Number(event.target.value);
-          // Dragging to the very end means "catch up and stay caught up".
-          if (next >= range.endMs) goLive();
+          // Dragging to the very end means "catch up and stay caught up" —
+          // except in a date range, where the end is an ordinary position and
+          // `goLive` would throw the range away.
+          if (next >= range.endMs && dateRange === null) goLive();
           else seek(next);
         }}
         aria-label="Playhead"
-        aria-valuetext={isLive ? 'Live' : formatPlayhead(position, range.endMs)}
+        aria-valuetext={isLive ? 'Live' : playheadLabel}
       />
 
       <div className={styles.axis}>
-        <span>{formatAgo(windowHours * 60 * 60 * 1000)}</span>
-        <span>now</span>
+        {dateRange === null ? (
+          <>
+            <span>{formatAgo(windowHours * 60 * 60 * 1000)}</span>
+            <span>now</span>
+          </>
+        ) : (
+          <>
+            <span>{formatUtcDay(range.startMs)}</span>
+            {/* The last day in the range, not the instant it ends on — the
+                end is the midnight after it. */}
+            <span>{formatUtcDay(range.endMs - 1)}</span>
+          </>
+        )}
       </div>
     </div>
   );

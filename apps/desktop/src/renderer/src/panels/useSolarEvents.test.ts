@@ -22,3 +22,16 @@ describe('solarEventsQueryRange', () => {
     expect(a).toEqual(b);
   });
 });
+
+describe('solarEventsQueryRange — date range', () => {
+  it('uses the range instead of reaching back from now', () => {
+    const nowMs = Date.UTC(2026, 9, 13);
+    const range = { startMs: Date.UTC(2011, 2, 1), endMs: Date.UTC(2011, 3, 1) };
+    const { startUtc, endUtc } = solarEventsQueryRange(31 * 24, nowMs, range);
+
+    // The flares drawn beside March 2011's earthquakes have to be March
+    // 2011's, not the last 31 days'.
+    expect(startUtc).toBe('2011-03-01T00:00:00.000Z');
+    expect(endUtc).toBe('2011-04-01T00:00:00.000Z');
+  });
+});

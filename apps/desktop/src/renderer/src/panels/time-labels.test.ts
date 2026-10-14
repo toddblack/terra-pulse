@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { axisTicks, formatAgo, formatAgoFrom, formatDuration, formatInstant } from './time-labels';
+import {
+  axisTicks,
+  formatAgo,
+  formatAgoFrom,
+  formatDateRange,
+  formatDuration,
+  formatInstant,
+  formatRangePlayhead,
+  formatUtcDay,
+} from './time-labels';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -126,5 +135,70 @@ describe('axisTicks', () => {
   it('refuses a degenerate window rather than dividing by zero', () => {
     expect(axisTicks(start, start, 5)).toEqual([]);
     expect(axisTicks(start, end, 1)).toEqual([]);
+  });
+});
+
+describe('date range labels', () => {
+  const MARCH_1 = Date.UTC(2011, 2, 1);
+  const APRIL_1 = Date.UTC(2011, 3, 1);
+
+  it('names a day in UTC, not in the machine\'s zone', () => {
+    // 00:00 UTC on 1 March is still 28 February across the Americas. The day
+    // was picked on a UTC calendar and has to read back as the same day.
+    expect(formatUtcDay(MARCH_1)).toBe(
+      new Date(MARCH_1).toLocaleDateString(undefined, {
+        timeZone: 'UTC',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      }),
+    );
+    expect(formatUtcDay(MARCH_1)).toContain('2011');
+    expect(formatUtcDay(MARCH_1)).toContain('1');
+  });
+
+  it('labels a range by its last day, not the midnight after it', () => {
+    // March's range ends at 00:00 on 1 April. Printing that would read as a
+    // range that includes April.
+    const label = formatDateRange(MARCH_1, APRIL_1);
+    expect(label).toContain(formatUtcDay(Date.UTC(2011, 2, 31)));
+    expect(label).not.toContain(formatUtcDay(APRIL_1));
+  });
+
+  it('prints the year once when both ends share it', () => {
+    const label = formatDateRange(MARCH_1, APRIL_1);
+    expect(label.match(/2011/g)).toHaveLength(1);
+  });
+
+  it('prints both years when they differ', () => {
+    const label = formatDateRange(Date.UTC(1989, 9, 1), Date.UTC(1990, 1, 1));
+    expect(label).toContain('1989');
+    expect(label).toContain('1990');
+  });
+
+  it('prints one date for a one-day range', () => {
+    const tohoku = Date.UTC(2011, 2, 11);
+    expect(formatDateRange(tohoku, tohoku + 24 * 3_600_000)).toBe(formatUtcDay(tohoku));
+  });
+
+  it('shows the time of day only while an hour is a visible distance', () => {
+    const quake = Date.UTC(2011, 2, 11, 5, 46);
+
+    const month = formatRangePlayhead(quake, MARCH_1, APRIL_1);
+    const decade = formatRangePlayhead(quake, MARCH_1 - 3650 * DAY, APRIL_1);
+
+    expect(month).toContain('05:46');
+    expect(decade).not.toContain('05:46');
+    // Both say which clock they are on.
+    expect(month).toContain('UTC');
+    expect(decade).toContain('UTC');
+  });
+
+  it('names the range, not an instant, when the playhead rests at the end', () => {
+    // The end of March's range is 00:00 on 1 April. Printed as an instant it
+    // names a day outside the range that was picked.
+    const atEnd = formatRangePlayhead(APRIL_1, MARCH_1, APRIL_1);
+    expect(atEnd).toBe(formatDateRange(MARCH_1, APRIL_1));
+    expect(atEnd).not.toContain(formatUtcDay(APRIL_1));
   });
 });

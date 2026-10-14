@@ -89,6 +89,66 @@ export function formatPlayhead(playheadMs: number, nowMs: number): string {
   return `${clock} · ${formatAgo(elapsed)}`;
 }
 
+/** A calendar day in UTC: "Mar 11, 2011". */
+export function formatUtcDay(timeMs: number, withYear = true): string {
+  return new Date(timeMs).toLocaleDateString(undefined, {
+    timeZone: 'UTC',
+    ...(withYear ? { year: 'numeric' } : {}),
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+/**
+ * A picked date range, by its first and last day: "Mar 1 – Mar 31, 2011".
+ *
+ * **In UTC, because the range is.** The calendar picks UTC days, so a label in
+ * local time would name a different day than the one that was clicked for
+ * anyone west of Greenwich.
+ *
+ * `endMs` is exclusive — the start of the day after the last one — so the last
+ * day is read a millisecond earlier. A single-day range prints one date.
+ */
+export function formatDateRange(startMs: number, endMs: number): string {
+  const lastMs = endMs - 1;
+  const last = formatUtcDay(lastMs);
+  if (formatUtcDay(startMs) === last) return last;
+
+  const sameYear = new Date(startMs).getUTCFullYear() === new Date(lastMs).getUTCFullYear();
+  return `${formatUtcDay(startMs, !sameYear)} – ${last}`;
+}
+
+/**
+ * The playhead inside a date range: the day, plus the time when the range is
+ * short enough for an hour to be a visible distance.
+ *
+ * Unlike `formatPlayhead` this is UTC and says nothing about how long ago it
+ * was. The reader picked these dates off a calendar; "15y ago" is not what
+ * they are tracking, and a local-time date would disagree with the days they
+ * picked.
+ *
+ * **At the end of the range it names the range instead.** The end is the
+ * midnight after the last day, so printed as an instant a range ending on
+ * 31 March reads "Apr 1 · 00:00" — a day nobody picked. It is also not really
+ * an instant there: the playhead at the end is how a range rests, with all of
+ * it on screen, and the label says that.
+ */
+export function formatRangePlayhead(playheadMs: number, startMs: number, endMs: number): string {
+  if (playheadMs >= endMs) return formatDateRange(startMs, endMs);
+
+  const rangeMs = endMs - startMs;
+  const day = formatUtcDay(playheadMs);
+  if (rangeMs > 31 * DAY_MS) return `${day} UTC`;
+
+  const clock = new Date(playheadMs).toLocaleTimeString(undefined, {
+    timeZone: 'UTC',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  return `${day} · ${clock} UTC`;
+}
+
 /** How long ago an ISO instant was, or null if it can't be parsed. */
 export function formatAgoFrom(iso: string | null, nowMs: number): string | null {
   if (iso === null) return null;

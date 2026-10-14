@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import {
+  dateRangeHours,
+  longestCoverageHours,
+  minMagnitudeForRange,
   minMagnitudeForWindow,
   playbackSpeedForWindow,
+  type DateRange,
   type EarthquakeEvent,
   type MissedEvents,
 } from '@terra-pulse/schema';
@@ -70,7 +74,29 @@ interface EarthquakeState {
    * the playhead, the trailing window) still happens in memory over that set.
    */
   minMagnitude: number;
+  /**
+   * How long the view is. For a live tier or an archive span it reaches back
+   * from now; while `dateRange` is set it is that range's length, so the
+   * playback ladder and the trailing window work from the same number.
+   */
   windowHours: number;
+
+  /**
+   * A date range picked on the calendar, or `null` for a view that ends now.
+   *
+   * Every other view is "the last N hours". This one has both ends fixed, so
+   * the start of the view and the instant on screen can no longer be derived
+   * from the clock — `viewStartMs` and the playhead carry them instead.
+   *
+   * **While a range is set the playhead is never `null`.** `null` means live
+   * everywhere else in the app: the dock's chip reads "Live", the aurora and
+   * TEC legends stop saying they do not follow the scrubber, and every layer
+   * that draws an instant draws the present. A range in 1989 with a `null`
+   * playhead would get all of that wrong at once, in a dozen files that never
+   * heard of date ranges. So the whole range on screen is "playhead at the
+   * range's end", and those readers are right without being touched.
+   */
+  dateRange: DateRange | null;
 
   /**
    * Caps the view at the next magnitude floor, turning it into a band.
@@ -102,7 +128,9 @@ interface EarthquakeState {
    *
    * Captured on the way *into* the archive and restored on the way out, so
    * toggling a span off returns you exactly where you were rather than to a
-   * default you never chose. `null` while a live tier is active.
+   * default you never chose. `null` while a live tier is active. A date range
+   * uses the same memory: it is another way into the past, and leaving it
+   * should land in the same place.
    *
    * It carries the floor and the trailing flag as well as the window, because
    * entering the archive changes all three: the floor auto-raises to M5.5 and
@@ -182,6 +210,10 @@ interface EarthquakeState {
   setWindowHours: (windowHours: number) => void;
   /** Archive spans behave as toggles: picking the active one returns to live. */
   toggleArchiveSpan: (spanHours: number) => void;
+  /** Shows a fixed span of dates instead of a window that ends now. */
+  setDateRange: (range: DateRange) => void;
+  /** Leaves the date range for the live view it was entered from. */
+  clearDateRange: () => void;
   setIsolateBand: (isolateBand: boolean) => void;
   setTrailingWindow: (trailingWindow: boolean) => void;
   announceLargeEvent: (event: EarthquakeEvent) => void;
@@ -197,7 +229,10 @@ interface EarthquakeState {
   pause: () => void;
   /** Moves the playhead without changing whether it's running. */
   seek: (playheadMs: number) => void;
-  /** Returns to live: playback off, everything up to now shown. */
+  /**
+   * Returns to live: playback off, everything up to now shown. From a date
+   * range that means leaving the range, since no part of it is the present.
+   */
   goLive: () => void;
   setPlaybackSpeed: (playbackSpeed: number) => void;
 }
@@ -205,6 +240,34 @@ interface EarthquakeState {
 /** Oldest instant the current window covers. */
 export function windowStartMs(windowHours: number, now: number = Date.now()): number {
   return now - windowHours * 60 * 60 * 1000;
+}
+
+/**
+ * Oldest instant the current view covers, whichever kind of view it is.
+ *
+ * The one place that knows a date range has its own start. Everything that
+ * used to compute "now minus the window" for the view goes through here.
+ */
+export function viewStartMs(
+  windowHours: number,
+  dateRange: DateRange | null,
+  now: number = Date.now(),
+): number {
+  return dateRange?.startMs ?? windowStartMs(windowHours, now);
+}
+
+/**
+ * Whether a poll could have changed anything in the view.
+ *
+ * A poll only ever fetches the rolling cache's span, so a date range that
+ * ended before it holds nothing a poll can add to or revise. Reloading anyway
+ * would hand the globe a new array with the same contents, and the earthquake
+ * layer rebuilds on a new array: up to 590 ms, every few minutes, for a view
+ * of 1989. Same reasoning that scoped `catalogSignature` to the live window.
+ */
+export function pollCanReach(dateRange: DateRange | null, now: number = Date.now()): boolean {
+  if (dateRange === null) return true;
+  return dateRange.endMs >= now - longestCoverageHours() * 60 * 60 * 1000;
 }
 
 /**
@@ -225,19 +288,32 @@ async function loadForCurrentView(
   getState: () => EarthquakeState,
   failureMessage: string,
 ): Promise<void> {
-  const { windowHours, minMagnitude } = getState();
+  const { windowHours, minMagnitude, dateRange } = getState();
   set({ status: 'loading', error: null });
 
   try {
     // Captured rather than recomputed, so consumers can filter against the same
     // instant this query used instead of against a live clock. See
     // `loadedWindowStartMs`.
-    const startMs = windowStartMs(windowHours);
+    const startMs = viewStartMs(windowHours, dateRange);
 
-    const events = await window.terraPulse.earthquakes.query({
-      startUtc: new Date(startMs - QUERY_MARGIN_MS).toISOString(),
-      minMagnitude,
-    });
+    const events = await window.terraPulse.earthquakes.query(
+      dateRange === null
+        ? {
+            startUtc: new Date(startMs - QUERY_MARGIN_MS).toISOString(),
+            minMagnitude,
+          }
+        : {
+            // No margin: the range's edges are the days that were picked, and
+            // an hour of slack would draw events from the day before the first
+            // one. The end bound is what keeps this a few thousand rows rather
+            // than everything since the start. The query's `endUtc` is
+            // inclusive, hence the millisecond.
+            startUtc: new Date(dateRange.startMs).toISOString(),
+            endUtc: new Date(dateRange.endMs - 1).toISOString(),
+            minMagnitude,
+          },
+    );
     set({
       events,
       loadedWindowStartMs: startMs,
@@ -263,6 +339,7 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   windowHours: DEFAULT_WINDOW_HOURS,
   isolateBand: false,
   trailingWindow: false,
+  dateRange: null,
   preArchiveView: null,
   activeAlert: null,
   missedEvents: null,
@@ -356,6 +433,9 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   setWindowHours: (windowHours) => {
     set((state) => ({
       windowHours,
+      // Picking any window, live or archive, leaves a date range: the two are
+      // different answers to "which span", and only one can be on screen.
+      dateRange: null,
       minMagnitude: Math.max(state.minMagnitude, minMagnitudeForWindow(windowHours)),
       // The speed ladder is span-dependent for the same reason the floor is: at
       // 6 h/s the 130-year span takes 52.8 hours to play, so a speed carried
@@ -387,25 +467,10 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
   toggleArchiveSpan: (spanHours) => {
     const state = useEarthquakeStore.getState();
 
-    if (state.windowHours === spanHours) {
-      const restored = state.preArchiveView ?? {
-        windowHours: DEFAULT_WINDOW_HOURS,
-        minMagnitude: DEFAULT_MIN_MAGNITUDE,
-        trailingWindow: false,
-      };
-      set((current) => ({
-        ...restored,
-        // This path sets the window directly rather than through
-        // `setWindowHours`, so the speed has to be brought back with it — or
-        // returning from the archive would leave a years-per-second rate on a
-        // 72-hour window and cross it in a blink.
-        playbackSpeed: playbackSpeedForWindow(restored.windowHours, current.playbackSpeed),
-        preArchiveView: null,
-        selectedEventId: null,
-        playheadMs: null,
-        isPlaying: false,
-      }));
-      void useEarthquakeStore.getState().load();
+    // A date range can happen to be exactly as long as a span. It is still not
+    // that span, so it must not read as the active one and toggle off.
+    if (state.dateRange === null && state.windowHours === spanHours) {
+      restoreLiveView();
       return;
     }
 
@@ -424,12 +489,54 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
     useEarthquakeStore.getState().setWindowHours(spanHours);
   },
 
+  /**
+   * The calendar's counterpart of `toggleArchiveSpan`, and deliberately the
+   * same shape: remember the live view on the way in, raise the floor to what
+   * the range can answer, reload.
+   *
+   * The playhead goes to the range's end rather than to `null` — see
+   * `dateRange` for why `null` cannot mean "the whole range".
+   */
+  setDateRange: (range) => {
+    const hours = dateRangeHours(range);
+    set((state) => ({
+      preArchiveView:
+        state.preArchiveView ??
+        ({
+          windowHours: state.windowHours,
+          minMagnitude: state.minMagnitude,
+          trailingWindow: state.trailingWindow,
+        } satisfies NonNullable<EarthquakeState['preArchiveView']>),
+      dateRange: range,
+      windowHours: hours,
+      // Never lowered, same rule as `setWindowHours`.
+      minMagnitude: Math.max(state.minMagnitude, minMagnitudeForRange(range, Date.now())),
+      playbackSpeed: playbackSpeedForWindow(hours, state.playbackSpeed),
+      selectedEventId: null,
+      antipodeEventId: null,
+      playheadMs: range.endMs,
+      isPlaying: false,
+    }));
+    void useEarthquakeStore.getState().load();
+  },
+
+  clearDateRange: () => {
+    if (useEarthquakeStore.getState().dateRange === null) return;
+    restoreLiveView();
+  },
+
   play: () =>
     set((state) => ({
       isPlaying: true,
       // Starting from live would mean "play from the end", which finishes
-      // instantly. Rewind to the top of the window instead.
-      playheadMs: state.playheadMs ?? windowStartMs(state.windowHours),
+      // instantly. Rewind to the top of the window instead. In a date range
+      // the end is a real playhead position rather than `null`, so it gets the
+      // same treatment.
+      playheadMs:
+        state.playheadMs === null ||
+        (state.dateRange !== null && state.playheadMs >= state.dateRange.endMs)
+          ? viewStartMs(state.windowHours, state.dateRange)
+          : state.playheadMs,
       // A panel describing an event that hasn't "happened" yet at the playhead
       // would be describing the future.
       selectedEventId: null,
@@ -437,9 +544,24 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
 
   pause: () => set({ isPlaying: false }),
 
-  seek: (playheadMs) => set({ playheadMs, selectedEventId: null }),
+  // Held inside a date range: a playhead outside it would show an instant the
+  // loaded events do not cover.
+  seek: (playheadMs) =>
+    set((state) => ({
+      playheadMs:
+        state.dateRange === null
+          ? playheadMs
+          : Math.min(Math.max(playheadMs, state.dateRange.startMs), state.dateRange.endMs),
+      selectedEventId: null,
+    })),
 
-  goLive: () => set({ playheadMs: null, isPlaying: false }),
+  goLive: () => {
+    if (useEarthquakeStore.getState().dateRange !== null) {
+      restoreLiveView();
+      return;
+    }
+    set({ playheadMs: null, isPlaying: false });
+  },
 
   setPlaybackSpeed: (playbackSpeed) => set({ playbackSpeed }),
 
@@ -460,6 +582,32 @@ export const useEarthquakeStore = create<EarthquakeState>((set) => ({
       focusRequest: { eventId, nonce: (state.focusRequest?.nonce ?? 0) + 1 },
     })),
 }));
+
+/**
+ * Leaves the archive — a span or a date range — for the live view it was
+ * entered from, and reloads.
+ */
+function restoreLiveView(): void {
+  const restored = useEarthquakeStore.getState().preArchiveView ?? {
+    windowHours: DEFAULT_WINDOW_HOURS,
+    minMagnitude: DEFAULT_MIN_MAGNITUDE,
+    trailingWindow: false,
+  };
+  useEarthquakeStore.setState((current) => ({
+    ...restored,
+    dateRange: null,
+    // This path sets the window directly rather than through `setWindowHours`,
+    // so the speed has to be brought back with it — or returning from the
+    // archive would leave a years-per-second rate on a 72-hour window and
+    // cross it in a blink.
+    playbackSpeed: playbackSpeedForWindow(restored.windowHours, current.playbackSpeed),
+    preArchiveView: null,
+    selectedEventId: null,
+    playheadMs: null,
+    isPlaying: false,
+  }));
+  void useEarthquakeStore.getState().load();
+}
 
 /** Derived lookup — avoids every consumer re-scanning the array itself. */
 export function selectEventById(

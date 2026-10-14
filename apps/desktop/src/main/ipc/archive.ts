@@ -5,6 +5,7 @@ import {
   completedArchiveYears,
   insertEarthquakes,
   recordArchiveChunk,
+  uncoveredArchiveYears,
 } from '@terra-pulse/db';
 import { ArchiveCancelledError, fetchArchiveChunk } from '@terra-pulse/ingest';
 import {
@@ -215,8 +216,32 @@ export function createArchiveController(
   };
 }
 
-export function registerArchiveIpcHandlers(controller: ArchiveController): void {
+export function registerArchiveIpcHandlers(
+  controller: ArchiveController,
+  db: DatabaseSync,
+): void {
   ipcMain.handle('archive:status', (): ArchiveProgress => controller.status());
+
+  /**
+   * Which years of a span the catalogue does not hold — for a view of the
+   * globe, so the deep tier counts for the years it is meant to cover.
+   *
+   * An empty globe over an undownloaded year looks exactly like a quiet year.
+   * The date-range picker can land on any year since 1900, so it asks this
+   * and says which it is.
+   */
+  ipcMain.handle(
+    'archive:missing-years',
+    (_event, request: { startUtc: string; endUtc: string }): number[] => {
+      const startMs = Date.parse(request.startUtc);
+      const nowMs = Date.now();
+      const endMs = Math.min(Date.parse(request.endUtc), nowMs);
+      // A malformed request gets "nothing missing" rather than a throw: the
+      // caller is a caption, and an error there should not look like a gap.
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return [];
+      return uncoveredArchiveYears(db, startMs, endMs, nowMs, { deepTierCounts: true });
+    },
+  );
   ipcMain.handle('archive:start', (): Promise<ArchiveProgress> => controller.start());
   ipcMain.handle('archive:cancel', (): ArchiveProgress => {
     controller.cancel();

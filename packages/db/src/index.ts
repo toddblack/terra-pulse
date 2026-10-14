@@ -22,6 +22,7 @@ export type { CatalogSignature } from './queries';
 export {
   recordArchiveChunk,
   completedArchiveYears,
+  uncoveredArchiveYears,
   archiveChunkSummary,
   listArchiveChunks,
 } from './archive-queries';

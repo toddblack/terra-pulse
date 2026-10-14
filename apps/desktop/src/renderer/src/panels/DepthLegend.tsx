@@ -2,11 +2,19 @@ import { useState } from 'react';
 import type { BackdropTone } from '@terra-pulse/schema';
 import { useNow } from '../globe/useNow';
 import { useGlobeStore, selectBackdropTone } from '../state/useGlobeStore';
-import { useEarthquakeStore } from '../state/useEarthquakeStore';
+import { selectEventById, useEarthquakeStore } from '../state/useEarthquakeStore';
+import { shakeMapView, useShakeMapStore } from '../state/useShakeMapStore';
+import {
+  intensityColor,
+  intensityNumeral,
+  intensityWord,
+  isoseismalsToDraw,
+} from '../layers/shakemap-encoding';
+import { SHAKEMAP_GUIDE_ID } from '../layers/shakemap-guide';
 import { useEarthquakesUpToPlayhead } from '../globe/useVisibleEarthquakes';
 import { KINEMATIC_GROUPS, KINEMATIC_LABELS, kinematicColorHex } from '../layers/plate-kinematics';
 import { faultColorHex } from '../layers/fault-encoding';
-import { formatRange } from './RangeControls';
+import { formatRange, formatWindowLabel } from './RangeControls';
 import { OVERLAY_REGISTRATIONS, isOverlayVisible } from '../layers/registry';
 import {
   DEPTH_BINS,
@@ -43,16 +51,11 @@ import { AURORA_MAX_PROBABILITY, auroraIsStale, auroraPeak } from '@terra-pulse/
 import { FIELD_SCALES, fieldLegendStops } from '../layers/field-encoding';
 import { IGRF_FIRST_YEAR, IGRF_LAST_YEAR, decimalYear, igrfCoverage } from '../layers/igrf';
 import styles from './DepthLegend.module.css';
-import { formatAgoFrom, formatDuration } from './time-labels';
+import { formatAgoFrom, formatDateRange, formatDuration } from './time-labels';
 
 // Sample magnitudes for the size ramp — spans the range the scale actually
 // covers, so the reader can eyeball a mark on the globe against it.
 const MAGNITUDE_SAMPLES = [3, 5, 7];
-
-/** Matches the labels on RangeControls so the two can't disagree. */
-function formatWindow(hours: number): string {
-  return hours % 24 === 0 && hours > 24 ? `${hours / 24}d` : `${hours}h`;
-}
 
 /**
  * Relative freshness. Deliberately coarse — the background poll runs every few
@@ -80,6 +83,13 @@ export function DepthLegend() {
   const minMagnitude = useEarthquakeStore((state) => state.minMagnitude);
   const isolateBand = useEarthquakeStore((state) => state.isolateBand);
   const windowHours = useEarthquakeStore((state) => state.windowHours);
+  const dateRange = useEarthquakeStore((state) => state.dateRange);
+  // The same label the selector's own button carries, so the two cannot
+  // disagree — or, for a date range, the days that were picked.
+  const spanLabel =
+    dateRange === null
+      ? formatWindowLabel(windowHours)
+      : formatDateRange(dateRange.startMs, dateRange.endMs);
   // Counts what's on screen, which during playback is fewer than the window
   // holds — a footnote claiming 900 events while 40 are drawn would be wrong.
   const visible = useEarthquakesUpToPlayhead();
@@ -307,12 +317,14 @@ export function DepthLegend() {
 
       {planetaryPositionsVisible && <PlanetaryPositionsKey />}
 
+      <ShakingKey />
+
       <p className={styles.footnote}>
         {status === 'loading'
           ? 'Loading…'
           : status === 'error'
             ? 'Failed to load'
-            : `${visibleCount} events · ${formatWindow(windowHours)} · ${formatRange(minMagnitude, isolateBand)}`}
+            : `${visibleCount} events · ${spanLabel} · ${formatRange(minMagnitude, isolateBand)}`}
         {status !== 'loading' && (
           <span className={styles.freshness}>
             updated {formatFreshness(lastSyncedAt)}
@@ -533,8 +545,9 @@ function MagnetopauseKey() {
   const windowHours = useEarthquakeStore((state) => state.windowHours);
   const playheadMs = useEarthquakeStore((state) => state.playheadMs);
   const trailingWindow = useEarthquakeStore((state) => state.trailingWindow);
+  const dateRange = useEarthquakeStore((state) => state.dateRange);
   const nowMs = useNow();
-  const { endMs } = displayWindow(windowHours, playheadMs, trailingWindow, nowMs);
+  const { endMs } = displayWindow(windowHours, playheadMs, trailingWindow, nowMs, 0, dateRange);
   const wind = useSolarWindAt(endMs);
 
   if (wind?.windSpeed == null || wind.density == null || wind.bzGsm == null) {
@@ -601,6 +614,46 @@ function MagnetopauseKey() {
  * what actually carries identity when two markers happen to land near each
  * other on the globe.
  */
+/**
+ * The intensity scale, while a quake's shaking lines are on the globe.
+ *
+ * Lists only the zones actually drawn for this quake, strongest first. The
+ * full scale runs to X; a map that peaks at VI has no use for four rows of
+ * colours that are nowhere on screen.
+ */
+function ShakingKey() {
+  const enabled = useShakeMapStore((state) => state.enabled);
+  const loaded = useShakeMapStore((state) => state.loaded);
+  const event = useEarthquakeStore((state) => selectEventById(state, state.selectedEventId));
+  const view = shakeMapView(enabled, event, loaded);
+  if (view.status !== 'available') return null;
+
+  const drawn = isoseismalsToDraw(view.map.contours);
+  if (drawn.length === 0) return null;
+
+  return (
+    <div className={styles.section}>
+      <h2 className={styles.heading}>
+        Shaking intensity
+        <LayerGuideButton layerId={SHAKEMAP_GUIDE_ID} />
+      </h2>
+      <ul className={styles.binList}>
+        {[...drawn].reverse().map(({ intensity }) => (
+          <li key={intensity} className={styles.binRow}>
+            <span
+              className={styles.swatch}
+              style={{ backgroundColor: intensityColor(intensity) }}
+              aria-hidden="true"
+            />
+            {intensityNumeral(intensity)} · {intensityWord(intensity)}
+          </li>
+        ))}
+      </ul>
+      <p className={styles.note}>USGS estimate — each line is the edge of its zone</p>
+    </div>
+  );
+}
+
 function PlanetaryPositionsKey() {
   return (
     <div className={styles.section}>
