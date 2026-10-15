@@ -166,6 +166,11 @@ function createWindow(db: DatabaseSync): BrowserWindow {
     ...(placement.x === undefined ? {} : { x: placement.x, y: placement.y }),
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,
+    // Dev only. A packaged build carries the icon inside its .exe, which is
+    // what Windows shows; under `pnpm dev` the process is Electron's own and
+    // the taskbar would show Electron's logo. `build/` is not shipped, so this
+    // path exists only in the source tree.
+    ...(app.isPackaged ? {} : { icon: join(__dirname, '../../build/icon.png') }),
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.mjs'),
