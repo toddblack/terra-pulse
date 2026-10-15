@@ -32,6 +32,7 @@ export * from './swpc-solar-wind';
 export * from './swpc-goes-xray';
 export * from './usgs-magnetometer';
 export * from './usgs-shakemap';
+export * from './ngl-gnss';
 export * from './swpc-tec';
 export * from './nasa-donki';
 export * from './goes-flares';
