@@ -4,6 +4,8 @@ import type {
   MagnetometerSeries,
   TecGrid,
   ShakeMapResult,
+  GnssRequest,
+  GnssResult,
   AftershockSequence,
   AuroraGrid,
   SpaceWeatherSample,
@@ -176,6 +178,16 @@ contextBridge.exposeInMainWorld('terraPulse', {
      */
     contours: (eventId: string): Promise<ShakeMapResult> =>
       ipcRenderer.invoke('shakemap:contours', eventId),
+  },
+  gnss: {
+    /**
+     * Daily GPS positions at the stations nearest one quake, a year before it
+     * to 30 days after. Pulled when the window opens and held only in memory;
+     * `none` when no station recorded across it within the lab's reach.
+     * Rejects if the lab could not be reached.
+     */
+    nearQuake: (request: GnssRequest): Promise<GnssResult> =>
+      ipcRenderer.invoke('gnss:near-quake', request),
   },
   magnetometer: {
     /**

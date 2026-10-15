@@ -58,6 +58,22 @@ than permissive, and check before relying on it.
 
 ---
 
+## Ground position — Nevada Geodetic Laboratory GPS
+
+| | |
+|---|---|
+| **NGL daily GNSS solutions** | `geodesy.unr.edu` — `NGLStationPages/DataHoldings.txt` (station list), `gps_timeseries/IGS20/tenv3/IGS20/<STA>.tenv3` (daily positions), `velocities/midas.IGS14.txt` (MIDAS velocities), `NGLStationPages/stations/<STA>.sta` (DOI and known steps) |
+| Used for | The GPS window: daily east/north/up at the stations nearest a selected M6+ quake, a year before to 30 days after |
+| Licence | Data supplied **as-is** under the Nevada Bureau of Mines and Geology data policy (`Disclaimer.php`): no warranty, no stated restriction on use |
+| Attribution | **Requested**: Blewitt, Hammond & Kreemer (2018), *Harnessing the GPS data explosion for interdisciplinary science*, Eos 99, doi:10.1029/2018EO104623 — plus each station's **own data DOI** (on its station page). MIDAS velocities: Blewitt et al. (2016), JGR 121, doi:10.1002/2015JB012552. All in the window's guide; the window links the station page and DOI. |
+| Redistributable | Not stated. Standing rule 1 applies regardless — **fetched when the window opens, held in main's memory, never written to disk** |
+| Credential | None. Checked 2026-10-15 with Node's `fetch`. **HTTPS only**: plain `http://` drops the connection. |
+| Coverage | 23,826 stations in the list (18 ids carry `_`, e.g. `MN__`). Measured over 13,218 M5.5+ quakes since 2000, a station recording across the quake: within 100 km of 30-34% of M7+ since 2010, within 50 km of 12-16%. |
+| Latency | ~12 days: on 2026-10-15 P595's record ended 2026-10-03. |
+| Note | The older `tenv3/IGS14/` path answers 404. There is no IGS20 velocity file yet; IGS14 velocities are used, a sub-mm/yr frame difference. The 7.4 MB master step file is not read — each station's page carries the same rows. Step dates are `YYMMMDD`, **year first** (`25MAR19` is 2025-03-19). |
+
+---
+
 ## Focal mechanisms — Global CMT
 
 | | |

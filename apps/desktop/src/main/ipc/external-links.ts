@@ -1,8 +1,10 @@
 import { ipcMain, shell } from 'electron';
 
 /**
- * Hosts the renderer is allowed to ask the OS to open: USGS event pages;
- * anything else is a bug or an attempt.
+ * Hosts the renderer is allowed to ask the OS to open: USGS event pages, and
+ * from the GPS window a station's page at the Nevada Geodetic Laboratory and
+ * its data DOI — which the lab asks to be cited, so the window links it rather
+ * than only printing it. Anything else is a bug or an attempt.
  *
  * `api.nasa.gov` used to be here too, for the DONKI key modal's "get a key"
  * button. DONKI went keyless on 2026-09-30 and the modal went with it; a host
@@ -14,7 +16,7 @@ import { ipcMain, shell } from 'electron';
  * `shell.openExternal` hands a string to the operating system, and an
  * unvalidated one can carry non-http schemes that launch local programs.
  */
-const ALLOWED_HOSTS = new Set(['earthquake.usgs.gov']);
+const ALLOWED_HOSTS = new Set(['earthquake.usgs.gov', 'geodesy.unr.edu', 'doi.org']);
 
 export function isAllowedExternalUrl(rawUrl: string): boolean {
   let url: URL;

@@ -19,3 +19,4 @@ export * from './quake-replay';
 export * from './quake-watch';
 export * from './travel-times';
 export * from './shakemap';
+export * from './gnss';

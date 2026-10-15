@@ -40,6 +40,7 @@ import {
 import { registerAuroraIpcHandlers, startAuroraPolling } from './ipc/aurora';
 import { registerTecIpcHandlers } from './ipc/tec';
 import { registerShakeMapIpcHandlers } from './ipc/shakemap';
+import { registerGnssIpcHandlers } from './ipc/gnss';
 import { createMultiServerController, registerWaveformIpcHandlers } from './ipc/waveforms';
 import { createQuakeReplayController, registerQuakeReplayHandlers } from './ipc/quake-replay';
 import {
@@ -391,6 +392,8 @@ app
     // Pulled on demand rather than polled: a TEC map is 2.4 MB.
     registerTecIpcHandlers();
     registerShakeMapIpcHandlers();
+    // Pulled when the GPS window opens; held in memory, never written to disk.
+    registerGnssIpcHandlers();
 
     registerMagnetometerIpcHandlers();
     const stopMagnetometerPolling = startMagnetometerPolling((readings) => {

@@ -1184,6 +1184,40 @@ sets in the product (PGA, PGV, spectral acceleration), and showing which
 stations or reports a map rests on, which would let a reader tell a measured
 map from a modelled one.
 
+### 5.15 Ground Position from GPS — shipped 2026-10-15
+
+A movable window, opened from the inspector for any M6+ quake: the daily
+position of the nearest GPS stations from up to a year before the quake to a
+month after, with the quake marked. Asked for by the user after the NISAR
+research, as the realistic data for the user's real question — **does the ground move
+before big quakes?**
+
+- **Why GPS and not NISAR.** NISAR's public record starts 2026-06-17 with a
+  ~12-day revisit, its real data needs an Earthdata account (standing rule 2),
+  and InSAR has not shown reliable precursory deformation. The documented
+  cases (slow slip before Iquique 2014, the period before Tohoku 2011) came
+  from GNSS time series. The Nevada Geodetic Laboratory serves ~23,800
+  stations' daily positions keyless; see `SOURCES.md`.
+- **Explore, not a test.** The window shows what one station did around one
+  quake. "Does this happen before big quakes more than chance allows" needs a
+  registered hypothesis — stations, distance, window and what counts as
+  unusual, fixed before it runs — and is the natural next step if wanted. The
+  expected answer is a null with a few famous exceptions.
+- **The user's choices**: scale fitted to the days before (the jump is
+  hundreds of times larger: 620 mm at a station 20 km from Ridgecrest against
+  ~2 mm of scatter); a 30 d / 90 d / 1 y selector, default 90; nearest three
+  stations; M6+; steady drift removed by default with a raw toggle; nothing
+  stored on disk.
+- **Reach is the lab's own rule**, 10^(0.5·M − 0.79) km — the distance at
+  which it flags a possible earthquake step in a station's record.
+- **Drift removal uses the lab's MIDAS velocity**, fitted over the station's
+  whole record, never over the window — so it cannot absorb an anomaly inside
+  the window into the trend it removes.
+
+Not done: station markers on the globe; the lab's 24-hour rapid solutions,
+which would fill the ~2-week lag for recent quakes; a registered precursor
+hypothesis.
+
 ---
 
 ## 6. Pre-Registered Hypotheses

@@ -1,0 +1,330 @@
+/* A floating window, not a column panel: it is dragged wherever it is least in
+   the way, so it carries its own position rather than taking one from
+   App.module.css's columns. Above the columns (z-index 10) so dragging it over
+   them shows it whole; below the hover tooltip (20) and the guide modal (40). */
+.window {
+  position: fixed;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  width: 30rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  padding: 0.5rem 0.875rem 0.75rem;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 94%);
+  box-shadow: 0 10px 25px -5px rgb(0 0 0 / 55%);
+  color: rgb(226 232 240);
+  font-size: 0.75rem;
+}
+
+/* Where it opens until it is first dragged: just right of whatever is open on
+   the left — the controls column, and the inspector it was opened from — so
+   the first thing it covers is globe rather than the panel that opened it. */
+.openingPlace {
+  top: 4.5rem;
+  left: calc(3rem + var(--left-column-width, 19rem) + var(--selection-column-width, 0px));
+}
+
+.titleBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 -0.875rem;
+  padding: 0.125rem 0.875rem 0.25rem;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.titleBar:active {
+  cursor: grabbing;
+}
+
+.titleGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.title {
+  color: rgb(226 232 240);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.closeButton {
+  padding: 0 0.25rem;
+  border: none;
+  background: none;
+  color: rgb(148 163 184);
+  font-size: 1.125rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  color: white;
+}
+
+.subject {
+  margin: 0 0 0.5rem;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+.message {
+  margin: 0.25rem 0 0.25rem;
+  color: rgb(203 213 225);
+  line-height: 1.45;
+}
+
+.stationTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.4rem;
+}
+
+/* Neutral, like the timeline's row chips: which station is showing is a
+   choice of view, not a status. */
+.stationTab {
+  padding: 0.2rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 0.3rem;
+  background: none;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.stationTab:hover {
+  color: rgb(203 213 225);
+}
+
+.stationTabActive {
+  border-color: rgb(255 255 255 / 18%);
+  background-color: rgb(255 255 255 / 8%);
+  color: rgb(226 232 240);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.spanGroup {
+  display: flex;
+  gap: 0.2rem;
+}
+
+.spanButton {
+  padding: 0.15rem 0.45rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.3rem;
+  background: none;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+
+.spanButton:hover {
+  color: rgb(226 232 240);
+}
+
+.spanButtonActive {
+  border-color: rgb(255 255 255 / 30%);
+  background-color: rgb(255 255 255 / 10%);
+  color: rgb(226 232 240);
+}
+
+.driftToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: rgb(203 213 225);
+  font-size: 0.6875rem;
+  cursor: pointer;
+}
+
+.driftToggle input {
+  margin: 0;
+}
+
+.caption {
+  min-height: 1rem;
+  margin: 0 0 0.25rem;
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+.readout {
+  color: rgb(226 232 240);
+  font-variant-numeric: tabular-nums;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.rowHeader {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-left: 44px; /* the plot's gutter, so the title sits over the plot */
+}
+
+.rowTitle {
+  color: rgb(148 163 184);
+  font-size: 0.6875rem;
+}
+
+.rowCaption {
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.rowHeader .readout {
+  font-size: 0.625rem;
+}
+
+.plot {
+  display: block;
+  overflow: hidden;
+  cursor: crosshair;
+}
+
+.scaleLabel {
+  fill: rgb(100 116 139);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tickLine {
+  stroke: rgb(255 255 255 / 7%);
+  stroke-width: 1;
+}
+
+.zeroLine {
+  stroke: rgb(255 255 255 / 18%);
+  stroke-width: 1;
+}
+
+/* An antenna or receiver change: a reason the line can jump that is not the
+   ground. Dotted, so it reads as a different kind of line from the quake's
+   dashes. */
+.equipmentLine {
+  stroke: rgb(148 163 184 / 70%);
+  stroke-width: 1.25;
+  stroke-dasharray: 1 3;
+}
+
+/* Another quake the lab lists as close enough to have moved the station —
+   a foreshock, an aftershock, a neighbour. Solid and thin: the third kind of
+   vertical line, beside the quake's dashes and the equipment's dots. */
+.otherQuakeLine {
+  stroke: rgb(251 146 60 / 70%);
+  stroke-width: 1;
+}
+
+/* The selected quake, in the same dashed white the timeline uses for it. */
+.quakeLine {
+  stroke: rgb(226 232 240 / 65%);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+/* The series: the timeline's measurement blue. A thin line through the days
+   and a dot on each, so a day standing alone between gaps still shows. */
+.line {
+  fill: none;
+  stroke: rgb(56 189 248 / 55%);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.dot {
+  fill: rgb(56 189 248);
+}
+
+/* A day beyond the edge of the scale, pinned to it. The series' own colour:
+   it is still a measurement, just not drawn at its height. */
+.edgeMark {
+  fill: rgb(56 189 248);
+}
+
+.hoverLine {
+  stroke: rgb(226 232 240 / 32%);
+  stroke-width: 1;
+}
+
+/* A ring in the panel's own colour around the hovered day, so it stands off
+   its neighbours. */
+.hoverDot {
+  fill: rgb(56 189 248);
+  stroke: rgb(15 23 42);
+  stroke-width: 2;
+}
+
+.axis {
+  position: relative;
+  height: 0.8rem;
+}
+
+.tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  color: rgb(100 116 139);
+  font-size: 0.5625rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tickEnd {
+  transform: translateX(-100%);
+}
+
+.footer {
+  margin-top: 0.4rem;
+  color: rgb(148 163 184);
+  font-size: 0.625rem;
+  line-height: 1.4;
+}
+
+.footer p {
+  margin: 0.1rem 0 0;
+}
+
+.credit {
+  color: rgb(100 116 139);
+}
+
+.linkButton {
+  padding: 0;
+  border: none;
+  background: none;
+  color: rgb(148 163 184);
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.linkButton:hover {
+  color: rgb(226 232 240);
+}

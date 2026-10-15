@@ -4712,6 +4712,78 @@ of the uncommitted date-range work.
   button reads "could not reach USGS" instead of crashing — the call is inside
   the store's `try`.
 
+## Ground position from GPS — a movable window. 2026-10-15.
+
+Branch `gps-window`. `PROJECT_PLAN.md` §5.15. Came out of the NISAR research
+(branch `nisar-experiment`, research only, nothing built): the user's real
+question is **"does the ground move before big quakes?"**, and NISAR cannot
+answer it (record from 2026-06-17, ~12-day revisit, real data behind an
+Earthdata account). The documented cases came from GPS. So: an **inspector
+button for M6+** opens a **draggable window** graphing daily east/north/up at
+the nearest three GPS stations, a year before the quake to 30 days after.
+
+- **Source: the Nevada Geodetic Laboratory, keyless, HTTPS only.** Four files:
+  station list (2.8 MB), per-station daily series (~1.5 MB), MIDAS velocities
+  (5 MB), per-station page (~20 KB, data DOI + known steps). Details and terms
+  in `SOURCES.md`. **Nothing is written to disk** — the user's condition. Main
+  fetches when the window opens and holds it in memory
+  (`main/ipc/gnss.ts`): list 6 h, velocities 24 h, 12 stations 1 h.
+- **Measured before trusting the selection**, over 45 real M7+ quakes with a
+  station in reach: 33 got three stations, 9 got one or two, 3 none; **18% of
+  downloaded records had a gap over the quake** (so a record's first/last day
+  is not enough — `coversQuake` checks the days); a window downloads 3.9 MB
+  median, 7.1 MB max, under a second.
+- **Reach is the lab's own rule**, 10^(0.5·M − 0.79) km (162 at M6, 512 at M7).
+  Its readme rounds the listed values unevenly; the test allows ±1 km.
+- **One station per site** (1 km): the lab gives a replaced monument a new id
+  beside the old one, and 6 of the 45 quakes had such a pair among the nearest
+  eight.
+- **The user's design choices**, all recommended options: **y scale fitted to
+  the days before** (Ridgecrest moved a station 20 km away 620 mm against ~2 mm
+  of scatter), with off-scale days drawn as arrowheads pinned to the edge;
+  30 d / 90 d / 1 y selector, default 90; drift removed by default with a raw
+  toggle; nearest three stations; M6+.
+- **Drift removal uses the lab's MIDAS velocity**, fitted over the station's
+  whole record, never over the window — so something unusual inside the window
+  cannot be absorbed into what is removed. IGS14 velocities against IGS20
+  positions: a sub-mm/yr difference, said in the adapter.
+- **One definition of "the quake's day"**, `gnssQuakeDayMs` in the schema.
+  A daily position averages midnight to midnight UTC, so that day is neither
+  before nor after. Main decides coverage with it and the renderer splits the
+  graph with it; a disagreement by a day would put the jump in "before".
+- **Three things found by looking at the running window, none by tests:**
+  - **The month after looked empty.** Off-scale days were clipped away, which
+    reads as "no data after". Now pinned to the edge as arrowheads.
+  - **The Ridgecrest M6.4 foreshock was invisible.** It was drawn as a 6 px tick
+    two days left of the quake line — and it is exactly what explains the drop
+    a precursor-hunter would point at. Other quakes are now full-height orange
+    lines, and the footer names every marked step in words.
+  - "Off scale" text sat on top of the data; it moved into the row header.
+- **Two wrong beliefs caught by measuring:** station ids are not all
+  alphanumeric (**18 carry `_`**, `MN__`), and the lab's `YYMMMDD` is **year
+  first** — `25MAR19` is 2025-03-19. I read it day-first and told the user
+  P595's antenna changed before Ridgecrest; it changed six years after.
+- **The React Compiler rejects hand-written `useMemo`** here
+  (`preserve-manual-memoization`): it memoises itself, so the window computes
+  in the render body.
+- **Window, not inspector section**, because it is something to keep open while
+  clicking elsewhere. It belongs to the quake it was opened for, not to the
+  selection. Draggable by its title bar; position kept for the session.
+  `z-index: 15`, between the columns and the tooltip.
+- **Explore-safe**: no p-value, no "precursor" claim. The guide's limits say
+  one station around one quake cannot answer the question, that a flat line is
+  the usual answer, and that the test belongs in Analyze. A registered
+  precursor hypothesis is the obvious next step **if the user wants it** — expected
+  result: null, with a few famous exceptions.
+- `doi.org` and `geodesy.unr.edu` joined the external-link allowlist, https only.
+- **Verified in a built, isolated instance** on a copy of the real database:
+  Ridgecrest M7.1 (TOWG 16 km, P595, P594 — answered in 2 s, −599 mm east
+  across the quake, M6.4 named in the footer), hover, drag, the 1-year view,
+  South Sandwich M8.1 (nearest 827 km), Fiji M7.0 (one station at 401 km,
+  +0.7 mm — inside the scatter), a mid-Pacific "none", and a malformed request.
+- **Not done:** globe markers for the stations, the lab's rapid solutions for
+  the ~2-week lag, keyboard access to the plot readout.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.
