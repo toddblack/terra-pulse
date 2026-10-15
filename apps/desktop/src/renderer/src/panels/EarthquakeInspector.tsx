@@ -12,7 +12,8 @@ import { hasSequencePanel } from './useAftershockSequence';
 import { useNow } from '../globe/useNow';
 import { useWaveformStore } from '../waveforms/useWaveformStore';
 import { useReplayStore } from '../waveforms/useReplayStore';
-import { replayEligible, shakeMapEligible } from '@terra-pulse/schema';
+import { gnssEligible, replayEligible, shakeMapEligible } from '@terra-pulse/schema';
+import { useGnssStore } from '../gnss/useGnssStore';
 import { shakeMapView, useShakeMapStore } from '../state/useShakeMapStore';
 import { shakeMapSummary } from '../layers/shakemap-encoding';
 import { SHAKEMAP_GUIDE_ID } from '../layers/shakemap-guide';
@@ -53,6 +54,9 @@ export function EarthquakeInspector() {
   const shakingOn = useShakeMapStore((state) => state.enabled);
   const setShakingOn = useShakeMapStore((state) => state.setEnabled);
   const shakeMapLoaded = useShakeMapStore((state) => state.loaded);
+  const gnssEventId = useGnssStore((state) => state.subject?.eventId ?? null);
+  const openGnss = useGnssStore((state) => state.open);
+  const closeGnss = useGnssStore((state) => state.close);
   // Wall clock, not the playhead — the same basis as the event list and the
   // hover tooltip, so the three cannot disagree about one event's age.
   const nowMs = useNow();
@@ -62,6 +66,8 @@ export function EarthquakeInspector() {
   const age = formatAgoFrom(event.timeUtc, nowMs);
   const canReplay = replayEligible(event);
   const canShowShaking = shakeMapEligible(event);
+  const canShowGnss = gnssEligible(event);
+  const gnssOpenHere = gnssEventId === event.id;
   const shaking = shakeMapView(shakingOn, event, shakeMapLoaded);
 
   const openUsgsPage = () => {
@@ -296,6 +302,29 @@ export function EarthquakeInspector() {
             }}
           >
             ▶ Replay the waves from nearby stations
+          </button>
+        )}
+
+        {/* Its own row, under Replay: the action row below stays at four, the
+            user's rule. Opens a window rather than a section because the
+            graph is worth keeping up while clicking elsewhere — see
+            GnssWindow.tsx. M6+, where a nearby station can move by more than
+            its own day-to-day scatter. */}
+        {canShowGnss && (
+          <button
+            id="inspector-gps"
+            type="button"
+            aria-pressed={gnssOpenHere}
+            className={
+              gnssOpenHere ? `${styles.gpsButton} ${styles.gpsButtonOn}` : styles.gpsButton
+            }
+            title="Graph where the ground was at the nearest GPS stations, from a year before this quake to a month after"
+            onClick={() => {
+              if (gnssOpenHere) closeGnss();
+              else openGnss(event);
+            }}
+          >
+            {gnssOpenHere ? 'Close the GPS window' : 'Ground position before and after (GPS)'}
           </button>
         )}
 

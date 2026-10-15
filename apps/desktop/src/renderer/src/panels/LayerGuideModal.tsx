@@ -4,6 +4,7 @@ import { guideFor } from './layer-guides';
 import { trackGuideFor } from './track-guides';
 import { waveformGuideFor } from '../waveforms/waveform-limits';
 import { shakeMapGuideFor } from '../layers/shakemap-guide';
+import { gnssGuideFor } from '../gnss/gnss-guide';
 import styles from './LayerGuideModal.module.css';
 
 /**
@@ -60,7 +61,8 @@ export function LayerGuideModal() {
     guideFor(openGuideLayerId) ??
     trackGuideFor(openGuideLayerId) ??
     waveformGuideFor(openGuideLayerId) ??
-    shakeMapGuideFor(openGuideLayerId);
+    shakeMapGuideFor(openGuideLayerId) ??
+    gnssGuideFor(openGuideLayerId);
   if (!guide) return null;
 
   return (
@@ -127,7 +129,14 @@ export function LayerGuideModal() {
  */
 export function LayerGuideButton({ layerId }: { layerId: string }) {
   const openGuide = useGlobeStore((state) => state.openGuide);
-  if (!guideFor(layerId) && !trackGuideFor(layerId) && !shakeMapGuideFor(layerId)) return null;
+  if (
+    !guideFor(layerId) &&
+    !trackGuideFor(layerId) &&
+    !shakeMapGuideFor(layerId) &&
+    !gnssGuideFor(layerId)
+  ) {
+    return null;
+  }
 
   return (
     <button

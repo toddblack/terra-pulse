@@ -5,6 +5,8 @@ import type {
   MagnetometerSeries,
   TecGrid,
   ShakeMapResult,
+  GnssRequest,
+  GnssResult,
   AftershockSequence,
   AuroraGrid,
   SpaceWeatherProgress,
@@ -89,6 +91,10 @@ declare global {
       shakeMap: {
         /** Shaking-intensity lines for one quake; `none` when USGS made no map. */
         contours(eventId: string): Promise<ShakeMapResult>;
+      };
+      gnss: {
+        /** GPS positions around one quake; `none` when no station recorded across it. */
+        nearQuake(request: GnssRequest): Promise<GnssResult>;
       };
       magnetometer: {
         /** The latest network read, empty before the first successful poll. */

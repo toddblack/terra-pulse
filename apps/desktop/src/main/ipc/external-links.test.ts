@@ -8,6 +8,13 @@ describe('isAllowedExternalUrl', () => {
     ).toBe(true);
   });
 
+  it("allows a GPS station's page and its data DOI, over https only", () => {
+    expect(isAllowedExternalUrl('https://geodesy.unr.edu/NGLStationPages/stations/P595.sta')).toBe(true);
+    expect(isAllowedExternalUrl('https://doi.org/10.7283/T5C24TDR')).toBe(true);
+    expect(isAllowedExternalUrl('http://doi.org/10.7283/T5C24TDR')).toBe(false);
+    expect(isAllowedExternalUrl('https://doi.org.evil.test/x')).toBe(false);
+  });
+
   it('no longer allows api.nasa.gov — nothing links there since DONKI went keyless', () => {
     expect(isAllowedExternalUrl('https://api.nasa.gov/')).toBe(false);
   });

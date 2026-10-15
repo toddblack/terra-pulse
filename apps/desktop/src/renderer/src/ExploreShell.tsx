@@ -12,6 +12,7 @@ import { EarthquakeInspector } from './panels/EarthquakeInspector';
 import { LocationPanel } from './panels/LocationPanel';
 import { SolarEventPanel } from './panels/SolarEventPanel';
 import { HoverTooltip } from './panels/HoverTooltip';
+import { GnssWindow } from './gnss/GnssWindow';
 import { pollCanReach, selectEventById, useEarthquakeStore } from './state/useEarthquakeStore';
 import { useShakeMapStore } from './state/useShakeMapStore';
 import { shakeMapEligible } from '@terra-pulse/schema';
@@ -183,6 +184,9 @@ export function ExploreShell() {
       </div>
       {/* Last, so it draws above every panel — it tracks the pointer and
           must never be occluded by the chrome it passes over. */}
+      {/* Floating, outside the columns: it is dragged wherever it is least in
+          the way. */}
+      <GnssWindow />
       <HoverTooltip />
       <LayerGuideModal />
     </>
