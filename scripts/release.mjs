@@ -93,7 +93,10 @@ rmSync(RELEASE_DIR, { recursive: true, force: true });
 run('pnpm', ['engine:bundle'], { inherit: true });
 run('pnpm', ['--filter', '@terra-pulse/desktop', 'package'], { inherit: true });
 
-const installer = join(RELEASE_DIR, `Terra Pulse Setup ${version}.exe`);
+// `artifactName` in electron-builder.yml — no spaces, because GitHub turns
+// spaces in asset names into dots and the notes below name the file.
+const installerName = `Terra-Pulse-Setup-${version}.exe`;
+const installer = join(RELEASE_DIR, installerName);
 const blockmap = `${installer}.blockmap`;
 for (const file of [installer, blockmap]) {
   if (!existsSync(file)) fail(`expected ${file} after packaging, and it is not there`);
@@ -105,7 +108,7 @@ if (!existsSync(join(RELEASE_DIR, 'win-unpacked', 'resources', 'engine'))) {
 const sha256 = createHash('sha256').update(readFileSync(installer)).digest('hex');
 const notes = `## Terra Pulse ${version}
 
-Windows x64. Download **Terra Pulse Setup ${version}.exe** below and run it.
+Windows x64. Download **${installerName}** below and run it.
 
 **The installer is not code-signed yet**, so Windows SmartScreen will warn on first run: choose *More info* → *Run anyway*. To check the file you downloaded is the one published here, compare its SHA-256:
 
@@ -113,7 +116,7 @@ Windows x64. Download **Terra Pulse Setup ${version}.exe** below and run it.
 ${sha256}
 \`\`\`
 
-(In PowerShell: \`Get-FileHash "Terra Pulse Setup ${version}.exe"\`.)
+(In PowerShell, in the folder you downloaded it to: \`Get-FileHash ${installerName}\`.)
 
 Installed copies of Terra Pulse check this page for new releases and say so beside the version number. They never download or install anything themselves.
 `;

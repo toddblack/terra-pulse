@@ -17,7 +17,10 @@ motion-arrow layer" below.
 
 **Licence obligations differ and are not interchangeable.** ODC-BY and
 CC-BY-SA both *require* attribution, so those two credits appear in the app's
-legend as a condition of use. CC0 requires nothing; the Slab2 citation is there
+legend as a condition of use. The GEM credit also appears in the nearest-fault
+panel, which shows GEM data with the fault layer off, and says **"simplified"**
+because CC BY-SA 4.0 requires indicating that the material was modified
+(`GEM_FAULTS_CREDIT` in `layers/fault-data.ts`). CC0 requires nothing; the Slab2 citation is there
 because citing sources is right. CC-BY-SA additionally carries share-alike —
 see part 3.
 

@@ -71,6 +71,12 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Terra Pulse
+  # No spaces in the file name. GitHub replaces spaces in release assets with
+  # dots, so the default `Terra Pulse Setup 0.1.0.exe` would download as
+  # `Terra.Pulse.Setup.0.1.0.exe` — and the release notes, which name the file
+  # for the checksum command, would name a file nobody has. The installed app
+  # is still "Terra Pulse"; this is only the download's name.
+  artifactName: Terra-Pulse-Setup-${version}.${ext}
 
 # Unsigned. Windows SmartScreen will warn on first run ("Windows protected your
 # PC" → More info → Run anyway), which is expected for a build without a code
