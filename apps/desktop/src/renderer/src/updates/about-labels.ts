@@ -11,6 +11,8 @@ export function updateSummary(status: UpdateStatus, nowMs: number): string {
   const checked = formatAgoFrom(status.checkedAtUtc, nowMs);
   const when = checked === null ? '' : ` · checked ${checked}`;
   switch (status.state) {
+    case 'store':
+      return 'Updates come through the Microsoft Store.';
     case 'off':
       return 'Update check is off.';
     case 'not-checked':

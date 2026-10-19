@@ -4925,6 +4925,57 @@ before `v0.1.0` was published:
 - A packaged build ran its own scheduled update check ~15 s after launch and
   reported "No release has been published yet" — the real path, not "Check now".
 
+## Microsoft Store build. 2026-10-19, branch `store-msix`.
+
+The user asked for the best **free** way to get signed, on a tight budget.
+Researched (Microsoft Learn, Aug 2026): Azure Artifact Signing ~$10/month
+(individuals US/Canada only), OV certs $150–300/yr and capped at 460 days since
+March 2026, EV no longer bypasses SmartScreen since 2024, SignPath Foundation
+free but needs an OSI licence (he chose none) and issues the certificate to
+itself. **The Store won**: free individual registration since Sept 2025, the
+Store signs the package, no SmartScreen warning at all, and Store updates
+remove the need for an auto-updater.
+
+- **`pnpm --filter @terra-pulse/desktop package:store`** → electron-builder's
+  appx target, `release/Terra-Pulse-<version>.appx` (191 MB), unsigned by
+  design ("Windows Store only build"). The NSIS installer is untouched.
+- **`appx.identityName` / `publisher` are placeholders** until the name is
+  reserved in Partner Center; `pnpm release --store` refuses to build while
+  they are. publisherDisplayName must match the Partner Center account.
+- **Tiles** in `apps/desktop/build/appx/`, made from the icon by
+  `scripts/make-appx-assets.ps1`; `backgroundColor` `#070d16` is the icon's own
+  background as that script samples it.
+- **`process.windowsStore` selects the `store` update channel**: a separate
+  checker object with no network path at all, and the About panel says
+  "Updates come through the Microsoft Store." A Store build linking to a
+  GitHub installer would route users around their channel, which Store policy
+  forbids.
+- **`PRIVACY.md`** — the Store form asks whether the app transmits personal
+  information, and every request shows the server an IP address. No
+  telemetry, no accounts; a watched location never leaves the machine
+  (stations are chosen locally and requested by name).
+- **Verified by installing it here** in Developer Mode (`Add-AppxPackage
+  -Register` on a loose layout) and launching it through
+  `IApplicationActivationManager` with an isolated `--user-data-dir` and a
+  debug port: ran with package identity, channel `store`, engine spawned from
+  inside the package and ready, 1,352 quakes loaded, the 31 MB ephemeris
+  downloaded and verified, H4c computed in 2.3 s, the panel read correctly.
+  Then unregistered; nothing left in `%LOCALAPPDATA%\Packages`.
+  - **An .appx's entry names are percent-encoded** (`Terra%20Pulse.exe`). A
+    plain `unzip` keeps them encoded, the manifest's `app\Terra Pulse.exe`
+    points at nothing, and activation fails with a bare "operation was
+    canceled by the user" (0x800704C7) and nothing in the event logs.
+    Decode each name (`[Uri]::UnescapeDataString`) when unpacking.
+  - **Not tested: the default data location.** A packaged app's writes to
+    `%APPDATA%` are redirected into the package's private folder, which is
+    where a Store user's database will live (and why uninstalling removes it).
+    Testing that here would have pointed the test copy at the user's real
+    database while his installed 0.1.0 had it open.
+- **Still to do, his side:** Partner Center account (ID + selfie), reserve
+  the name, copy the identity values in, Store listing (screenshots,
+  description, age rating, privacy URL), then `pnpm release --store` on main
+  and upload. Certification takes a few days per submission.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

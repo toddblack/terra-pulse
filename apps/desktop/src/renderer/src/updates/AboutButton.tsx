@@ -97,31 +97,36 @@ export function AboutButton() {
             </div>
           )}
 
-          <div className={styles.actions}>
-            <button
-              type="button"
-              className={styles.secondary}
-              disabled={!status.enabled || status.state === 'checking'}
-              onClick={check}
-            >
-              Check now
-            </button>
-          </div>
+          {/* The Store build has nothing to check or switch: the Store updates it. */}
+          {status.channel === 'github' && (
+            <>
+              <div className={styles.actions}>
+                <button
+                  type="button"
+                  className={styles.secondary}
+                  disabled={!status.enabled || status.state === 'checking'}
+                  onClick={check}
+                >
+                  Check now
+                </button>
+              </div>
 
-          <label className={styles.toggle}>
-            <input
-              type="checkbox"
-              checked={status.enabled}
-              onChange={(event) => {
-                setEnabled(event.target.checked);
-              }}
-            />
-            Check for updates
-          </label>
-          <p className={styles.note}>
-            Asks GitHub once at launch and once a day while open; GitHub sees your IP address. Nothing is
-            downloaded or installed — a newer version is a link to its release page.
-          </p>
+              <label className={styles.toggle}>
+                <input
+                  type="checkbox"
+                  checked={status.enabled}
+                  onChange={(event) => {
+                    setEnabled(event.target.checked);
+                  }}
+                />
+                Check for updates
+              </label>
+              <p className={styles.note}>
+                Asks GitHub once at launch and once a day while open; GitHub sees your IP address. Nothing is
+                downloaded or installed — a newer version is a link to its release page.
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>
