@@ -176,6 +176,12 @@ pnpm build     # production build
 Packaging a Windows installer: `pnpm --filter @terra-pulse/desktop package`
 → `apps/desktop/release/`.
 
+Releasing: bump `version` in `apps/desktop/package.json`, commit and push it on
+`main`, then `pnpm release` (builds and checks, publishes nothing) and
+`pnpm release --publish` (creates the GitHub release). Installed copies check
+this repository's latest release and show "Update" beside their version number;
+they never download or install anything themselves.
+
 ---
 
 Built by Todd Black.

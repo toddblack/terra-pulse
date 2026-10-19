@@ -73,8 +73,10 @@ import { createGcmtController, registerGcmtIpcHandlers } from './ipc/gcmt-mechan
 import { createEphemerisController, registerEphemerisIpcHandlers } from './ipc/ephemeris';
 import { registerExternalLinkIpcHandlers } from './ipc/external-links';
 import { createEngineController, registerAnalysisIpcHandlers } from './ipc/analysis';
-import { applyTileIdentity } from './tile-identity';
+import { applyTileIdentity, tileUserAgent } from './tile-identity';
 import { sendToRenderer } from './renderer-send';
+import { createUpdateChecker } from './update-check';
+import { registerUpdateHandlers } from './ipc/app-update';
 
 // dotenv.config() with no options resolves relative to process.cwd(), but
 // pnpm runs this package's scripts with apps/desktop as cwd, not the repo
@@ -625,6 +627,28 @@ app
     registerAnalysisIpcHandlers(db, engine, undefined, () => ephemeris.resolvedPath());
     app.on('will-quit', () => {
       engine.dispose();
+    });
+
+    // Is there a newer release? Notify only — see update-check.ts. Scheduled
+    // only when packaged: a dev build's version means nothing to compare, and
+    // every `pnpm dev` restart would spend one of GitHub's 60 hourly requests.
+    // The About panel's "Check now" still works in dev, which is how it is tested.
+    const updates = createUpdateChecker({
+      currentVersion: app.getVersion(),
+      userAgent: tileUserAgent(app.getVersion()),
+      readState: (key) => readAppState(db, key),
+      writeState: (key, value) => {
+        if (value === null) deleteAppState(db, key);
+        else writeAppState(db, key, value);
+      },
+      onStatus: (status) => {
+        sendToRenderer(mainWindow, 'update:status-changed', status);
+      },
+    });
+    registerUpdateHandlers(updates);
+    if (app.isPackaged) updates.schedule();
+    app.on('will-quit', () => {
+      updates.dispose();
     });
 
     app.on('activate', () => {
