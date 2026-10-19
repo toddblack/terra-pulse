@@ -14,6 +14,7 @@ import { SHAKEMAP_GUIDE_ID } from '../layers/shakemap-guide';
 import { useEarthquakesUpToPlayhead } from '../globe/useVisibleEarthquakes';
 import { KINEMATIC_GROUPS, KINEMATIC_LABELS, kinematicColorHex } from '../layers/plate-kinematics';
 import { faultColorHex } from '../layers/fault-encoding';
+import { GEM_FAULTS_CREDIT } from '../layers/fault-data';
 import { formatRange, formatWindowLabel } from './RangeControls';
 import { OVERLAY_REGISTRATIONS, isOverlayVisible } from '../layers/registry';
 import {
@@ -353,9 +354,7 @@ export function DepthLegend() {
         )}
         {/* CC-BY-SA makes this credit mandatory, like the Bird one. */}
         {faultsVisible && (
-          <span className={styles.attribution}>
-            Faults: GEM Global Active Faults · Styron &amp; Pagani (2020) · CC-BY-SA 4.0
-          </span>
+          <span className={styles.attribution}>{GEM_FAULTS_CREDIT}</span>
         )}
       </p>
     </div>

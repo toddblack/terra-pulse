@@ -215,7 +215,7 @@ export const LAYER_GUIDES: Record<string, LayerGuide> = {
       'The tidal shear stress reading is informational, not H6. H6 is the registered hypothesis test, and it resolves stress onto Global CMT earthquake focal mechanisms, never onto a GEM trace. This reading is unavailable on most faults — only 21.7% of GEM’s 13,696 carry both a dip and a rake — and where it is available, it reports a magnitude only. A trace’s digitised direction doesn’t say which way is which, so the reading can’t reliably say whether the tide is encouraging or resisting slip, only how hard it is pulling.',
     ],
     source:
-      'GEM Global Active Faults. CC-BY-SA 4.0 — attribution required, and derivatives of the dataset inherit share-alike.',
+      'GEM Global Active Faults (Styron & Pagani, 2020), CC BY-SA 4.0. Simplified for this app: 4 of the database’s ~23 attribute columns are kept, and long segments are split so they follow the curve of the Earth. The simplified copy is itself CC BY-SA 4.0.',
   },
 
   aurora: {
