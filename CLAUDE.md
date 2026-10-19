@@ -4416,7 +4416,8 @@ argument), and the `MIN_WIDTH` note under "Window size".
   The banner is centred and wide; at `top: 1rem` the inspector's close button
   would sit under it.
 - `MIN_WIDTH` stays 1000. Its reason changed: left column + selection column +
-  right column is ~895 px before any globe shows.
+  right column is ~895 px before any globe shows (~912 px since the app font
+  became Segoe UI, 2026-10-19).
 
 ### A selected quake lands in the middle of what is visible
 
@@ -4875,10 +4876,30 @@ are signed, and it reads the same releases.
   re-enabling checked at once and stayed quiet for the dismissed version. The
   fake URL was in one build only and the source was restored before
   rebuilding; `out/` was checked to hold the real URL.
-- **Found on the way, not fixed:** the app sets no `font-family` anywhere, so
-  panel text renders in Chromium's default **Times New Roman** while buttons get
-  Arial from the UA stylesheet — 76 serif and 60 Arial text elements counted
-  on one screen. The new panel matches what is there.
+- **Found on the way:** the app set no `font-family` anywhere — fixed the same
+  day, see below.
+
+## One typeface. 2026-10-19, branch `app-font`.
+
+Nothing set a font, so panel text fell back to Chromium's default **Times New
+Roman** while form controls took **Arial** from the user-agent stylesheet: 73
+serif and 59 Arial text elements on one screen. Nobody chose it. The user
+asked for one consistent font.
+
+- **`system-ui`** in `index.css` (Segoe UI on Windows): ships with the OS, so
+  nothing is bundled or fetched, and it is what the globe's Cesium labels
+  already asked for. The one label on bare `sans-serif` (antipode hits) now
+  says `system-ui` too. After: all 132 visible text elements on the same font.
+- **Form controls get `font-family: inherit`, never the `font` shorthand.**
+  The shorthand would also inherit the page's 16px into every button that
+  never set a size.
+- **Segoe UI is wider than Times**, measured at 1584 px: left column 239 →
+  252 px, right column 225 → 229, dock 338 → 349 px tall. Checked by
+  screenshot in Explore, with the inspector open, on the waveform tab and in
+  Analyze — nothing overflows. Left + selection + right column is now ~912 px
+  against `MIN_WIDTH` 1000.
+- **Left alone:** Cesium's own "Data attribution" link, which Cesium styles
+  as `sans-serif` inside the licence credit block.
 
 ## Non-negotiables
 

@@ -1,5 +1,32 @@
+/*
+ * One typeface for the whole app: the operating system's own UI font (Segoe UI
+ * on Windows, San Francisco on macOS). It ships with the OS, so nothing is
+ * bundled or fetched, and it is what the globe's Cesium labels already ask for
+ * (`system-ui` in the overlay layers) — panels and globe now match.
+ *
+ * Until 2026-10-19 nothing set a font at all, so panel text fell back to
+ * Chromium's default, Times New Roman, while form controls took Arial from the
+ * user-agent stylesheet: one screen counted 73 serif and 59 Arial text
+ * elements. Nobody chose that; it was the absence of a choice.
+ *
+ * Monospace stays opt-in per element (the Analyze tables use it for numbers).
+ */
 :root {
   color-scheme: dark;
+  font-family: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/*
+ * Form controls do not inherit the page font by default — the user-agent
+ * stylesheet gives them their own. `font-family` only, not the `font`
+ * shorthand: that would also inherit the page's 16px size into every button
+ * that never set one, enlarging them.
+ */
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 * {
