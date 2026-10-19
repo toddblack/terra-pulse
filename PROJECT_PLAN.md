@@ -1306,6 +1306,13 @@ Local-first architecture removes most of the attack surface:
 - **API keys** (if any source ever needs one again — none does since DONKI went
   keyless on 2026-09-30) stored in the main process, never exposed to the
   renderer
+- **The analysis engine answers only main.** It is an HTTP server on
+  127.0.0.1, which any web page in the user's browser can POST to and any
+  account on the machine can reach. It refuses browsers by header (`Origin`,
+  Host, content type) and, when spawned by main, anything without a per-launch
+  token passed in its environment. A packaged build never adopts an engine it
+  did not start and takes a free port rather than 8787. Added 2026-10-19;
+  before that, a page could start analysis runs.
 - **Input validation** on all ingested data before it reaches SQLite —
   parameterized queries only
 - **Dependency auditing** in CI

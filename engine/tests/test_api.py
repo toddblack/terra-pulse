@@ -6,7 +6,9 @@ from tests.test_h2b import _synthetic_request as _synthetic_h2b_request
 from tests.test_h3b import _synthetic_request as _synthetic_h3b_request
 from tests.test_h4c import _synthetic_request
 
-client = TestClient(app)
+# Addressed as main addresses it: the guard refuses TestClient's default
+# "testserver" host, exactly as it refuses a rebound attacker's domain.
+client = TestClient(app, base_url="http://127.0.0.1:8787")
 
 
 def test_health() -> None:

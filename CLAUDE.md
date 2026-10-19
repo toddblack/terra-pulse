@@ -4784,6 +4784,49 @@ the nearest three GPS stations, a year before the quake to 30 days after.
 - **Not done:** globe markers for the stations, the lab's rapid solutions for
   the ~2-week lag, keyboard access to the plot readout.
 
+## The engine answers only main. 2026-10-19, branch `engine-auth`.
+
+Prompted by the user asking how to make the app as safe as possible for
+people who download it. **Supersedes** "Electron main adopts an already-running
+engine on 127.0.0.1:8787" in the Phase 4 entry for packaged builds.
+
+- **The hole, measured before fixing:** the engine is an HTTP server on
+  127.0.0.1, and `Request.json()` parses a body whatever its declared type. A
+  web page could POST a `text/plain` body (no CORS preflight) and the engine
+  validated it — a complete payload would have run, including ten-minute H6
+  runs and an `ephemerisPath` naming any file. It also answered a Host of
+  `evil.example`, so DNS rebinding could have read replies. Another account on
+  the same machine shares 127.0.0.1 too.
+- **`engine/terra_pulse_engine/api/guard.py`, four checks:** Host must be
+  loopback; any `Origin` header is refused (browsers send one on every POST;
+  Node's `fetch` in main sends none — measured); POSTs must be
+  `application/json`; and when `TERRA_PULSE_ENGINE_TOKEN` is set, the
+  `X-Terra-Pulse-Token` header must match (constant-time). Interactive docs
+  are off.
+- **The token is per launch, 32 random bytes, in the spawned engine's
+  environment — never its command line**, which any process can read. Every
+  request main sends carries it, probes included.
+- **A packaged build never adopts and takes a free port** (`allowAdopt: false`,
+  `port: 'auto'`). Checked with a fake engine answering healthy on 8787: the
+  packaged app never contacted it and spawned its own on 55402.
+- **Dev is unchanged**: it still adopts `pnpm engine:dev`, which has no token
+  and relies on the three header checks — which are the ones that stop a
+  browser. An engine that answers 401 to the adoption probe (one spawned by
+  another app instance) is reported as `port-conflict` at once, rather than
+  as a start timeout fifteen seconds later.
+- **Verified** with `attack-probe.mjs`-style raw requests before and after,
+  against the source engine (with and without a token) and the frozen
+  PyInstaller bundle in a packaged build. H4c run through both the dev-spawned
+  and the packaged engine returned identical ratios. With the middleware
+  switched off, all six refusal tests fail.
+- **`engine/tests` run from `engine/`**, not the repo root — `tests.` imports
+  fail otherwise. TestClient must use `base_url="http://127.0.0.1:8787"`: its
+  default `testserver` host is refused like any other non-loopback name.
+- **Still open from the same review**, in the order given to the user: no
+  auto-update (an installed Electron never gets security fixes), no code
+  signing, the renderer sandbox is off (ESM preload), then fuzzing the
+  network-facing parsers.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.
