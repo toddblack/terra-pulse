@@ -82,3 +82,10 @@
   font-size: 0.6875rem;
   line-height: 1.35;
 }
+
+/* The data credit — the legend's attribution style, so credits look alike. */
+.credit {
+  margin: 0.5rem 0 0;
+  color: rgb(120 135 155);
+  font-size: 0.625rem;
+}

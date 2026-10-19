@@ -4901,6 +4901,30 @@ asked for one consistent font.
 - **Left alone:** Cesium's own "Data attribution" link, which Cesium styles
   as `sans-serif` inside the licence credit block.
 
+## Before the first public release. 2026-10-19, branch `pre-release`.
+
+Three things found while checking what the installer would carry, fixed
+before `v0.1.0` was published:
+
+- **The installer is `Terra-Pulse-Setup-<version>.exe`** (`artifactName` in
+  `electron-builder.yml`). GitHub turns spaces in asset names into dots, so the
+  default name would have downloaded as `Terra.Pulse.Setup.0.1.0.exe` while the
+  release notes named the file for the checksum command.
+- **The GEM credit says "simplified"** and also appears in the nearest-fault
+  panel. CC BY-SA 4.0 requires indicating modification, and that panel shows
+  GEM names and slip rates with the fault layer — and so the legend credit —
+  off. One string, `GEM_FAULTS_CREDIT` in `layers/fault-data.ts`; the licence
+  name uses no-break characters because it wrapped as "CC BY-" / "SA 4.0".
+- **`SOURCES.md` rule 1 claimed the installer held no third-party data.** The
+  five `data/` files are compiled into the renderer and always were; all are
+  redistributable (ODC-BY, CC0, CC BY-SA, public domain). The rule now says so
+  and names the boundary: nothing non-commercial or no-redistribution may ever
+  join that folder.
+- **No `LICENSE` for the app's own code**, by the user's choice for now — all
+  rights reserved; the installer can still be published.
+- A packaged build ran its own scheduled update check ~15 s after launch and
+  reported "No release has been published yet" — the real path, not "Check now".
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

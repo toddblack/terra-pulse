@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { ACTIVE_FAULTS } from '../layers/fault-data';
+import { ACTIVE_FAULTS, GEM_FAULTS_CREDIT } from '../layers/fault-data';
 import { formatSlipRate, formatSlipType, nearestFault } from '../layers/fault-association';
 import { TidalShearField } from './TidalShear';
 import styles from './NearestFault.module.css';
@@ -171,6 +171,10 @@ export function NearestFaultBody({
           that far down — the distance above is horizontal only.
         </p>
       )}
+
+      {/* The legend carries this credit only while the fault layer is on, and
+          this panel shows GEM's names and slip rates with it off. */}
+      <p className={styles.credit}>{GEM_FAULTS_CREDIT}</p>
     </>
   );
 }

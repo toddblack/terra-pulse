@@ -32,3 +32,18 @@ import raw from '../data/active-faults.json';
  * silently never got committed.
  */
 export const ACTIVE_FAULTS = raw as unknown as FaultRecord[];
+
+/**
+ * The credit CC BY-SA 4.0 requires wherever this data is shown — the legend
+ * while the fault layer is on, and the nearest-fault panel, which reads the
+ * data with the layer off. One string so the two cannot drift.
+ *
+ * **"simplified" is a licence term, not modesty.** CC BY-SA 4.0 §3(a)(1)(B)
+ * requires indicating that the material was modified, and the shipped file is:
+ * 4 of GEM's ~23 columns, long chords densified (see `data/README.md`).
+ *
+ * The licence name uses no-break spaces and a no-break hyphen: at the panel's
+ * width it otherwise wrapped as "CC BY-" / "SA 4.0".
+ */
+export const GEM_FAULTS_CREDIT =
+  'Faults: GEM Global Active Faults · Styron & Pagani (2020) · simplified · CC BY‑SA 4.0';
