@@ -162,7 +162,7 @@ export function createAntipodeLayer(
         },
         label: {
           text: `M${hit.event.magnitude.toFixed(1)} +${hit.delayHours.toFixed(1)}h`,
-          font: '11px sans-serif',
+          font: '11px system-ui, sans-serif',
           fillColor: HIT_COLOR,
           outlineColor: Cesium.Color.BLACK,
           outlineWidth: 3,
