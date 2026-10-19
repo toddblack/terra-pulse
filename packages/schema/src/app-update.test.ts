@@ -32,6 +32,7 @@ describe('compareVersions', () => {
 describe('updateNoticeShowing', () => {
   const base: UpdateStatus = {
     currentVersion: '0.1.0',
+    channel: 'github',
     enabled: true,
     state: 'available',
     latest: { version: '0.2.0', url: 'https://github.com/toddblack/terra-pulse/releases/tag/v0.2.0', publishedUtc: null },
@@ -58,5 +59,6 @@ describe('updateNoticeShowing', () => {
   it('never shows outside the available state', () => {
     expect(updateNoticeShowing({ ...base, state: 'up-to-date' })).toBe(false);
     expect(updateNoticeShowing({ ...base, state: 'off' })).toBe(false);
+    expect(updateNoticeShowing({ ...base, channel: 'store', state: 'store' })).toBe(false);
   });
 });

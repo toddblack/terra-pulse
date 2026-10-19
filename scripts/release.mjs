@@ -31,6 +31,18 @@
  * The installer's SHA-256 goes in the release notes, so anyone can check the
  * file they downloaded is the one published. Unsigned, that is the only
  * integrity check a reader has.
+ *
+ * ## The Microsoft Store build
+ *
+ *       pnpm release --store      builds Terra-Pulse-<version>.appx for upload
+ *
+ * Same tree checks — main, clean, pushed — because a Store package should be
+ * as reproducible from the repo as a GitHub one. It publishes nothing: the
+ * upload to Partner Center is by hand. It does not care whether the GitHub tag
+ * exists, since the usual order is GitHub release first, Store package of the
+ * same version second. **It refuses while electron-builder.yml still carries
+ * the placeholder identity**, because Partner Center rejects a package whose
+ * identity is not the one it issued, and only after the upload.
  */
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -43,6 +55,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const DESKTOP = join(ROOT, 'apps', 'desktop');
 const RELEASE_DIR = join(DESKTOP, 'release');
 const publish = process.argv.includes('--publish');
+const store = process.argv.includes('--store');
+if (publish && store) fail('--store builds a package to upload by hand; it cannot be combined with --publish');
 
 function fail(message) {
   console.error(`\nrelease — ${message}\n`);
@@ -80,6 +94,12 @@ if (run('git', ['status', '--porcelain']).out !== '') fail('the working tree has
 run('git', ['fetch', '--quiet', 'origin', 'main']);
 const head = run('git', ['rev-parse', 'HEAD']).out;
 if (head !== run('git', ['rev-parse', 'origin/main']).out) fail('main is not the same as origin/main — pull or push first');
+
+if (store) {
+  buildStorePackage();
+  process.exit(0);
+}
+
 if (run('git', ['rev-parse', '--verify', '--quiet', `refs/tags/${tag}`], { allowFail: true }).ok) {
   fail(`tag ${tag} already exists locally — bump the version`);
 }
@@ -149,3 +169,34 @@ if (!publish) {
 run('gh', ghArgs, { inherit: true });
 rmSync(notesDir, { recursive: true, force: true });
 console.log(`\nrelease — published ${tag}. Installed copies will see it on their next check.\n`);
+
+// --- The Microsoft Store package ----------------------------------------------
+
+function buildStorePackage() {
+  const config = readFileSync(join(DESKTOP, 'electron-builder.yml'), 'utf8');
+  if (/identityName:\s*TerraPulse\.Placeholder/.test(config) || /publisher:\s*CN=0{8}-/.test(config)) {
+    fail(
+      'electron-builder.yml still has the placeholder Store identity.\n' +
+        '  Copy Package/Identity/Name and Package/Identity/Publisher from Partner Center\n' +
+        '  (your app → Product management → Product identity) into the appx section first.',
+    );
+  }
+
+  console.log(`\nrelease — building the Microsoft Store package for Terra Pulse ${version} from ${head.slice(0, 7)}\n`);
+  rmSync(RELEASE_DIR, { recursive: true, force: true });
+  run('pnpm', ['engine:bundle'], { inherit: true });
+  run('pnpm', ['--filter', '@terra-pulse/desktop', 'package:store'], { inherit: true });
+
+  const appx = join(RELEASE_DIR, `Terra-Pulse-${version}.appx`);
+  if (!existsSync(appx)) fail(`expected ${appx} after packaging, and it is not there`);
+  if (!existsSync(join(RELEASE_DIR, 'win-unpacked', 'resources', 'engine'))) {
+    fail('the packaged app has no engine — electron-builder skips a missing bundle silently');
+  }
+
+  console.log(
+    `\nrelease — Store package built (unsigned: the Store signs it).\n` +
+      `  package  ${appx}\n\n` +
+      `Upload it in Partner Center: your app → a new submission → Packages.\n` +
+      `The Store needs each submission's version to be higher than the last one it accepted.\n`,
+  );
+}

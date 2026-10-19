@@ -635,6 +635,8 @@ app
     // The About panel's "Check now" still works in dev, which is how it is tested.
     const updates = createUpdateChecker({
       currentVersion: app.getVersion(),
+      // The Microsoft Store build is updated by the Store and never asks GitHub.
+      channel: process.windowsStore ? 'store' : 'github',
       userAgent: tileUserAgent(app.getVersion()),
       readState: (key) => readAppState(db, key),
       writeState: (key, value) => {

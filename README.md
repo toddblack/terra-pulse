@@ -182,6 +182,11 @@ Releasing: bump `version` in `apps/desktop/package.json`, commit and push it on
 this repository's latest release and show "Update" beside their version number;
 they never download or install anything themselves.
 
+Microsoft Store: `pnpm release --store` on `main` builds
+`apps/desktop/release/Terra-Pulse-<version>.appx` to upload in Partner Center.
+The Store signs it and delivers its updates, so that build never checks GitHub.
+The privacy policy the Store listing links to is [PRIVACY.md](PRIVACY.md).
+
 ---
 
 Built by Todd Black.

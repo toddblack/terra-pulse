@@ -222,6 +222,28 @@ describe('createUpdateChecker', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
+  it('in the Store build, never asks GitHub and offers nothing to open', async () => {
+    vi.useFakeTimers();
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(release()));
+    const checker = createUpdateChecker({
+      currentVersion: '0.1.0',
+      channel: 'store',
+      userAgent: 'TerraPulse/0.1.0',
+      readState: () => null,
+      writeState: () => undefined,
+      fetchImpl,
+    });
+
+    expect(checker.status()).toMatchObject({ channel: 'store', state: 'store', enabled: false });
+    checker.schedule(10, 10);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await checker.check();
+    checker.setEnabled(true);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(checker.releaseUrl()).toBeNull();
+    expect(checker.status().state).toBe('store');
+  });
+
   it('pushes each change of state', async () => {
     const { checker, pushes } = setUp(vi.fn().mockResolvedValue(jsonResponse(release())));
     await checker.check();

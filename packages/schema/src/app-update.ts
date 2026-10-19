@@ -21,7 +21,18 @@ export interface ReleaseInfo {
   publishedUtc: string | null;
 }
 
+/**
+ * Where this copy gets its updates.
+ *
+ * `store` is the Microsoft Store build: the Store installs updates itself, and
+ * pointing its users at a GitHub download would route them around the channel
+ * they installed from — so that build never asks GitHub at all.
+ */
+export type UpdateChannel = 'github' | 'store';
+
 export type UpdateCheckState =
+  /** The Store build. Nothing is asked; the Store delivers updates. */
+  | 'store'
   /** The reader switched the check off. Nothing is asked. */
   | 'off'
   /** On, but no check has run yet this session (dev builds wait to be asked). */
@@ -34,6 +45,7 @@ export type UpdateCheckState =
 export interface UpdateStatus {
   /** The running app's version. */
   currentVersion: string;
+  channel: UpdateChannel;
   enabled: boolean;
   state: UpdateCheckState;
   /** The newest published release, when the last check found one. */

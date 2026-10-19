@@ -6,6 +6,7 @@ const NOW = Date.parse('2026-11-02T00:10:00Z');
 
 const base: UpdateStatus = {
   currentVersion: '0.1.0',
+  channel: 'github',
   enabled: true,
   state: 'up-to-date',
   latest: null,
@@ -34,6 +35,12 @@ describe('updateSummary', () => {
     );
     expect(updateSummary({ ...base, state: 'failed', detail: 'Could not reach GitHub.' }, NOW)).toBe(
       'Could not check: Could not reach GitHub · checked 10m ago',
+    );
+  });
+
+  it('sends the Store build to the Store', () => {
+    expect(updateSummary({ ...base, channel: 'store', state: 'store', enabled: false, checkedAtUtc: null }, NOW)).toBe(
+      'Updates come through the Microsoft Store.',
     );
   });
 
