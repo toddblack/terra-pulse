@@ -1313,6 +1313,13 @@ Local-first architecture removes most of the attack surface:
   token passed in its environment. A packaged build never adopts an engine it
   did not start and takes a free port rather than 8787. Added 2026-10-19;
   before that, a page could start analysis runs.
+- **Updates: notify only, until builds are signed.** Installed copies ask
+  GitHub for this repository's latest release (at launch, then daily) and show
+  "Update" beside the version number in the lower right; the reader installs
+  it. Full auto-update (electron-updater) waits for code signing: unsigned, its
+  integrity check comes from the same release as the installer, so a
+  compromised GitHub account could push to every install unseen. The check can
+  be switched off in the About panel. Added 2026-10-19, with `pnpm release`.
 - **Input validation** on all ingested data before it reaches SQLite —
   parameterized queries only
 - **Dependency auditing** in CI

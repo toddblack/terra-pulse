@@ -1,0 +1,132 @@
+/* The lower-right corner, in the 3rem strip under the legend that both side
+   columns leave clear (`App.module.css`). Vertically centred in that strip:
+   the column ends 3rem up, so ~0.9rem keeps a gap above and below. */
+.root {
+  position: absolute;
+  right: 1rem;
+  bottom: 0.85rem;
+  z-index: 10;
+}
+
+/* A small pill like the other panels, so it stays legible over a light
+   basemap as well as over space. */
+.label,
+.labelNotice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border: none;
+  border-radius: 0.35rem;
+  background-color: rgb(15 23 42 / 80%);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+/* Quiet: it is information, and only rarely an action. */
+.label {
+  color: rgb(148 163 184);
+}
+
+.labelNotice {
+  color: rgb(125 211 252);
+  font-weight: 500;
+}
+
+.label:hover,
+.labelNotice:hover {
+  background-color: rgb(30 41 59 / 90%);
+  color: rgb(226 232 240);
+}
+
+.dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background-color: rgb(56 189 248);
+}
+
+/* Opens upward from the corner, right edges aligned, over the legend. */
+.panel {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  right: 0;
+  width: 17rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 95%);
+  box-shadow: 0 8px 16px -4px rgb(0 0 0 / 45%);
+  color: rgb(203 213 225);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.title {
+  color: rgb(226 232 240);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.summary {
+  margin-top: 0.2rem;
+  color: rgb(148 163 184);
+}
+
+.actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.6rem;
+}
+
+.primary,
+.secondary {
+  padding: 0.3rem 0.7rem;
+  border-radius: 0.35rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+/* The mode switch's active language: cyan text on a cyan tint. */
+.primary {
+  border: 1px solid rgb(56 189 248 / 45%);
+  background-color: rgb(56 189 248 / 18%);
+  color: rgb(125 211 252);
+}
+
+.primary:hover {
+  background-color: rgb(56 189 248 / 28%);
+}
+
+.secondary {
+  border: 1px solid rgb(71 85 105);
+  background-color: transparent;
+  color: rgb(203 213 225);
+}
+
+.secondary:hover:not(:disabled) {
+  background-color: rgb(30 41 59);
+}
+
+.secondary:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgb(51 65 85 / 70%);
+  color: rgb(226 232 240);
+  cursor: pointer;
+}
+
+.note {
+  margin: 0.35rem 0 0;
+  color: rgb(100 116 139);
+  font-size: 0.6875rem;
+}
