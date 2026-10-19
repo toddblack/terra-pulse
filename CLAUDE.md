@@ -4827,6 +4827,59 @@ engine on 127.0.0.1:8787" in the Phase 4 entry for packaged builds.
   signing, the renderer sandbox is off (ESM preload), then fuzzing the
   network-facing parsers.
 
+## Update check — notify only. 2026-10-19, branch `update-check`.
+
+The second item from that review. **The user chose notify-only over full
+auto-update**, on the recommendation: unsigned, electron-updater's sha512
+comes from the same release as the installer, so a compromised GitHub account
+could push to every install unseen. Full auto-update is the plan once builds
+are signed, and it reads the same releases.
+
+- **Why it has to ship in the first release:** a copy without the check can
+  never be told about a newer one. The app was `0.0.0` with no releases; it is
+  `0.1.0` now, and nothing has been published.
+- **`main/update-check.ts`** asks
+  `api.github.com/repos/toddblack/terra-pulse/releases/latest` 15 s after
+  launch, then daily — **packaged builds only**; dev waits for "Check now", so
+  `pnpm dev` restarts don't spend GitHub's 60 unauthenticated requests an
+  hour. 404 (no release yet) is "up to date", 403 is almost always that rate
+  limit, and every failure is a line in the panel, never an error.
+- **The release URL is validated before it is kept** (`isReleasePage`): https,
+  re-serialised and prefix-matched to this repo's `/releases/tag/`, no query
+  or fragment — so `github.com.evil.example`, `..` climbing and
+  `?download=evil.exe` all fail. **The renderer never supplies a URL**:
+  `update:open-release` opens main's own copy, so github.com did not need
+  adding to the external-link allowlist.
+- **Tags are strict `x.y.z`** (`parseVersion`, schema). A lenient parse would
+  make "newer" mean something nobody decided.
+- **The version label sits in the lower-right corner, under the legend** —
+  the user moved it there from the mode switch on seeing it ("I don't like it
+  smashed in with the top nav buttons"). It uses the 3rem strip the side
+  columns leave clear; Cesium's credits occupy only the bottom-*left* of that
+  strip (measured x 5-453 px of 1584). Mounted in `App`, so it shows in Analyze.
+  "Update" + a cyan dot when a newer release waits; the panel above it has
+  Get / Not now / Check now and the on/off switch.
+- **State in `app_state`**: `update_check_enabled` ('0' = off, absent = on)
+  and `update_dismissed_version`. Off means no request at all — verified, zero
+  requests across a restart. An answer landing after a switch-off is dropped.
+- **`pnpm release`** (`scripts/release.mjs`): refuses unless on a clean `main`
+  equal to `origin/main` with an unused tag; builds the engine bundle and the
+  installer; puts the installer's SHA-256 and the SmartScreen steps in the
+  notes; uploads installer + `.blockmap` (unused until a signed auto-updater
+  can do differential downloads, and needed on every release for that).
+  **Publishes only with `--publish`** — creating a release is the user's call.
+- **Verified in a built instance:** the real GitHub answered 404 and the panel
+  said "No release has been published yet"; against a one-off build pointed at
+  a local fake serving v0.2.0, the label turned to "Update", Not now quieted it
+  and persisted, the switch persisted across a restart with zero requests, and
+  re-enabling checked at once and stayed quiet for the dismissed version. The
+  fake URL was in one build only and the source was restored before
+  rebuilding; `out/` was checked to hold the real URL.
+- **Found on the way, not fixed:** the app sets no `font-family` anywhere, so
+  panel text renders in Chromium's default **Times New Roman** while buttons get
+  Arial from the UA stylesheet — 76 serif and 60 Arial text elements counted
+  on one screen. The new panel matches what is there.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

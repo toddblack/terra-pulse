@@ -38,6 +38,7 @@ import type {
   WaveformStationCatalogue,
   WaveformStreamStatus,
   WatchPin,
+  UpdateStatus,
 } from '@terra-pulse/schema';
 
 export {};
@@ -139,6 +140,16 @@ declare global {
         start(request: QuakeReplayRequest): Promise<QuakeReplay>;
         cancel(): Promise<void>;
         onProgress(callback: (progress: QuakeReplayProgress) => void): () => void;
+      };
+      /** Whether GitHub has a newer release. Notify only; main holds the answer. */
+      updates: {
+        status(): Promise<UpdateStatus>;
+        check(): Promise<UpdateStatus>;
+        setEnabled(enabled: boolean): Promise<UpdateStatus>;
+        dismiss(version: string): Promise<UpdateStatus>;
+        /** Opens the release page main validated. False when there is none. */
+        openRelease(): Promise<boolean>;
+        onStatus(callback: (status: UpdateStatus) => void): () => void;
       };
       /** The live watch (§5.13): one pin, watched by main while the app is open. */
       quakeWatch: {

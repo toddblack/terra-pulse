@@ -4,6 +4,8 @@ import { ExploreShell } from './ExploreShell';
 import { AnalyzeShell } from './analyze/AnalyzeShell';
 import { ModeSwitch } from './panels/ModeSwitch';
 import { useAppModeStore, type AppMode } from './state/useAppModeStore';
+import { AboutButton } from './updates/AboutButton';
+import { useUpdateSync } from './updates/useUpdateSync';
 import { useQuakeWatchSync } from './watch/useQuakeWatchSync';
 import { WatchAlertBanner } from './watch/WatchAlertBanner';
 import styles from './App.module.css';
@@ -35,12 +37,15 @@ export default function App() {
   // The live watch runs in main whatever the mode, so its status and alerts are
   // followed here, above both shells — an alert must reach someone in Analyze.
   useQuakeWatchSync();
+  // The version label sits in the lower right in both modes, so it is followed here.
+  useUpdateSync();
 
   return (
     <div id="app-shell" className={styles.appShell}>
       <CesiumViewer />
       <Shell />
       <ModeSwitch />
+      <AboutButton />
       <WatchAlertBanner />
     </div>
   );

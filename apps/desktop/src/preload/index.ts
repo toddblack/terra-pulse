@@ -29,6 +29,7 @@ import type {
   QuakeReplayRequest,
   QuakeWatchAlert,
   QuakeWatchStatus,
+  UpdateStatus,
   RegionalRecurrence,
   SolarFlare,
   WaveformChannel,
@@ -405,6 +406,27 @@ contextBridge.exposeInMainWorld('terraPulse', {
       ipcRenderer.on('quake-replay:progress', listener);
       return () => {
         ipcRenderer.removeListener('quake-replay:progress', listener);
+      };
+    },
+  },
+  /**
+   * Is there a newer release? Main asks GitHub and holds the answer; this
+   * reads it, flips the switch, and asks main to open the release page it
+   * validated — the renderer never hands over a URL.
+   */
+  updates: {
+    status: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:status'),
+    check: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check'),
+    setEnabled: (enabled: boolean): Promise<UpdateStatus> => ipcRenderer.invoke('update:set-enabled', enabled),
+    dismiss: (version: string): Promise<UpdateStatus> => ipcRenderer.invoke('update:dismiss', version),
+    openRelease: (): Promise<boolean> => ipcRenderer.invoke('update:open-release'),
+    onStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
+      const listener = (_event: unknown, status: UpdateStatus) => {
+        callback(status);
+      };
+      ipcRenderer.on('update:status-changed', listener);
+      return () => {
+        ipcRenderer.removeListener('update:status-changed', listener);
       };
     },
   },
