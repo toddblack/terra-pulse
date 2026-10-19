@@ -39,14 +39,32 @@ yourself (optionally with `uvicorn terra_pulse_engine.api.main:app --reload`
 for autoreload during development), then start the desktop app normally. If
 nothing answers on that port, main spawns the engine itself instead;
 see `apps/desktop/src/main/ipc/analysis.ts` for the exact adopt-or-spawn
-logic and the `TERRA_PULSE_PYTHON` / `TERRA_PULSE_ENGINE_PORT` overrides it
-reads.
+logic and the `TERRA_PULSE_PYTHON` / `TERRA_PULSE_ENGINE_BIN` overrides it
+reads. **A packaged build never adopts** and spawns its bundled engine on
+whatever port is free.
 
 `GET /health` is the quickest way to check it's up:
 
 ```
 curl http://127.0.0.1:8787/health
 ```
+
+## Who may call it
+
+Only Electron main. `terra_pulse_engine/api/guard.py` refuses:
+
+- any request with an `Origin` header — browsers always send one on a POST,
+  main's `fetch` never does;
+- a Host other than `127.0.0.1` / `localhost` / `::1` (DNS rebinding);
+- a POST that is not `application/json`;
+- when `TERRA_PULSE_ENGINE_TOKEN` is set, any request whose
+  `X-Terra-Pulse-Token` header does not match it.
+
+Main sets that token to fresh random bytes at every launch and passes it in
+the environment of the engine it spawns. An engine started by hand has no
+token, so `curl` above works; a spawned one answers `curl` with 401. To poke a
+spawned engine by hand, start one yourself with the variable set and send the
+header.
 
 ## Test
 

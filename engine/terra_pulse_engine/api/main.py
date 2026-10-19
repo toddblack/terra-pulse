@@ -3,7 +3,8 @@
 Electron main adopts (if one is already running — the normal dev loop) or
 spawns this process; see apps/desktop/src/main/ipc/analysis.ts. Bound to
 127.0.0.1 only by __main__.py's default — this is never meant to be reachable
-off the local machine.
+off the local machine. Being local is not enough on its own: `guard.py`
+refuses browsers and, when main supplied one, anyone without its token.
 """
 
 from __future__ import annotations
@@ -16,11 +17,18 @@ from pydantic import ValidationError
 
 from terra_pulse_engine.api.contracts import AnalysisResult, HealthResponse, HypothesisSummary
 from terra_pulse_engine.api.errors import unhandled_exception_handler
+from terra_pulse_engine.api.guard import make_guard, token_from_environment
 from terra_pulse_engine.hypotheses import REGISTRY
 from terra_pulse_engine.version import CONTRACT_VERSION, ENGINE_VERSION
 
-app = FastAPI(title="Terra Pulse Statistical Engine")
+# No interactive docs: nothing here is meant to be browsed, and the guard would
+# refuse a browser anyway.
+app = FastAPI(title="Terra Pulse Statistical Engine", docs_url=None, redoc_url=None, openapi_url=None)
 app.add_exception_handler(Exception, unhandled_exception_handler)
+
+# Read once at startup; tests replace it on `app.state`.
+app.state.engine_token = token_from_environment()
+app.middleware("http")(make_guard(lambda: app.state.engine_token))
 
 
 @app.get("/health", response_model=HealthResponse)

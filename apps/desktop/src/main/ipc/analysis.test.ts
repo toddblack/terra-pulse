@@ -14,6 +14,7 @@ import { CONTRACT_VERSION } from '@terra-pulse/schema';
 import type { CmeArrival, EarthquakeEvent, FlareClass, SolarFlare } from '@terra-pulse/schema';
 import {
   createEngineController,
+  findFreePort,
   registerAnalysisIpcHandlers,
   resolveEngineCommand,
   resolvePythonInterpreter,
@@ -592,5 +593,168 @@ describe('registerAnalysisIpcHandlers', () => {
     postJson.mockClear();
     await handlerFor('analysis:run')(undefined, 'H1b');
     expect((postJson.mock.calls[0] as [string, Record<string, unknown>])[1]['flareCoverageComplete']).toBe(true);
+  });
+});
+
+describe('createEngineController access', () => {
+  /** The header a fetch call carried, whatever shape `init.headers` took. */
+  function tokenSent(call: unknown[]): string | null {
+    const init = call[1] as RequestInit | undefined;
+    return new Headers(init?.headers).get('X-Terra-Pulse-Token');
+  }
+
+  /** A spawn that becomes healthy, recording what it was launched with. */
+  function healthyAfterSpawn() {
+    let spawned = false;
+    const fetchImpl = vi.fn().mockImplementation(() =>
+      spawned ? Promise.resolve(jsonResponse(healthBody())) : Promise.reject(new Error('ECONNREFUSED')),
+    );
+    const spawnImpl = vi.fn().mockImplementation(() => {
+      spawned = true;
+      return makeFakeChild();
+    });
+    return { fetchImpl, spawnImpl };
+  }
+
+  it('gives a spawned engine its token in the environment, never on the command line', async () => {
+    const { fetchImpl, spawnImpl } = healthyAfterSpawn();
+    const controller = createEngineController({
+      engineDir: '/engine',
+      token: 'tok-123',
+      env: { PATH: '/bin' },
+      fetchImpl,
+      spawnImpl,
+      ...FAST_TIMEOUTS,
+    });
+    await vi.waitFor(() => {
+      expect(controller.status().state).toBe('ready');
+    });
+
+    const [, args, spawnOptions] = spawnImpl.mock.calls[0] as [string, string[], { env: NodeJS.ProcessEnv }];
+    expect(spawnOptions.env['TERRA_PULSE_ENGINE_TOKEN']).toBe('tok-123');
+    expect(spawnOptions.env['PATH']).toBe('/bin'); // the rest of the environment survives
+    expect(args.join(' ')).not.toContain('tok-123');
+  });
+
+  it('sends the token on every request, probes included', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(healthBody()));
+    const controller = createEngineController({
+      engineDir: '/engine',
+      token: 'tok-123',
+      fetchImpl,
+      spawnImpl: vi.fn(),
+      ...FAST_TIMEOUTS,
+    });
+    await vi.waitFor(() => {
+      expect(controller.status().state).toBe('ready');
+    });
+    await controller.getJson('/v1/hypotheses');
+    await controller.postJson('/v1/analysis/run', { hypothesisId: 'H4c' });
+
+    expect(fetchImpl.mock.calls.length).toBe(3);
+    for (const call of fetchImpl.mock.calls) expect(tokenSent(call)).toBe('tok-123');
+    // The POST keeps its content type alongside the token.
+    const postInit = fetchImpl.mock.calls[2]?.[1] as RequestInit;
+    expect(new Headers(postInit.headers).get('Content-Type')).toBe('application/json');
+  });
+
+  it('makes a different token for each controller when none is given', async () => {
+    const tokens: (string | null)[] = [];
+    for (let i = 0; i < 2; i++) {
+      const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(healthBody()));
+      const controller = createEngineController({ engineDir: '/engine', fetchImpl, spawnImpl: vi.fn(), ...FAST_TIMEOUTS });
+      await vi.waitFor(() => {
+        expect(controller.status().state).toBe('ready');
+      });
+      tokens.push(tokenSent(fetchImpl.mock.calls[0] as unknown[]));
+    }
+    expect(tokens[0]).toMatch(/^[A-Za-z0-9_-]{43}$/); // 32 random bytes
+    expect(tokens[0]).not.toBe(tokens[1]);
+  });
+
+  it('with adoption off, spawns its own engine even when one already answers', async () => {
+    // A packaged build: whatever holds the port, the app talks to an engine it started.
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(healthBody()));
+    const spawnImpl = vi.fn().mockReturnValue(makeFakeChild());
+    const controller = createEngineController({
+      engineDir: '/engine',
+      allowAdopt: false,
+      fetchImpl,
+      spawnImpl,
+      ...FAST_TIMEOUTS,
+    });
+    await vi.waitFor(() => {
+      expect(controller.status().state).toBe('ready');
+    });
+
+    expect(spawnImpl).toHaveBeenCalledTimes(1);
+    expect(controller.status()).toMatchObject({ adopted: false });
+  });
+
+  it("with port 'auto', spawns on the port it was given and talks to it there", async () => {
+    const { fetchImpl, spawnImpl } = healthyAfterSpawn();
+    const controller = createEngineController({
+      engineDir: '/engine',
+      port: 'auto',
+      allowAdopt: false,
+      findPort: () => Promise.resolve(54321),
+      fetchImpl,
+      spawnImpl,
+      ...FAST_TIMEOUTS,
+    });
+    await vi.waitFor(() => {
+      expect(controller.status().state).toBe('ready');
+    });
+
+    const [, args] = spawnImpl.mock.calls[0] as [string, string[]];
+    expect(args.slice(-2)).toEqual(['--port', '54321']);
+    for (const call of fetchImpl.mock.calls) expect(String(call[0])).toContain('127.0.0.1:54321/');
+  });
+
+  it('reports port-conflict when no free port can be found', async () => {
+    const spawnImpl = vi.fn();
+    const controller = createEngineController({
+      engineDir: '/engine',
+      port: 'auto',
+      findPort: () => Promise.reject(new Error('EACCES')),
+      fetchImpl: vi.fn(),
+      spawnImpl,
+      ...FAST_TIMEOUTS,
+    });
+    await vi.waitFor(() => {
+      expect(controller.status().state).toBe('unavailable');
+    });
+
+    expect(controller.status()).toMatchObject({ reason: 'port-conflict' });
+    expect(spawnImpl).not.toHaveBeenCalled();
+  });
+
+  it('reports port-conflict, not a slow start timeout, when the port holds an engine wanting another token', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({ detail: 'missing or wrong engine token' }, 401));
+    const spawnImpl = vi.fn();
+    const controller = createEngineController({ engineDir: '/engine', fetchImpl, spawnImpl, ...FAST_TIMEOUTS });
+    await vi.waitFor(() => {
+      expect(controller.status().state).toBe('unavailable');
+    });
+
+    expect(controller.status()).toMatchObject({ reason: 'port-conflict' });
+    expect(spawnImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('findFreePort', () => {
+  it('returns a port that can actually be bound', async () => {
+    const port = await findFreePort('127.0.0.1');
+    expect(port).toBeGreaterThan(0);
+    const { createServer } = await import('node:net');
+    await new Promise<void>((resolve, reject) => {
+      const server = createServer();
+      server.once('error', reject);
+      server.listen(port, '127.0.0.1', () => {
+        server.close(() => {
+          resolve();
+        });
+      });
+    });
   });
 });

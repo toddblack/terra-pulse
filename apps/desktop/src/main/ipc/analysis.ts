@@ -1,5 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { dirname, join } from 'node:path';
 import { ipcMain } from 'electron';
 import type { DatabaseSync } from 'node:sqlite';
@@ -105,9 +107,41 @@ import { querySpaceWeather } from '@terra-pulse/db';
  */
 const CATALOG_QUERY_START_UTC = `${String(ARCHIVE_START_YEAR)}-01-01T00:00:00.000Z`;
 
-/** Fixed rather than ephemeral: adopt-if-running needs a port both sides agree on ahead of time. */
+/**
+ * Fixed in dev: adopt-if-running needs a port both sides agree on ahead of
+ * time. A packaged build adopts nothing and asks for `'auto'` instead.
+ */
 const DEFAULT_PORT = 8787;
 const DEFAULT_HOST = '127.0.0.1';
+
+/**
+ * The per-launch secret, carried on every request to the engine.
+ *
+ * The engine is an HTTP server on 127.0.0.1, which every program on the
+ * machine can reach — including other user accounts. The token, passed only
+ * in the environment of the engine main spawns, is what makes "main" the one
+ * caller it answers. Browsers are refused separately, by headers no page can
+ * avoid sending (`engine/terra_pulse_engine/api/guard.py`).
+ */
+const TOKEN_ENV = 'TERRA_PULSE_ENGINE_TOKEN';
+const TOKEN_HEADER = 'X-Terra-Pulse-Token';
+
+/** A port the OS says is free right now, for a packaged build's engine. */
+export function findFreePort(host: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once('error', reject);
+    server.listen(0, host, () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address !== null ? address.port : 0;
+      server.close(() => {
+        if (port > 0) resolve(port);
+        else reject(new Error('the OS offered no port'));
+      });
+    });
+  });
+}
 
 /** How long a single /health probe is allowed before it counts as "nobody's there". */
 const HEALTH_PROBE_TIMEOUT_MS = 500;
@@ -220,19 +254,34 @@ export function resolveEngineCommand(
   };
 }
 
+/**
+ * What answered on the port: an engine that let us in, one that wants a token
+ * we do not have, or nothing usable.
+ *
+ * `locked` is its own answer because the alternative is wrong in a confusing
+ * way: read as "nobody there", main would spawn onto an occupied port and
+ * report a start timeout fifteen seconds later.
+ */
+type HealthProbe = { kind: 'ok'; health: HealthResponse } | { kind: 'locked' } | null;
+
 async function probeHealth(
   baseUrl: string,
   fetchImpl: typeof fetch,
   timeoutMs: number,
-): Promise<HealthResponse | null> {
+  token: string,
+): Promise<HealthProbe> {
   const controller = new AbortController();
   const timeout = setTimeout(() => {
     controller.abort();
   }, timeoutMs);
   try {
-    const response = await fetchImpl(`${baseUrl}/health`, { signal: controller.signal });
+    const response = await fetchImpl(`${baseUrl}/health`, {
+      headers: { [TOKEN_HEADER]: token },
+      signal: controller.signal,
+    });
+    if (response.status === 401) return { kind: 'locked' };
     if (!response.ok) return null;
-    return (await response.json()) as HealthResponse;
+    return { kind: 'ok', health: (await response.json()) as HealthResponse };
   } catch {
     return null;
   } finally {
@@ -267,7 +316,18 @@ export interface EngineControllerOptions {
    */
   bundledEngineDir?: string;
   host?: string;
-  port?: number;
+  /** A fixed port, or `'auto'` for whatever the OS has free at launch. */
+  port?: number | 'auto';
+  /**
+   * Whether an engine already on the port may be used. True for the dev loop
+   * (`pnpm engine:dev` in a second terminal). A packaged build passes false:
+   * it has no reason to talk to an engine it did not start, and nothing it
+   * did not start holds its token.
+   */
+  allowAdopt?: boolean;
+  /** Overridable for tests; otherwise fresh random bytes per controller. */
+  token?: string;
+  findPort?: (host: string) => Promise<number>;
   platform?: NodeJS.Platform;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
@@ -286,7 +346,12 @@ export interface EngineControllerOptions {
  * matching contract version, adopt it — this is the normal dev loop, where
  * the engine is run by hand (`pnpm engine:dev`, or `uvicorn --reload`) in a
  * second terminal. Otherwise spawn `python -m terra_pulse_engine` and poll
- * `/health` until it answers or `START_TIMEOUT_MS` elapses.
+ * `/health` until it answers or `START_TIMEOUT_MS` elapses. With
+ * `allowAdopt: false` (packaged) the probe is skipped and it always spawns.
+ *
+ * Every request carries the token; a spawned engine is given it in its
+ * environment and refuses anything without it. A hand-started engine has no
+ * token and ignores the header.
  *
  * Failure is always a status, never a thrown error or a crashed app —
  * matching this app's posture toward every other optional local
@@ -295,12 +360,18 @@ export interface EngineControllerOptions {
  */
 export function createEngineController(options: EngineControllerOptions): EngineController {
   const host = options.host ?? DEFAULT_HOST;
-  const port = options.port ?? DEFAULT_PORT;
+  const requestedPort = options.port ?? DEFAULT_PORT;
+  const allowAdopt = options.allowAdopt ?? true;
+  const token = options.token ?? randomBytes(32).toString('base64url');
+  const findPort = options.findPort ?? findFreePort;
   const platform = options.platform ?? process.platform;
   const env = options.env ?? process.env;
   const fetchImpl = options.fetchImpl ?? fetch;
   const spawnImpl = options.spawnImpl ?? spawn;
-  const baseUrl = `http://${host}:${String(port)}`;
+  // Settled before the first request: `'auto'` is resolved in `initialize`,
+  // and nothing can reach `request` until status is ready.
+  let port = requestedPort === 'auto' ? 0 : requestedPort;
+  let baseUrl = `http://${host}:${String(port)}`;
   const startTimeoutMs = options.startTimeoutMs ?? START_TIMEOUT_MS;
   const healthPollIntervalMs = options.healthPollIntervalMs ?? HEALTH_POLL_INTERVAL_MS;
   const healthProbeTimeoutMs = options.healthProbeTimeoutMs ?? HEALTH_PROBE_TIMEOUT_MS;
@@ -322,8 +393,8 @@ export function createEngineController(options: EngineControllerOptions): Engine
 
   async function waitForHealth(deadlineMs: number): Promise<HealthResponse | null> {
     while (Date.now() < deadlineMs) {
-      const health = await probeHealth(baseUrl, fetchImpl, healthProbeTimeoutMs);
-      if (health) return health;
+      const probe = await probeHealth(baseUrl, fetchImpl, healthProbeTimeoutMs, token);
+      if (probe?.kind === 'ok') return probe.health;
       await delay(healthPollIntervalMs);
     }
     return null;
@@ -358,7 +429,14 @@ export function createEngineController(options: EngineControllerOptions): Engine
     const proc = spawnImpl(
       engineCommand.command,
       [...engineCommand.args, '--host', host, '--port', String(port)],
-      { cwd: engineCommand.cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+      {
+        cwd: engineCommand.cwd,
+        // In the environment, not on the command line: any process can read
+        // another's arguments, while its environment is private to its user.
+        env: { ...env, [TOKEN_ENV]: token },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      },
     );
     child = proc;
 
@@ -423,13 +501,36 @@ export function createEngineController(options: EngineControllerOptions): Engine
   }
 
   async function initialize(): Promise<void> {
-    const adoptedHealth = await probeHealth(baseUrl, fetchImpl, healthProbeTimeoutMs);
+    if (requestedPort === 'auto') {
+      try {
+        port = await findPort(host);
+      } catch (error: unknown) {
+        setStatus({ state: 'unavailable', reason: 'port-conflict', detail: trimmedDetail(error) });
+        return;
+      }
+      baseUrl = `http://${host}:${String(port)}`;
+      if (disposed) return;
+    }
+    if (!allowAdopt) {
+      await startSpawned();
+      return;
+    }
+
+    const probe = await probeHealth(baseUrl, fetchImpl, healthProbeTimeoutMs, token);
     if (disposed) return;
     // Anything answering at all means the port is occupied — report exactly
-    // why (ready, or a contract mismatch) rather than spawning on top of it,
-    // which could only ever collide.
-    if (adoptedHealth) {
-      evaluateHealth(adoptedHealth, true);
+    // why (ready, a contract mismatch, or locked) rather than spawning on top
+    // of it, which could only ever collide.
+    if (probe?.kind === 'locked') {
+      setStatus({
+        state: 'unavailable',
+        reason: 'port-conflict',
+        detail: `an engine on ${baseUrl} wants a token this app was not given — likely one started by another Terra Pulse window`,
+      });
+      return;
+    }
+    if (probe) {
+      evaluateHealth(probe.health, true);
       return;
     }
     await startSpawned();
@@ -447,7 +548,11 @@ export function createEngineController(options: EngineControllerOptions): Engine
       controller.abort();
     }, timeoutMs);
     try {
-      const response = await fetchImpl(`${baseUrl}${path}`, { ...init, signal: controller.signal });
+      const response = await fetchImpl(`${baseUrl}${path}`, {
+        ...init,
+        headers: { ...(init.headers as Record<string, string> | undefined), [TOKEN_HEADER]: token },
+        signal: controller.signal,
+      });
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { detail?: string } | null;
         return {
