@@ -1,4 +1,10 @@
-import { compareVersions, parseVersion, type ReleaseInfo, type UpdateStatus } from '@terra-pulse/schema';
+import {
+  compareVersions,
+  parseVersion,
+  type ReleaseInfo,
+  type UpdateChannel,
+  type UpdateStatus,
+} from '@terra-pulse/schema';
 
 /**
  * Asks GitHub whether a newer release exists. Notify only — see
@@ -80,6 +86,13 @@ export function isReleasePage(raw: string): boolean {
 
 export interface UpdateCheckerOptions {
   currentVersion: string;
+  /**
+   * `store` for the Microsoft Store build (`process.windowsStore`). That build
+   * never asks GitHub: the Store updates it, and a "Get 0.2.0" link to a GitHub
+   * installer would send Store users around the channel they chose — which
+   * Store policy also forbids. Defaults to `github`.
+   */
+  channel?: UpdateChannel;
   userAgent: string;
   readState: (key: string) => string | null;
   /** Null deletes the key. */
@@ -105,9 +118,13 @@ export interface UpdateChecker {
 export function createUpdateChecker(options: UpdateCheckerOptions): UpdateChecker {
   const fetchImpl = options.fetchImpl ?? fetch;
   const now = options.now ?? (() => new Date());
+  const channel = options.channel ?? 'github';
+
+  if (channel === 'store') return storeChecker(options.currentVersion);
 
   let status: UpdateStatus = {
     currentVersion: options.currentVersion,
+    channel,
     // Absent means on. The check is useful by default and the panel offers the
     // switch; a stored '0' is the reader having said no.
     enabled: options.readState(ENABLED_KEY) !== '0',
@@ -227,5 +244,32 @@ export function createUpdateChecker(options: UpdateCheckerOptions): UpdateChecke
       for (const timer of timers) clearTimeout(timer);
       timers.length = 0;
     },
+  };
+}
+
+/**
+ * The Store build's checker: a fixed status and nothing else. A separate
+ * object rather than flags threaded through the GitHub one, so there is no
+ * code path in it that could reach the network.
+ */
+function storeChecker(currentVersion: string): UpdateChecker {
+  const status: UpdateStatus = {
+    currentVersion,
+    channel: 'store',
+    enabled: false,
+    state: 'store',
+    latest: null,
+    checkedAtUtc: null,
+    dismissedVersion: null,
+    detail: null,
+  };
+  return {
+    status: () => status,
+    check: () => Promise.resolve(status),
+    setEnabled: () => status,
+    dismiss: () => status,
+    releaseUrl: () => null,
+    schedule: () => undefined,
+    dispose: () => undefined,
   };
 }

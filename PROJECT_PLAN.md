@@ -1320,6 +1320,11 @@ Local-first architecture removes most of the attack surface:
   integrity check comes from the same release as the installer, so a
   compromised GitHub account could push to every install unseen. The check can
   be switched off in the About panel. Added 2026-10-19, with `pnpm release`.
+- **Signing: through the Microsoft Store, for free.** Chosen over paid
+  certificates on cost (2026-10-19). The Store build (`pnpm release --store`)
+  is signed by Microsoft, shows no SmartScreen warning, is updated by the
+  Store, and never runs the GitHub update check. The GitHub installer stays
+  unsigned as the alternative. Privacy policy: `PRIVACY.md`.
 - **Input validation** on all ingested data before it reaches SQLite —
   parameterized queries only
 - **Dependency auditing** in CI

@@ -78,6 +78,37 @@ nsis:
   # is still "Terra Pulse"; this is only the download's name.
   artifactName: Terra-Pulse-Setup-${version}.${ext}
 
+# The Microsoft Store build — `pnpm --filter @terra-pulse/desktop package:store`,
+# which asks for the appx target instead of NSIS. Free to publish since 2025,
+# and the Store signs the package itself, so this build carries no certificate:
+# no SmartScreen warning, and updates arrive through the Store.
+#
+# **identityName and publisher are placeholders until the app name is reserved
+# in Partner Center**, which issues the real values (Product management →
+# Product identity: Package/Identity/Name and Package/Identity/Publisher). A
+# package with the wrong identity is rejected at upload, so they must be copied
+# exactly. publisherDisplayName must match the Partner Center account's
+# display name.
+#
+# Tiles come from build/appx/, made from the icon by
+# scripts/make-appx-assets.ps1; backgroundColor is the icon's own background
+# as that script samples it, so the tiles read as one piece.
+#
+# The version becomes x.y.z.0 — the Store requires the fourth part to be 0, and
+# each submission must carry a higher version than the last.
+appx:
+  identityName: TerraPulse.Placeholder
+  publisher: CN=00000000-0000-0000-0000-000000000000
+  publisherDisplayName: Todd Black
+  applicationId: TerraPulse
+  displayName: Terra Pulse
+  backgroundColor: '#070d16'
+  languages: [en-US]
+  # Windows 10 2004 and later; the newest build it was tested on.
+  minVersion: 10.0.19041.0
+  maxVersionTested: 10.0.26100.0
+  artifactName: Terra-Pulse-${version}.${ext}
+
 # Unsigned. Windows SmartScreen will warn on first run ("Windows protected your
 # PC" → More info → Run anyway), which is expected for a build without a code
 # signing certificate. Signing needs a paid certificate and is a distribution
