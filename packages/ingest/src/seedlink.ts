@@ -211,25 +211,69 @@ export async function fetchRingInventory(
  * streams (`type="D"`) — the others are logs, events and calibrations, which
  * no row or detector can use.
  *
- * Attribute order is not relied on: each element is matched whole, then its
+ * Attribute order is not relied on: each element is found whole, then its
  * attributes read by name.
+ *
+ * **A forward scan, not a regex over the document, and that is load-bearing.**
+ * It was `matchAll(/<station\b([^>]*)>([\s\S]*?)<\/station>/g)`, and found by
+ * fuzzing: a reply that opens elements and never closes them makes every
+ * opening scan to the end of the text. Measured, 1.2 MB of `<station ` took
+ * **52 s**, quadrupling with each doubling — and this runs on the main
+ * process, whose reader accepts 16 MB, so a hostile or broken server (or
+ * anyone on the unencrypted connection) could freeze the app for hours. Each
+ * `indexOf` below starts where the last stopped, so the whole parse is one
+ * pass, and a missing close ends it: nothing later could close either.
  */
 export function parseInfoStreams(xml: string): Set<string> {
   const ids = new Set<string>();
-  for (const stationMatch of xml.matchAll(/<station\b([^>]*)>([\s\S]*?)<\/station>/g)) {
-    const stationAttrs = stationMatch[1] ?? '';
+  let at = 0;
+  for (;;) {
+    const open = xml.indexOf('<station', at);
+    if (open === -1) break;
+    // `<stations…` is another element; the regex's `\b` excluded it too.
+    if (/\w/.test(xml.charAt(open + 8))) {
+      at = open + 8;
+      continue;
+    }
+    const tagEnd = xml.indexOf('>', open);
+    if (tagEnd === -1) break;
+    const close = xml.indexOf('</station>', tagEnd);
+    if (close === -1) break;
+
+    const stationAttrs = xml.slice(open + 8, tagEnd);
     const network = /\bnetwork="([^"]*)"/.exec(stationAttrs)?.[1] ?? '';
     const station = /\bname="([^"]*)"/.exec(stationAttrs)?.[1] ?? '';
-    for (const streamMatch of (stationMatch[2] ?? '').matchAll(/<stream\b([^>]*)\/?>/g)) {
-      const attrs = streamMatch[1] ?? '';
+    for (const attrs of streamElements(xml.slice(tagEnd + 1, close))) {
       if ((/\btype="([^"]*)"/.exec(attrs)?.[1] ?? 'D') !== 'D') continue;
       const location = (/\blocation="([^"]*)"/.exec(attrs)?.[1] ?? '').trim();
       const channel = /\bseedname="([^"]*)"/.exec(attrs)?.[1] ?? '';
       if (network === '' || station === '' || channel === '') continue;
       ids.add(channelIdOf({ network, station, location, channel }));
     }
+    at = close + '</station>'.length;
   }
   return ids;
+}
+
+/** The attribute text of each `<stream …>` in a station's body, in one forward pass. */
+function streamElements(body: string): string[] {
+  const elements: string[] = [];
+  let at = 0;
+  for (;;) {
+    const open = body.indexOf('<stream', at);
+    if (open === -1) break;
+    if (/\w/.test(body.charAt(open + 7))) {
+      at = open + 7;
+      continue;
+    }
+    const tagEnd = body.indexOf('>', open);
+    if (tagEnd === -1) break;
+    // A self-closing `/>` leaves its slash on the attributes, as the regex's
+    // greedy `[^>]*` did; no attribute read cares.
+    elements.push(body.slice(open + 7, tagEnd));
+    at = tagEnd + 1;
+  }
+  return elements;
 }
 
 /** `INFO STREAMS` from GeoNet is ~300 KB; this bounds a stall, not a slow link. */
