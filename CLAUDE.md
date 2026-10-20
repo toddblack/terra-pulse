@@ -5005,6 +5005,67 @@ matrix only `h6.py`'s copy changed.
   — nothing outside `engine/` references the file. Left as is; worth adding
   if the contract ever changes shape.
 
+## 0.1.2: falling back off the graphics card. 2026-10-20, branch `graphics-fallback`.
+
+**The Store failed 0.1.0 on certification** (policy 10.1.2.10): on Windows 11
+Enterprise build 29691, launch stopped on Cesium's "Fragment shader failed to
+compile. Compile log:" modal, and after OK the globe stayed blank for good.
+The report carried two screenshots and nothing else: no GPU, no shader.
+
+- **It could not be reproduced, and the attempt ruled things out.** The same
+  build draws correctly here on the Intel GPU, on WARP (`--use-angle=d3d11-warp`)
+  and on SwiftShader (`--use-angle=swiftshader`). A forced context loss fails
+  *differently*: Cesium reports "Expected width to be greater than 0", and
+  WebGL's log on a lost context is `null`, which Cesium would print as
+  "Compile log: null". The reviewer's log was **empty**, so their driver
+  refused a real shader without saying why. That cannot be fixed by changing
+  one shader; the fix is a way off the driver.
+- **The ladder: hardware → WARP → SwiftShader**, one step per failure, saved in
+  `<userData>/graphics.json` and applied as `--use-angle` before `ready`.
+  Measured dragging the globe: **hardware 43 fps, WARP 8, SwiftShader 3.** WARP
+  first because it is usable; SwiftShader last because it ships inside Electron
+  and behaves the same on every Windows build — a GPU-less review VM may well
+  have *been* on WARP when it failed. Off Windows, hardware goes straight to
+  SwiftShader. After SwiftShader there is nowhere to go, so the app stays and
+  says so; that is also what makes a restart loop impossible.
+- **A file, not `app_state`**: a Chromium switch must be set before `ready`,
+  and the database opens after it. Parsed strictly and failing toward hardware
+  (`graphicsStatusFrom`), so a damaged file cannot strand anyone in software.
+- **The choice is per app version.** An update brings a new Chromium and ANGLE
+  that may draw where the old one could not, so it tries the card again. The
+  About panel also has "Restart on the graphics card" — needed because **a lost
+  context counts as a failure** (Cesium cannot recover from one, and restarting
+  in the same mode could loop), so a one-off GPU reset moves someone to WARP.
+- **Only graphics failures move the app** (`isGraphicsFailure`): Cesium's
+  `RuntimeError` for a shader compile, a program link or WebGL. Our own bugs
+  still get Cesium's panel, unchanged; otherwise a broken layer would quietly
+  put every reader into slow software rendering.
+- **It intercepts `showErrorPanel`, not `renderError`.** Cesium stops by two
+  paths: `scene.renderError`, and a `catch` in the widget's render loop that
+  raises no event. Both call `showErrorPanel`. The first version turned
+  `showRenderLoopErrors` off and listened to the event, which would have
+  stopped the globe *silently* on the second path — caught reading Cesium's
+  source while testing, not by a test.
+- **The viewer is built in `createViewer`, outside the component.** A `try`
+  inside the lifecycle effect made the React Compiler's lint reject the
+  `setViewerReadyToken` that has always been there.
+- **The failure detail now names the GPU** (`gpuName`, from a throwaway
+  context), which is exactly what the Store report lacked. It is kept in
+  `graphics.json` and logged by main.
+- **Verified in a built instance over CDP**, by faking the reviewer's failure
+  exactly (every shader reports failure with an empty log, then a layer that
+  needs a new one is switched on): hardware → relaunched on the Basic Render
+  Driver → relaunched on SwiftShader → notice and no restart. A start-up with
+  WebGL refused took the construction path the same way. A `TypeError` thrown
+  from a draw still showed Cesium's own panel and wrote nothing. "Restart on
+  the graphics card" deleted the file and came back on the Intel GPU.
+- **Not verified, and cannot be here:** that the reviewer's machine recovers.
+  The fallback is proven against their exact error text; their driver is not
+  available to test against. The certification notes ask for the GPU if it
+  fails again.
+- `dev` never restarts (it would orphan the electron-vite server); it shows
+  the notice instead.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

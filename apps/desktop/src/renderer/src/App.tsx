@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 import { CesiumViewer } from './globe/CesiumViewer';
+import { GlobeFailureNotice } from './globe/GlobeFailureNotice';
 import { ExploreShell } from './ExploreShell';
 import { AnalyzeShell } from './analyze/AnalyzeShell';
 import { ModeSwitch } from './panels/ModeSwitch';
@@ -43,6 +44,8 @@ export default function App() {
   return (
     <div id="app-shell" className={styles.appShell}>
       <CesiumViewer />
+      {/* Explore only: Analyze needs no globe, and its panel sits where this would. */}
+      {mode === 'explore' && <GlobeFailureNotice />}
       <Shell />
       <ModeSwitch />
       <AboutButton />

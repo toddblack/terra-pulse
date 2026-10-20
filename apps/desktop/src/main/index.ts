@@ -77,6 +77,7 @@ import { applyTileIdentity, tileUserAgent } from './tile-identity';
 import { sendToRenderer } from './renderer-send';
 import { createUpdateChecker } from './update-check';
 import { registerUpdateHandlers } from './ipc/app-update';
+import { applyGraphicsMode, registerGraphicsHandlers } from './graphics-mode';
 
 // dotenv.config() with no options resolves relative to process.cwd(), but
 // pnpm runs this package's scripts with apps/desktop as cwd, not the repo
@@ -100,6 +101,9 @@ const devServerWsOrigin = devServerOrigin.replace(/^http/, 'ws');
 if (isDev) {
   process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
 }
+
+// Before `whenReady`, or the switch it may set is ignored. See graphics-mode.ts.
+const graphics = applyGraphicsMode();
 
 // 'unsafe-eval' is required by CesiumJS itself (internal WASM instantiation
 // for tile decoding, plus some dynamic-function patterns) — this is inherent
@@ -649,6 +653,8 @@ app
     });
     registerUpdateHandlers(updates);
     if (app.isPackaged) updates.schedule();
+
+    registerGraphicsHandlers(graphics, { canRestart: !isDev });
     app.on('will-quit', () => {
       updates.dispose();
     });

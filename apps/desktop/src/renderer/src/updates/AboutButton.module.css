@@ -125,6 +125,13 @@
   cursor: pointer;
 }
 
+/* Set apart like the update switch: a different subject in the same panel. */
+.section {
+  margin-top: 0.85rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgb(51 65 85 / 70%);
+}
+
 .note {
   margin: 0.35rem 0 0;
   color: rgb(100 116 139);
