@@ -83,12 +83,11 @@ nsis:
 # and the Store signs the package itself, so this build carries no certificate:
 # no SmartScreen warning, and updates arrive through the Store.
 #
-# **identityName and publisher are placeholders until the app name is reserved
-# in Partner Center**, which issues the real values (Product management →
-# Product identity: Package/Identity/Name and Package/Identity/Publisher). A
-# package with the wrong identity is rejected at upload, so they must be copied
-# exactly. publisherDisplayName must match the Partner Center account's
-# display name.
+# **identityName and publisher are issued by Partner Center**, copied exactly
+# from Product management → Product identity (Package/Identity/Name and
+# Package/Identity/Publisher) after the name was reserved on 2026-10-19. A
+# package with the wrong identity is rejected at upload. publisherDisplayName
+# must match Package/Properties/PublisherDisplayName there.
 #
 # Tiles come from build/appx/, made from the icon by
 # scripts/make-appx-assets.ps1; backgroundColor is the icon's own background
@@ -97,8 +96,8 @@ nsis:
 # The version becomes x.y.z.0 — the Store requires the fourth part to be 0, and
 # each submission must carry a higher version than the last.
 appx:
-  identityName: TerraPulse.Placeholder
-  publisher: CN=00000000-0000-0000-0000-000000000000
+  identityName: ToddBlack.TerraPulse
+  publisher: CN=C12144C1-395C-463E-8D26-E8EFFFF3E569
   publisherDisplayName: Todd Black
   applicationId: TerraPulse
   displayName: Terra Pulse

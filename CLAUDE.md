@@ -4939,9 +4939,10 @@ remove the need for an auto-updater.
 - **`pnpm --filter @terra-pulse/desktop package:store`** → electron-builder's
   appx target, `release/Terra-Pulse-<version>.appx` (191 MB), unsigned by
   design ("Windows Store only build"). The NSIS installer is untouched.
-- **`appx.identityName` / `publisher` are placeholders** until the name is
-  reserved in Partner Center; `pnpm release --store` refuses to build while
-  they are. publisherDisplayName must match the Partner Center account.
+- **`appx.identityName` / `publisher` are Partner Center's**, filled in
+  2026-10-19 once the name was reserved (`ToddBlack.TerraPulse`).
+  `pnpm release --store` still refuses to build if the old placeholders ever
+  come back. publisherDisplayName must match the Partner Center account.
 - **Tiles** in `apps/desktop/build/appx/`, made from the icon by
   `scripts/make-appx-assets.ps1`; `backgroundColor` `#070d16` is the icon's own
   background as that script samples it.
