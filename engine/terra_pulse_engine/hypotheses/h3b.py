@@ -25,6 +25,7 @@ from terra_pulse_engine.api.contracts import (
     TestResult,
     TriggerInfo,
 )
+from terra_pulse_engine.hypotheses.matrix import BLOCKED_TESTS, DEFERRED_TESTS, correction_note
 from terra_pulse_engine.pipeline.baseline import HOUR_MS, local_rate_per_hour
 from terra_pulse_engine.pipeline.decluster import decluster_gardner_knopoff
 from terra_pulse_engine.pipeline.lag_windows import lag_window_statistic
@@ -38,17 +39,6 @@ from terra_pulse_engine.version import ENGINE_VERSION
 # catalogue's own 1970-onward completeness window, so nothing here truncates
 # what was registered.
 EFFECTIVE_START_MS = int(datetime(1995, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
-
-# Same registered matrix bookkeeping as h4c.py — see HYPOTHESES.md's Total
-# Test Matrix note. Duplicated rather than imported from h4c.py: the two
-# hypothesis modules are meant to stay independent, not share incidental
-# constants the way a display threshold must never share a registered one.
-DEFERRED_TESTS = 2
-# Zero since 2026-08-20, when H4b was withdrawn unrun. It was 2 while H4b sat
-# blocked on a magnetometer archive that was never built; a withdrawn-unrun
-# family is not "blocked", it is gone, and its tests left the denominator with
-# it (see HYPOTHESES.md H4b and REGISTERED_MATRIX_TESTS in packages/schema).
-BLOCKED_TESTS = 0
 
 
 def _iso(ms: int) -> str:
@@ -251,12 +241,7 @@ def run_h3b(request: LagWindowRunRequest) -> AnalysisResult:
         deferred_tests=DEFERRED_TESTS,
         blocked_tests=BLOCKED_TESTS,
         partial_matrix=len(raw_p_values) < params.registered_matrix_tests,
-        note=(
-            f"{len(raw_p_values)} of {params.registered_matrix_tests} registered, "
-            f"unblocked tests have been run so far ({DEFERRED_TESTS} more are "
-            "deferred to Phase 5). "
-            "Adjusted p-values are provisional until the full matrix is complete."
-        ),
+        note=correction_note(len(raw_p_values), params.registered_matrix_tests),
     )
 
     method = MethodInfo(

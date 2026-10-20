@@ -123,13 +123,18 @@ def test_correction_reports_the_partial_matrix_honestly() -> None:
     assert result.correction.tests_run == 6
     # An arbitrary request value, echoed back — the registered denominator lives
     # in packages/schema's REGISTERED_MATRIX_TESTS and is sent by main, never
-    # hard-coded here. It is 17 in the app since H4b's withdrawal.
+    # hard-coded here. It is 19 in the app since H6 shipped.
     assert result.correction.registered_matrix_tests == 19
-    assert result.correction.deferred_tests == 2
+    # Zero since 2026-08-26, when H6 ran the last deferred pair.
+    assert result.correction.deferred_tests == 0
     # Zero since 2026-08-20: H4b was withdrawn unrun rather than left blocked on
     # a magnetometer archive, so nothing is waiting on data any more.
     assert result.correction.blocked_tests == 0
+    # Partial means this *run* covers only part of the matrix, which is always
+    # true of a single hypothesis — not that the matrix itself is incomplete.
     assert result.correction.partial_matrix is True
+    assert "deferred" not in result.correction.note
+    assert "provisional" not in result.correction.note
     # The full-matrix adjustment must never be more significant than the
     # within-run one.
     for test in result.tests:
