@@ -1,0 +1,39 @@
+/* Where the globe would be: the middle of the window, a little above centre
+   so it clears the bottom dock. Same panel surface as the About panel. */
+.notice {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  z-index: 10;
+  width: min(26rem, calc(100vw - 2rem));
+  padding: 1rem 1.15rem;
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 95%);
+  box-shadow: 0 8px 16px -4px rgb(0 0 0 / 45%);
+  color: rgb(203 213 225);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  transform: translate(-50%, -50%);
+}
+
+/* Margins on each class, never `.notice p`: an element-qualified rule
+   out-specifies a bare class and would silently zero all of these. */
+.title {
+  margin: 0;
+  color: rgb(226 232 240);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.body {
+  margin: 0.4rem 0 0;
+}
+
+/* The error itself, for anyone who reports it. Selectable on purpose. */
+.detail {
+  margin: 0.6rem 0 0;
+  color: rgb(100 116 139);
+  font-size: 0.6875rem;
+  overflow-wrap: anywhere;
+  user-select: text;
+}

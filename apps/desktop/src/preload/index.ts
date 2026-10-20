@@ -30,6 +30,8 @@ import type {
   QuakeWatchAlert,
   QuakeWatchStatus,
   UpdateStatus,
+  GlobeFailureAction,
+  GraphicsStatus,
   RegionalRecurrence,
   SolarFlare,
   WaveformChannel,
@@ -414,6 +416,15 @@ contextBridge.exposeInMainWorld('terraPulse', {
    * reads it, flips the switch, and asks main to open the release page it
    * validated — the renderer never hands over a URL.
    */
+  /**
+   * How the globe is drawn, and the way off the graphics card when a driver
+   * cannot draw it. The renderer reports; main decides whether to restart.
+   */
+  graphics: {
+    status: (): Promise<GraphicsStatus> => ipcRenderer.invoke('graphics:status'),
+    globeFailed: (detail: string): Promise<GlobeFailureAction> => ipcRenderer.invoke('graphics:globe-failed', detail),
+    useHardware: (): Promise<boolean> => ipcRenderer.invoke('graphics:use-hardware'),
+  },
   updates: {
     status: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:status'),
     check: (): Promise<UpdateStatus> => ipcRenderer.invoke('update:check'),
