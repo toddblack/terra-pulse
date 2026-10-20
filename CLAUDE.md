@@ -4972,10 +4972,38 @@ remove the need for an auto-updater.
     where a Store user's database will live (and why uninstalling removes it).
     Testing that here would have pointed the test copy at the user's real
     database while his installed 0.1.0 had it open.
-- **Still to do, his side:** Partner Center account (ID + selfie), reserve
-  the name, copy the identity values in, Store listing (screenshots,
-  description, age rating, privacy URL), then `pnpm release --store` on main
-  and upload. Certification takes a few days per submission.
+- **Submitted 2026-10-19** as 0.1.0, free, identity `ToddBlack.TerraPulse`.
+  Category Utilities & tools (his pick). `runFullTrust` was flagged as a
+  restricted capability at upload, which is normal for every packaged desktop
+  app; it is justified in Submission options. Listing art and screenshots
+  were made outside the repo and are not committed.
+- **Price stays free until each source's terms are checked for commercial
+  use.** A paid app is commercial use, and `SOURCES.md` vetted the sources
+  for a free one only: OSM's tile policy, EMSC, ORFEUS's "no unaltered
+  commercial reuse" note, Croatia, NGL, Global CMT, GIBS and GEBCO are
+  unchecked for it.
+
+## 0.1.1: the matrix note. 2026-10-19, branch `analyze-matrix-note`.
+
+**Every Analyze result except H6's still said the matrix was incomplete**:
+"2 more are deferred to Phase 5… Adjusted p-values are provisional until the
+full matrix is complete". Found in a Store screenshot. Each hypothesis module
+kept its own `DEFERRED_TESTS = 2` and its own note, and when H6 completed the
+matrix only `h6.py`'s copy changed.
+
+- `hypotheses/matrix.py` now holds `DEFERRED_TESTS`, `BLOCKED_TESTS` and
+  `correction_note()` for all six. The modules still never import from each
+  other (a registered parameter must not be shared by accident); this is one
+  fact about the whole matrix, which is why copying it went wrong.
+  `test_matrix.py` fails if a module defines its own copy again.
+- **`partialMatrix` stays `true`** and is right: it means this *run* covers
+  part of the matrix, which is always so for one hypothesis.
+- No number changed. Only the sentence and `deferredTests` (2 → 0) did.
+- The contract fixture said 17 registered tests while its adjusted values
+  were computed with 19 (0.004975 × 19 / 2 = 0.0473); it says 19 now.
+- **Its docstring claims a TypeScript test reads the same fixture. None does**
+  — nothing outside `engine/` references the file. Left as is; worth adding
+  if the contract ever changes shape.
 
 ## Non-negotiables
 
