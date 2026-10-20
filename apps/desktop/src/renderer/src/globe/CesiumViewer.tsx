@@ -49,6 +49,9 @@ import { createWatchPinOverlay } from '../layers/watch-pin-overlay';
 import { useQuakeWatchStore } from '../watch/useQuakeWatchStore';
 import { useWaveformSelection } from '../waveforms/useWaveformSelection';
 import { watchSelection } from './selection-sync';
+import { describeGlobeFailure, isGraphicsFailure } from './globe-failure';
+import { clearConstructionErrorPanel, gpuName, watchGraphicsFailures } from './watch-graphics-failures';
+import { useGlobeFailureStore } from './useGlobeFailureStore';
 import { useGlobeLayers } from './useGlobeLayers';
 import { displayWindow, instantOnScreen, LIVE_END_MARGIN_MS } from './display-window';
 import { useNow } from './useNow';
@@ -73,6 +76,46 @@ const DRAG_THRESHOLD_PX = 5;
  * single render while the lookup is in flight.
  */
 const EMPTY_HITS: readonly AntipodalEvent[] = [];
+
+/**
+ * The viewer, or null when this graphics stack cannot build one.
+ *
+ * Out here rather than inline in the lifecycle effect: a `try` inside that
+ * effect changes how the React Compiler reads it, and its lint then rejects
+ * the `setViewerReadyToken` that has always been there.
+ */
+function createViewer(container: HTMLDivElement, reportFailure: (detail: string) => void): Cesium.Viewer | null {
+  try {
+    return new Cesium.Viewer(container, {
+      baseLayer: false, // basemaps are mounted by the layer registry
+      animation: false,
+      timeline: false,
+      baseLayerPicker: false, // replaced by our own LayerPanel
+      // The last default widget still on, and it sat under the event list.
+      // Every other Cesium control here is already replaced by our own chrome,
+      // so this was the odd one out visually as well as in the way.
+      //
+      // Worth knowing what goes with it: it was the only "reset the camera"
+      // affordance, and preserving zoom across selections made staying zoomed
+      // in stickier than it used to be. If getting back to a global view by
+      // hand becomes annoying, the answer is a reset control in our own UI
+      // where we choose the position — not this one back.
+      homeButton: false,
+      geocoder: false,
+      sceneModePicker: false,
+      navigationHelpButton: false,
+      fullscreenButton: false,
+      infoBox: false, // replaced by our own EarthquakeInspector panel
+    });
+  } catch (error) {
+    // No WebGL at all, or a shader built during construction refused to
+    // compile. Anything else is a bug and fails loudly, as it always did.
+    if (!isGraphicsFailure(error)) throw error;
+    clearConstructionErrorPanel(container);
+    reportFailure(describeGlobeFailure(error, gpuName()));
+    return null;
+  }
+}
 
 export function CesiumViewer() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -250,27 +293,11 @@ export function CesiumViewer() {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const viewer = new Cesium.Viewer(containerRef.current, {
-      baseLayer: false, // basemaps are mounted by the layer registry
-      animation: false,
-      timeline: false,
-      baseLayerPicker: false, // replaced by our own LayerPanel
-      // The last default widget still on, and it sat under the event list.
-      // Every other Cesium control here is already replaced by our own chrome,
-      // so this was the odd one out visually as well as in the way.
-      //
-      // Worth knowing what goes with it: it was the only "reset the camera"
-      // affordance, and preserving zoom across selections made staying zoomed
-      // in stickier than it used to be. If getting back to a global view by
-      // hand becomes annoying, the answer is a reset control in our own UI
-      // where we choose the position — not this one back.
-      homeButton: false,
-      geocoder: false,
-      sceneModePicker: false,
-      navigationHelpButton: false,
-      fullscreenButton: false,
-      infoBox: false, // replaced by our own EarthquakeInspector panel
-    });
+    const reportGlobeFailure = useGlobeFailureStore.getState().report;
+    const viewer = createViewer(containerRef.current, reportGlobeFailure);
+    if (viewer === null) return;
+    const stopWatchingFailures = watchGraphicsFailures(viewer, reportGlobeFailure);
+
     // What shows wherever no imagery has been drawn — before tiles load, and
     // anywhere a basemap has no coverage. Cesium's default is `Color(0,0,0.5)`,
     // which the globe shader gamma-corrects to roughly `#0000ba`: a saturated
@@ -298,6 +325,7 @@ export function CesiumViewer() {
     return () => {
       // Non-negotiable #5: Cesium objects are not reclaimed by GC —
       // the viewer must be destroyed explicitly.
+      stopWatchingFailures();
       viewer.destroy();
       viewerRef.current = null;
     };

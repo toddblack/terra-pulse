@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { updateNoticeShowing } from '@terra-pulse/schema';
+import { softwareRenderingNote, updateNoticeShowing } from '@terra-pulse/schema';
+import { useGlobeFailureStore } from '../globe/useGlobeFailureStore';
 import { useNow } from '../globe/useNow';
 import { updateSummary, versionLabel } from './about-labels';
 import { useUpdateStore } from './useUpdateStore';
@@ -33,6 +34,13 @@ export function AboutButton() {
   const nowMs = useNow();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const graphics = useGlobeFailureStore((state) => state.graphics);
+  const loadGraphics = useGlobeFailureStore((state) => state.loadGraphics);
+  const returnToHardware = useGlobeFailureStore((state) => state.returnToHardware);
+
+  useEffect(() => {
+    loadGraphics();
+  }, [loadGraphics]);
 
   useEffect(() => {
     if (!open) return;
@@ -53,6 +61,7 @@ export function AboutButton() {
   if (status === null) return null;
   const notice = updateNoticeShowing(status);
   const latest = status.latest;
+  const graphicsNote = graphics ? softwareRenderingNote(graphics) : null;
 
   return (
     <div ref={rootRef} className={styles.root}>
@@ -126,6 +135,20 @@ export function AboutButton() {
                 downloaded or installed — a newer version is a link to its release page.
               </p>
             </>
+          )}
+
+          {/* Only after a fallback. The way back is here because there is no
+              settings screen, and a reader left in slow software rendering by a
+              one-off GPU reset needs some way out short of the next update. */}
+          {graphicsNote && (
+            <div id="about-graphics" className={styles.section}>
+              <p className={styles.note}>{graphicsNote}</p>
+              <div className={styles.actions}>
+                <button type="button" className={styles.secondary} onClick={returnToHardware}>
+                  Restart on the graphics card
+                </button>
+              </div>
+            </div>
           )}
         </div>
       )}

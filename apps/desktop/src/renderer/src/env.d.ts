@@ -39,6 +39,8 @@ import type {
   WaveformStreamStatus,
   WatchPin,
   UpdateStatus,
+  GlobeFailureAction,
+  GraphicsStatus,
 } from '@terra-pulse/schema';
 
 export {};
@@ -142,6 +144,13 @@ declare global {
         onProgress(callback: (progress: QuakeReplayProgress) => void): () => void;
       };
       /** Whether GitHub has a newer release. Notify only; main holds the answer. */
+      graphics: {
+        status(): Promise<GraphicsStatus>;
+        /** Says the globe could not draw. Main may answer by restarting the app. */
+        globeFailed(detail: string): Promise<GlobeFailureAction>;
+        /** Forgets the fallback and restarts on the graphics card. False if there was nothing to undo. */
+        useHardware(): Promise<boolean>;
+      };
       updates: {
         status(): Promise<UpdateStatus>;
         check(): Promise<UpdateStatus>;
