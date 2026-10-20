@@ -64,6 +64,7 @@ from terra_pulse_engine.api.contracts import (
     TidalRunRequest,
     TriggerInfo,
 )
+from terra_pulse_engine.hypotheses.matrix import BLOCKED_TESTS, DEFERRED_TESTS, correction_note
 from terra_pulse_engine.pipeline.decluster import decluster_gardner_knopoff
 from terra_pulse_engine.pipeline.geo import haversine_km
 from terra_pulse_engine.pipeline.multiple_comparisons import benjamini_hochberg
@@ -79,11 +80,6 @@ from terra_pulse_engine.pipeline.tides import (
 from terra_pulse_engine.version import ENGINE_VERSION
 
 HOUR_MS = 3_600_000.0
-
-# Running H6 completes the registered matrix: its two tests were the last
-# deferred pair, and nothing is blocked (H4b was withdrawn unrun 2026-08-20).
-DEFERRED_TESTS = 0
-BLOCKED_TESTS = 0
 
 COMPLETENESS_MODEL = (
     "None applied, and none needed. The null redraws origin instants only, keeping every "
@@ -413,12 +409,7 @@ def run_h6(request: TidalRunRequest) -> AnalysisResult:
             deferred_tests=DEFERRED_TESTS,
             blocked_tests=BLOCKED_TESTS,
             partial_matrix=len(tests) < params.registered_matrix_tests,
-            note=(
-                f"{len(tests)} of {params.registered_matrix_tests} registered tests were run "
-                "in this session. Adjusted p-values are reported both within this run and "
-                "against the full registered matrix; the full-matrix figure is the "
-                "conservative one."
-            ),
+            note=correction_note(len(tests), params.registered_matrix_tests),
         ),
         method=MethodInfo(
             null_model=params.null_model,

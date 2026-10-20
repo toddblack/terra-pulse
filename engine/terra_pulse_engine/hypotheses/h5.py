@@ -51,6 +51,7 @@ from terra_pulse_engine.api.contracts import (
     TestResult,
     TriggerInfo,
 )
+from terra_pulse_engine.hypotheses.matrix import BLOCKED_TESTS, DEFERRED_TESTS, correction_note
 from terra_pulse_engine.pipeline.decluster import decluster_gardner_knopoff
 from terra_pulse_engine.pipeline.geo import antipode, haversine_km
 from terra_pulse_engine.pipeline.ks import (
@@ -69,13 +70,6 @@ HOUR_MS = 60 * 60 * 1000
 # HYPOTHESES.md H5, "Time range" (completed 2026-08-20): 1970-01-01, the M5.0+
 # catalogue's own global-completeness bound — unix epoch 0, same as H4c's.
 EFFECTIVE_START_MS = 0
-
-DEFERRED_TESTS = 2
-# Zero since 2026-08-20, when H4b was withdrawn unrun. It was 2 while H4b sat
-# blocked on a magnetometer archive that was never built; a withdrawn-unrun
-# family is not "blocked", it is gone, and its tests left the denominator with
-# it (see HYPOTHESES.md H4b and REGISTERED_MATRIX_TESTS in packages/schema).
-BLOCKED_TESTS = 0
 
 TRIGGER_ID = "M6.0+ mainshock"
 
@@ -330,12 +324,7 @@ def run_h5(request: AntipodalRunRequest) -> AnalysisResult:
         deferred_tests=DEFERRED_TESTS,
         blocked_tests=BLOCKED_TESTS,
         partial_matrix=1 < params.registered_matrix_tests,
-        note=(
-            f"1 of {params.registered_matrix_tests} registered, unblocked tests "
-            f"was run in this session ({DEFERRED_TESTS} more are deferred to "
-            "Phase 5). Adjusted "
-            "p-values are provisional until the full matrix is complete."
-        ),
+        note=correction_note(1, params.registered_matrix_tests),
     )
 
     return AnalysisResult(

@@ -26,6 +26,7 @@ from terra_pulse_engine.api.contracts import (
     TestResult,
     TriggerInfo,
 )
+from terra_pulse_engine.hypotheses.matrix import BLOCKED_TESTS, DEFERRED_TESTS, correction_note
 from terra_pulse_engine.pipeline.decluster import decluster_gardner_knopoff
 from terra_pulse_engine.pipeline.hemisphere import HOUR_MS, hemisphere_ratio_statistic
 from terra_pulse_engine.pipeline.monte_carlo import UniformRedraw, permutation_null
@@ -36,13 +37,6 @@ from terra_pulse_engine.version import ENGINE_VERSION
 # earthquake catalogue's own 1970-onward completeness window, unlike H4c's
 # 1963, so this needs no separate truncation the way H4c's did.
 EFFECTIVE_START_MS = int(datetime(2014, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
-
-DEFERRED_TESTS = 2
-# Zero since 2026-08-20, when H4b was withdrawn unrun. It was 2 while H4b sat
-# blocked on a magnetometer archive that was never built; a withdrawn-unrun
-# family is not "blocked", it is gone, and its tests left the denominator with
-# it (see HYPOTHESES.md H4b and REGISTERED_MATRIX_TESTS in packages/schema).
-BLOCKED_TESTS = 0
 
 # A single fixed trigger id — H2b has exactly one trigger *definition*
 # ("direct CME impact"), not several the way H4c has two indices. Kept as a
@@ -213,12 +207,7 @@ def run_h2b(request: HemisphereRunRequest) -> AnalysisResult:
         deferred_tests=DEFERRED_TESTS,
         blocked_tests=BLOCKED_TESTS,
         partial_matrix=len(raw_p_values) < params.registered_matrix_tests,
-        note=(
-            f"{len(raw_p_values)} of {params.registered_matrix_tests} registered, "
-            f"unblocked tests have been run so far ({DEFERRED_TESTS} more are "
-            "deferred to Phase 5). "
-            "Adjusted p-values are provisional until the full matrix is complete."
-        ),
+        note=correction_note(len(raw_p_values), params.registered_matrix_tests),
     )
 
     method = MethodInfo(

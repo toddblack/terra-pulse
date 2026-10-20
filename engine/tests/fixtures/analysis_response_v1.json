@@ -977,11 +977,11 @@
     "method": "benjamini-hochberg",
     "q": 0.05,
     "testsRun": 6,
-    "registeredMatrixTests": 17,
-    "deferredTests": 2,
+    "registeredMatrixTests": 19,
+    "deferredTests": 0,
     "blockedTests": 0,
     "partialMatrix": true,
-    "note": "6 of 17 registered, unblocked tests have been run so far (2 more are deferred to Phase 5). Adjusted p-values are provisional until the full matrix is complete."
+    "note": "6 of 19 registered tests were run in this session. Adjusted p-values are reported both within this run and against the full registered matrix; the full-matrix figure is the conservative one."
   },
   "method": {
     "nullModel": "uniform-redraw",
