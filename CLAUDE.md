@@ -5066,6 +5066,57 @@ The report carried two screenshots and nothing else: no GPU, no shader.
 - `dev` never restarts (it would orphan the electron-vite server); it shows
   the notice instead.
 
+## Fuzzing the network parsers. 2026-10-20, branch `fuzz-parsers`.
+
+The last item from the security review, started with miniSEED and SeedLink:
+the code that reads bytes off eight public servers, over **plain unencrypted
+TCP**, in the main process. fast-check 4.10.2 in `packages/ingest`;
+`miniseed.fuzz.test.ts` and `seedlink.fuzz.test.ts` run 2,000 cases per
+property in `pnpm test` (~1 s) and `FUZZ_RUNS=200000` for a deep pass. The
+real 2.x records moved to `miniseed2.fixtures.ts` so both suites mutate them.
+
+**Two real defects, both found in the first minute, both fixed:**
+
+- **A sample count sized an array before anything checked it.** miniSEED 3's
+  count is a 32-bit field. A validly signed record declaring 4,294,967,294
+  samples made `decodeSteim` allocate **11 GB** (4 GB in 3 ms) before its walk
+  noticed there were 431. One damaged or injected record per connection could
+  exhaust the app's memory. Now checked against what the frames can hold
+  (seven differences a word) before allocating; the plain-integer encodings
+  check the bytes present, and also stop surfacing as a bare `RangeError`.
+- **`parseInfoStreams` was quadratic.** A regex over the whole document, where
+  each unclosed `<station` scanned to the end: **1.2 MB took 52 s**, and the
+  reader accepts 16 MB — hours of frozen main process from one hostile or
+  broken `INFO STREAMS` reply. Now one forward `indexOf` pass: 16 MB of the
+  same input in ~100 ms. The old regex version is kept in the test as a
+  differential oracle and agrees on every generated reply.
+
+**What held:** both framers frame identically however TCP cuts the stream,
+garbage always ends in a sticky desync and never an exception; the parsers
+throw only their own named errors on random and mutated input; and an
+independent Steim-1/Steim-2 encoder written in the test — the oracle —
+round-trips every waveform at every packing's edge values, in both record
+versions and byte orders.
+
+**Two lessons about the fuzzing itself:**
+
+- **The oracle was wrong once, and checking the reference settled it.** It
+  wrote Steim big-endian everywhere and "found" the decoder wrong on
+  little-endian 2.x records. libmseed reads 2.x Steim in blockette 1000's order
+  and 3.x Steim always big-endian, exactly as the decoder does. Check the
+  reference before "fixing" a decoder that has real-data fixtures behind it.
+- **A property over inputs that never parse proves nothing.** The first text
+  generator joined random fragments; sampled, it produced a real station **0
+  times in 20,000**, so the differential check was comparing empty sets. The
+  generators are grammars now, and a test asserts each reaches a real parse
+  20–98% of the time, so the suite cannot quietly go vacuous again.
+
+**Next for fuzzing**, roughly by exposure: the other main-process parsers fed
+from the network — GCMT NDK, GFZ Kp, OMNI2, the GOES reports, FDSN text, the
+ShakeMap and GNSS files. All arrive over HTTPS from established sources, so
+this round's MITM argument does not apply to them, but "never quadratic, never
+allocate from a length field" does.
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

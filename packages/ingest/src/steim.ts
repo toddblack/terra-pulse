@@ -63,6 +63,8 @@ export function signExtend(value: number, bits: number): number {
 
 const FRAME_BYTES = 64;
 const WORDS_PER_FRAME = 16;
+/** Steim-2's 7 x 4-bit packing; Steim-1 packs at most four. */
+const MAX_DIFFERENCES_PER_WORD = 7;
 
 export interface SteimDecodeOptions {
   /** A view over the whole miniSEED record. */
@@ -224,6 +226,20 @@ function decodeSteim(options: SteimDecodeOptions, unpack: Unpacker): Int32Array 
   const frameCount = Math.floor((recordLength - dataOffset) / FRAME_BYTES);
   if (frameCount < 1) {
     throw new SteimDecodeError(`${stream}: record has no complete Steim frame`);
+  }
+
+  // **Checked before anything is allocated.** The count is a 32-bit field in
+  // miniSEED 3, and the array below is sized from it: found by fuzzing, a
+  // validly signed record declaring 4,294,967,294 samples made the main process
+  // allocate 11 GB before the walk below noticed there were 431. The densest
+  // packing is seven differences a word, and frame 0 gives two words to X0/Xn.
+  const capacity = (frameCount * (WORDS_PER_FRAME - 1) - 2) * MAX_DIFFERENCES_PER_WORD;
+  if (numSamples > capacity) {
+    throw new SteimDecodeError(
+      `${stream}: record declares ${String(numSamples)} samples, more than its ${String(
+        frameCount,
+      )} frames can hold (${String(capacity)})`,
+    );
   }
 
   // One difference per sample. The first is the difference against the previous
