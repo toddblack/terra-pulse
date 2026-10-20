@@ -480,6 +480,18 @@ function decodeSamples(options: {
 }): Int32Array {
   const { view, encoding, dataOffset, recordLength, numSamples, littleEndian, stream } = options;
 
+  // Plain integers have a fixed width, so the bytes present bound the count
+  // exactly. Checked before allocating, for the reason in `decodeSteim`: the
+  // count field is not to be trusted with the size of an array.
+  const width = encoding === ENCODING_INT16 ? 2 : encoding === ENCODING_INT32 ? 4 : 0;
+  if (width > 0 && dataOffset + numSamples * width > recordLength) {
+    throw new MiniSeedParseError(
+      `${stream}: ${String(numSamples)} samples of ${String(width)} bytes do not fit between byte ${String(
+        dataOffset,
+      )} and the record's end at ${String(recordLength)}`,
+    );
+  }
+
   switch (encoding) {
     case ENCODING_STEIM1:
       return decodeSteim1({ view, dataOffset, recordLength, numSamples, littleEndian, stream });
