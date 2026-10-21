@@ -403,7 +403,7 @@ Rules of the road: <https://supermag.jhuapl.edu/info/?page=rulesoftheroad>
 
 | | |
 |---|---|
-| **EarthScope SeedLink ring** | `rtserve.iris.washington.edu:18000` |
+| **EarthScope SeedLink ring** | `rtserve.earthscope.org:18000` — **not** `rtserve.iris.washington.edu`, which stopped resolving (NXDOMAIN) by 2026-10-21 and silently emptied the picker of US stations in 0.1.4 |
 | **FDSN station service** | `service.earthscope.org/fdsnws/station/1/` — never `service.iris.edu`, whose malformed 307 Node's `fetch` rejects |
 | Licence | **Per network, and partly verified.** Each network declares its own licence and citation in its FDSN registration (<https://fdsn.org/networks/>). EarthScope's citation guidance (read 2026-09-30, <https://www.earthscope.org/how-to-cite/>) asks for network citation by DOI and gives the facility acknowledgement below. A general search reported that data from networks declaring no licence are distributed CC BY 4.0; that was **not confirmed** on an EarthScope page and should be before anything derived is published. |
 | Obligation | Acknowledge the facility — *"Data were accessed from the NSF NGF data archive operated by EarthScope Consortium (NSF award 2435260)."* — and the networks shown. The waveform guide's source section carries both. |

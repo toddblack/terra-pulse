@@ -71,7 +71,8 @@ export const SEEDLINK_SERVERS: Readonly<Record<SeedLinkServerId, SeedLinkServer>
   earthscope: {
     id: 'earthscope',
     label: 'EarthScope',
-    host: 'rtserve.iris.washington.edu',
+    // Was rtserve.iris.washington.edu until it stopped resolving — see SEEDLINK_HOST.
+    host: 'rtserve.earthscope.org',
     port: 18000,
     stationServiceUrls: ['https://service.earthscope.org/fdsnws/station/1/query'],
     networks: '*',

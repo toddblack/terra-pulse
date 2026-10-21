@@ -14,8 +14,8 @@
  *
  * ## Four traps, every one of which fails silently
  *
- * Measured against `rtserve.iris.washington.edu:18000` (RingServer 4.5.6),
- * 2026-09-09/10:
+ * Measured against EarthScope's ring, then `rtserve.iris.washington.edu:18000`
+ * (RingServer 4.5.6), 2026-09-09/10:
  *
  * 1. **`CAPABILITIES SLPROTO:3.1` must follow `HELLO` and precede any
  *    `STATION`.** Without it RingServer 4.x serves v4 framing; a v3 parser then
@@ -37,7 +37,17 @@ import net from 'node:net';
 import type { WaveformChannel } from '@terra-pulse/schema';
 import { channelIdOf, seedlinkSelectorFor } from '@terra-pulse/schema';
 
-export const SEEDLINK_HOST = 'rtserve.iris.washington.edu';
+/**
+ * EarthScope's ring. It was `rtserve.iris.washington.edu` until that name
+ * stopped resolving (NXDOMAIN, found 2026-10-21) — the IRIS → EarthScope rename
+ * reaching the real-time ring, as it reached `service.iris.edu` earlier. Same
+ * RingServer 4.5.6 behind it, same `/streamids` listing.
+ *
+ * **When this host dies nothing errors on screen.** The other servers still
+ * fill the merged station list, so it never reads as unavailable; it simply has
+ * no US stations, and a click in California picks nothing.
+ */
+export const SEEDLINK_HOST = 'rtserve.earthscope.org';
 export const SEEDLINK_PORT = 18000;
 
 /** `SL` + six-character sequence number + one 512-byte miniSEED record. */

@@ -1748,8 +1748,12 @@ server-side proxying of all third-party API calls.
     says to add a reset to our own chrome, where we control placement, rather
     than turning that one back on. With no home set it resets to the default
     whole-globe view.
-- **A loading screen at launch** (requested 2026-10-20, not built; planned for
-  the release after the Store approves 0.1.4, alongside the Vite updates). The
+- **A loading screen at launch — shipped in 0.1.5 (2026-10-21), both stages.**
+  Measured: first pixel 0.90–0.94 s → 0.52–0.56 s after launch (warm, this
+  PC); the globe's paint gate opens at 1.5–1.7 s in hardware mode and
+  3.2–3.5 s in software, which is the stretch "Loading map…" now covers. See
+  `CLAUDE.md`, "0.1.5". The plan as written, kept for its reasoning:
+  (requested 2026-10-20). The
   user noticed a pause after opening the app with nothing on screen.
   - **Measure first.** Time from launch to window visible and to the first
     globe frame, 0.1.3 against 0.1.4, in hardware and software modes. 0.1.4's
@@ -1774,6 +1778,30 @@ server-side proxying of all third-party API calls.
     Chromium like any page, so a white window keeps that meaning.
   - **Check:** no white flash before the loading screen; time to first visible
     pixel before and after; screenshots in hardware and software modes.
+- **Knowing when a source moves, before a user does** (planned 2026-10-21, not
+  built). EarthScope's ring host vanished and it surfaced five days later as
+  "clicks pick nothing" in the live app. Record so far, against ~two dozen
+  external services: three moves that broke something (IRIS station service →
+  EarthScope, DONKI off `api.nasa.gov`, the ring host), plus outages (IPGP,
+  GFZ Kp) that the existing retries ride out. A move needs a release; an
+  outage does not.
+  - **First, switch the federated catalogue now** (`FEDCATALOG_URL`,
+    `seedlink-servers.ts`): `service.iris.edu/irisws/fedcatalog/1/` already
+    answers by redirecting to `service.earthscope.org/irisws/fedcatalog/1/`
+    (checked 2026-10-21, identical reply). That is the in-between state the
+    ring host was presumably in before it disappeared, and it feeds six of the
+    eight SeedLink servers' station lists.
+  - **`pnpm check:sources`**: one small request per service, asserting the
+    answer still *looks right* — not just status 200, since GitHub, OSM's tile
+    block and DONKI's redirect page all answered 200 while broken.
+  - **Run it daily** from a scheduled GitHub Action that emails on failure, so
+    a move is found within a day instead of when someone uses the app.
+  - **Say so in the app when one server's list fails**: the waveform picker
+    should name the missing server ("EarthScope's station list is
+    unavailable") instead of quietly finding no stations.
+  - **Rejected: fetching endpoint addresses at runtime** so a move needs no
+    release. Whoever controls that list could point every install's sockets
+    anywhere. A Store update taking a day or two is the better price.
 
 ---
 

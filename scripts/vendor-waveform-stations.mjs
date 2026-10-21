@@ -35,7 +35,7 @@ import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-const RING = 'http://rtserve.iris.washington.edu:18000';
+const RING = 'http://rtserve.earthscope.org:18000';
 const STATION_SERVICE = 'https://service.earthscope.org/fdsnws/station/1/query';
 
 /**

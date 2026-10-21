@@ -367,7 +367,7 @@ on at the moment the script ran.
 
 | | |
 |---|---|
-| **Ring** | `http://rtserve.iris.washington.edu:18000/streamids` — what is actually being published right now |
+| **Ring** | `http://rtserve.earthscope.org:18000/streamids` — what is actually being published right now |
 | **Metadata** | `https://service.earthscope.org/fdsnws/station/1/query` — coordinates and site names, which the ring does not carry |
 | **Licence** | US federal / EarthScope open data; **no attribution condition**. The network credits in the app's guide are scientific courtesy, like the Slab2 citation, not a licence term. |
 | **Generated** | 2026-09-11 |

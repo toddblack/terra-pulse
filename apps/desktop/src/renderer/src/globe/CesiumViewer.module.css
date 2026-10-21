@@ -3,6 +3,54 @@
   height: 100%;
 }
 
+/*
+ * Over the globe until its first paint: the dark disc while basemap tiles
+ * arrive is otherwise a quiet moment that reads as a stalled app. Centred,
+ * where the globe opens. Below every panel (they come later in the DOM), and
+ * never in the way of a click.
+ */
+.loadingMap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  background-color: rgb(15 23 42 / 85%);
+  color: rgb(203 213 225);
+  font-size: 0.75rem;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+/* The same cyan as the app's active controls; a pulse, not a spinner. */
+.loadingDot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background-color: rgb(34 211 238);
+  animation: loading-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes loading-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loadingDot {
+    animation: none;
+  }
+}
+
 /**
  * Cesium's attribution strip, given a known size and position.
  *

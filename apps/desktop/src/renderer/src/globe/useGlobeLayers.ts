@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 import type * as Cesium from 'cesium';
 import type { AntipodalEvent, AuroraGrid, CmeArrival, EarthquakeEvent, GlobeLayer,
   MagnetometerReading,
@@ -25,12 +25,8 @@ import {
   type SolarWindConditions,
 } from '../layers/magnetopause-layer';
 import type { FieldQuantity } from '../layers/igrf';
-import { INITIAL_FIRST_PAINT, observeTileQueue } from './first-paint';
 import { createAntipodeLayer, type AntipodeLayer } from '../layers/antipode-layer';
 import { ANTIPODE_FLY_MS } from '../layers/antipode-sequence';
-
-/** Show data layers regardless if basemap tiles haven't settled by now. */
-const TILE_WAIT_FALLBACK_MS = 5_000;
 
 interface UseGlobeLayersOptions {
   viewerRef: RefObject<Cesium.Viewer | null>;
@@ -79,56 +75,11 @@ interface UseGlobeLayersOptions {
    * them the viewer now exists.
    */
   viewerReadyToken: number;
-}
-
-/**
- * Whether the globe has painted at least once, so data layers can go on.
- *
- * Local data returns in milliseconds while basemap tiles come over the
- * network, so without this the marks hang in space before the planet arrives.
- * Latches true and stays there: switching basemaps re-fills the tile queue,
- * and re-gating would make every data layer blink out on each switch.
- *
- * This is deliberately *shared* by both overlay effects. When each effect
- * tracked its own gate, whichever mounted first satisfied it for the other —
- * which let the earthquake dots skip the wait and appear before the globe.
- */
-function useFirstPaintReady(
-  viewerRef: RefObject<Cesium.Viewer | null>,
-  viewerReadyToken: number,
-): boolean {
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    if (!viewer || ready) return;
-
-    // No `tilesLoaded` short-circuit. It reads `true` on a freshly created
-    // viewer — nothing is queued because nothing has been *requested* yet — so
-    // checking it here opened the gate immediately and put the dots back in
-    // front of the globe. `observeTileQueue` requires the queue to fill before
-    // an empty queue counts as painted.
-    let paintState = INITIAL_FIRST_PAINT;
-
-    const onTileProgress = (queuedTileCount: number) => {
-      paintState = observeTileQueue(paintState, queuedTileCount);
-      if (paintState.ready) setReady(true);
-    };
-    viewer.scene.globe.tileLoadProgressEvent.addEventListener(onTileProgress);
-
-    // If tiles never settle — offline, blocked host — show the data anyway
-    // rather than holding it hostage to the basemap.
-    const fallbackTimer = setTimeout(() => setReady(true), TILE_WAIT_FALLBACK_MS);
-
-    return () => {
-      clearTimeout(fallbackTimer);
-      if (!viewer.isDestroyed()) {
-        viewer.scene.globe.tileLoadProgressEvent.removeEventListener(onTileProgress);
-      }
-    };
-  }, [viewerRef, viewerReadyToken, ready]);
-
-  return ready;
+  /**
+   * Whether the globe has painted once — `useFirstPaintReady`, owned by the
+   * viewer so the marks it draws itself wait on the same gate.
+   */
+  firstPaintReady: boolean;
 }
 
 /**
@@ -220,6 +171,7 @@ export function useGlobeLayers({
   antipodeHits,
   timeWindow,
   viewerReadyToken,
+  firstPaintReady,
 }: UseGlobeLayersOptions): void {
   // --- Basemap: exclusive, mounts immediately (it *is* the planet) ---------
   useEffect(() => {
@@ -238,7 +190,6 @@ export function useGlobeLayers({
   }, [viewerRef, activeBasemapId, viewerReadyToken]);
 
   const backdropTone = backdropToneFor(activeBasemapId);
-  const firstPaintReady = useFirstPaintReady(viewerRef, viewerReadyToken);
 
   /**
    * Read by the static group through a ref rather than a dependency.

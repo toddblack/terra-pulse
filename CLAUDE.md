@@ -5207,6 +5207,80 @@ card"; the detection half of that entry still holds.
   `ShowWindow` + `SetForegroundWindow`, works. A screen grab of a covered
   window captures whatever covers it, so check the image, not only a pixel count.
 
+## 0.1.5: EarthScope's ring moved. 2026-10-21, branch `earthscope-host`.
+
+Reported by the user in the live app as "clicks pick no new stations, and
+Watch says can't watch". **No code had changed: `rtserve.iris.washington.edu`
+stopped resolving (NXDOMAIN)** — the IRIS → EarthScope rename reaching the
+real-time ring, as it reached `service.iris.edu` earlier. The ring now answers
+at **`rtserve.earthscope.org:18000`** (an AWS load balancer): same RingServer
+4.5.6, same HELLO line, same 1.2 MB `/streamids` in 1.4 s.
+
+- **Why it looked like a click bug, not an outage.** The other seven servers
+  still filled the merged station list, so it never reported `unavailable`;
+  it simply had no US stations. A click in California found nobody within
+  150 km and the watch nobody within 300 km. The only trace was a
+  `console.warn` in main. The presets still showed their names because they
+  are vendored, but their stream pointed at the same dead host.
+- **Diagnosed by probing each server's two halves live**: seven answered in
+  ~2 s, EarthScope's inventory alone returned null at its 10 s timeout, and
+  `Test-NetConnection` named the DNS failure.
+- **Changed:** `SEEDLINK_HOST` and EarthScope's `SEEDLINK_SERVERS` entry (both
+  used at runtime), the inventory test, the preset vendor script, the guide's
+  source line, `SOURCES.md`, the data README. The miniSEED fixtures still name
+  the old host because that is where they were captured.
+- **Every installed 0.1.4 lost US waveforms and US watches**, which is why this
+  is a release, not just a merge.
+- **Verified in a built, isolated instance:** catalogue 3,990 stations (3,195
+  EarthScope), 23 within 150 km of Burbank; a Burbank watch at 76 of 77
+  stations live, 63 with gains, nearest 8 km; the Southern California preset
+  8 of 8 streaming.
+- **Worth doing next:** when one server's list fails, say so in the picker
+  ("EarthScope's station list is unavailable") rather than silently picking
+  nothing. That silence is what made this read as a click bug.
+
+### The launch, in three stages, and a sound that never played
+
+Same release, the user's ask: "I see the Watch pin before the globe loads", and
+the loading screen `PROJECT_PLAN.md` had planned for after 0.1.4.
+
+- **The pin was the one mark that skipped the first-paint gate.** The gate
+  lived inside `useGlobeLayers`, so only registry layers waited on it; the
+  watch pin is drawn by `CesiumViewer` itself, and a stored pin is restored
+  before the window is up, so it sat alone in black space at every launch.
+  `useFirstPaintReady` is its own module now, owned by the viewer and passed
+  down, so anything the viewer draws can wait on the same latch. The other
+  viewer-drawn marks (waveform stations, location reticle, replay) cannot
+  exist at launch — the dock and selection are not persisted — so only the pin
+  needed the gate.
+- **Measured before building**, warm start on this PC, built app, a pin stored:
+  main reaches the page load at ~0.4 s and the renderer paints at 0.90–0.94 s
+  (hardware) / 0.77–0.79 s (software). React's interface is in the DOM at
+  ~0.75 s either way; in hardware Cesium's start costs the rest.
+- **Stage 1, the static screen in `index.html`**: icon, name, "Starting…", an
+  orange ring leaving the icon (none under reduced motion). No JavaScript.
+  First pixel now **0.52–0.56 s** in both modes. React's first render clears
+  `#root`, so nothing removes it by hand. Vite moves the module script into
+  `<head>` and it stays deferred; the screen still paints first, measured.
+  - The icon is `public/loading-icon.png`, 192 px (35 KB) from
+    `build/icon.png`. The background is the icon's own `#070d16`, so its
+    rounded square sits flush.
+  - Vite rewrites `/loading-icon.png` in the HTML to `./loading-icon.png` —
+    it rewrites HTML, **not** strings in code (see the sound, below).
+- **Stage 2, "Loading map…"** over the globe until the gate opens. In hardware
+  that is ~0.8 s; **in software it is ~2.5 s** (gate at 3.2–3.5 s), on a globe
+  that has not drawn at all. Explore only, like the failure notice.
+- **The alert sound has never played in a built copy.** `ALERT_SOUND_URL` was
+  `/sounds/eq-alert.mp3`; a packaged app is a `file://` page, where that is
+  `file:///C:/sounds/eq-alert.mp3`. Measured in the built app: MEDIA_ERR 4 for
+  the absolute form, plays for `./sounds/…`. The player fails silently by
+  design, and `pnpm dev` serves from the server root where both forms work,
+  so the large-event chime and the watch alert were silent in every install
+  up to 0.1.4 with nothing to show it. A test pins the relative form.
+  - **Any runtime string naming a `public/` file must be relative.** It was
+    the only one: Cesium's assets were already right, because
+    `CESIUM_BASE_URL` is `./cesium/` (`electron.vite.config.ts`).
+
 ## Non-negotiables
 
 These are architectural decisions, not preferences. Do not quietly change them.

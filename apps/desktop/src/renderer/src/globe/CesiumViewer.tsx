@@ -58,6 +58,7 @@ import {
 } from './watch-graphics-failures';
 import { useGlobeFailureStore } from './useGlobeFailureStore';
 import { useGlobeLayers } from './useGlobeLayers';
+import { useFirstPaintReady } from './useFirstPaintReady';
 import { displayWindow, instantOnScreen, LIVE_END_MARGIN_MS } from './display-window';
 import { useNow } from './useNow';
 import { useSolarWindAt } from '../panels/useSpaceWeather';
@@ -341,6 +342,10 @@ export function CesiumViewer() {
     };
   }, []);
 
+  // One gate for every mark on the globe: the registry's layers below, and the
+  // marks this component draws itself (the watch pin).
+  const firstPaintReady = useFirstPaintReady(viewerRef, viewerReadyToken);
+
   // All layer mounting/unmounting lives in the registry-driven hook.
   useGlobeLayers({
     viewerRef,
@@ -359,6 +364,7 @@ export function CesiumViewer() {
     antipodeHits,
     timeWindow,
     viewerReadyToken,
+    firstPaintReady,
   });
 
   // Drives the playhead forward while playback is running.
@@ -989,15 +995,19 @@ export function CesiumViewer() {
    * The live watch's pin, whenever there is one. Keyed on the coordinate, not
    * the pin object: every status main pushes carries a fresh copy of the pin,
    * and a marker rebuilt on each station's state change would flicker.
+   *
+   * Waits for the globe's first paint like every data layer. A stored pin is
+   * restored before the window is up, so without the gate it was the one mark
+   * drawn alone in black space at every launch.
    */
   useEffect(() => {
     const viewer = viewerRef.current;
-    if (!viewer || watchLatitude === null || watchLongitude === null) return;
+    if (!viewer || !firstPaintReady || watchLatitude === null || watchLongitude === null) return;
     const overlay = createWatchPinOverlay(viewer, { latitude: watchLatitude, longitude: watchLongitude, label: '' });
     return () => {
       overlay.destroy();
     };
-  }, [watchLatitude, watchLongitude, viewerReadyToken]);
+  }, [watchLatitude, watchLongitude, firstPaintReady, viewerReadyToken]);
 
   // Store → Cesium selection, so the reticle follows the store and survives a
   // layer rebuild.
@@ -1106,5 +1116,16 @@ export function CesiumViewer() {
     };
   }, [antipodePoint]);
 
-  return <div id="cesium-viewport" ref={containerRef} className={styles.viewport} />;
+  return (
+    <>
+      <div id="cesium-viewport" ref={containerRef} className={styles.viewport} />
+      {/* Explore only, like the failure notice: Analyze's panel sits here. */}
+      {!firstPaintReady && appMode === 'explore' && (
+        <div id="globe-loading" className={styles.loadingMap} role="status">
+          <span className={styles.loadingDot} aria-hidden="true" />
+          Loading map…
+        </div>
+      )}
+    </>
+  );
 }
