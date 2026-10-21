@@ -1748,6 +1748,32 @@ server-side proxying of all third-party API calls.
     says to add a reset to our own chrome, where we control placement, rather
     than turning that one back on. With no home set it resets to the default
     whole-globe view.
+- **A loading screen at launch** (requested 2026-10-20, not built; planned for
+  the release after the Store approves 0.1.4, alongside the Vite updates). The
+  user noticed a pause after opening the app with nothing on screen.
+  - **Measure first.** Time from launch to window visible and to the first
+    globe frame, 0.1.3 against 0.1.4, in hardware and software modes. 0.1.4's
+    adapter check is not awaited and should not have lengthened it, but
+    software mode draws its first frame slower; know which before designing.
+  - **The likely cause is the window waiting for React.** It opens on
+    `ready-to-show`, which waits for the first *visually non-empty* paint, and
+    `index.html`'s `#root` is empty, so nothing counts until the 13 MB renderer
+    bundle has parsed and React has drawn the interface.
+  - **The fix: a static loading screen written into `index.html` itself**,
+    inside `#root`, so React replaces it when it mounts. App name, the icon,
+    "Starting…", and a CSS-only animation (none under
+    `prefers-reduced-motion`). Inline styles only: the CSP allows inline styles
+    but not inline scripts, and the screen should need no JavaScript at all.
+    Vite's module script is deferred, so the body paints first. That paint
+    fires `ready-to-show` within moments, so the window logic does not change.
+  - **Second stage, maybe:** a small "Loading map" note over the globe until
+    `first-paint.ts` opens its gate (or its timeout fires), since a blank globe
+    while tiles load is the next quiet moment.
+  - **Keep the window's background unset.** White still has to mean "nothing
+    was presented" (see `CLAUDE.md`, "0.1.4"). The loading screen is drawn by
+    Chromium like any page, so a white window keeps that meaning.
+  - **Check:** no white flash before the loading screen; time to first visible
+    pixel before and after; screenshots in hardware and software modes.
 
 ---
 
