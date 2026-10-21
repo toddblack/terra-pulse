@@ -77,7 +77,7 @@ import { applyTileIdentity, tileUserAgent } from './tile-identity';
 import { sendToRenderer } from './renderer-send';
 import { createUpdateChecker } from './update-check';
 import { registerUpdateHandlers } from './ipc/app-update';
-import { applyGraphicsMode, registerGraphicsHandlers } from './graphics-mode';
+import { applyGraphicsMode, logGpuFeatures, registerGraphicsHandlers } from './graphics-mode';
 
 // dotenv.config() with no options resolves relative to process.cwd(), but
 // pnpm runs this package's scripts with apps/desktop as cwd, not the repo
@@ -199,6 +199,7 @@ function createWindow(db: DatabaseSync): BrowserWindow {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    logGpuFeatures();
   });
 
   // Nothing in this app should ever navigate the window away from its own UI,
@@ -300,6 +301,14 @@ app
     // launch. Nothing here is actually leaking: every listener below is
     // registered exactly once, at startup.
     app.setMaxListeners(20);
+
+    // First, so the renderer's status query always finds a handler. The
+    // adapter check runs alongside everything below: on a machine with no
+    // graphics card it restarts in software before the window's first paint,
+    // which is seconds away. Not awaited — a GPU process slow to describe
+    // itself must not hold the window back.
+    const graphicsControl = registerGraphicsHandlers(graphics, { canRestart: !isDev });
+    void graphicsControl.checkAdapter();
 
     const db = openDatabase(join(app.getPath('userData'), 'terra-pulse.sqlite'));
     registerExternalLinkIpcHandlers();
@@ -654,7 +663,6 @@ app
     registerUpdateHandlers(updates);
     if (app.isPackaged) updates.schedule();
 
-    registerGraphicsHandlers(graphics, { canRestart: !isDev });
     app.on('will-quit', () => {
       updates.dispose();
     });
