@@ -91,7 +91,7 @@ describe('ring inventory', () => {
     const spy = fakeFetch(200, 'FDSN:CI_ADO__H_H_Z/MSEED\n');
     await fetchRingInventory(spy);
     expect(spy).toHaveBeenCalledWith(
-      'http://rtserve.iris.washington.edu:18000/streamids',
+      'http://rtserve.earthscope.org:18000/streamids',
       expect.objectContaining({ signal: expect.any(AbortSignal) as unknown }),
     );
   });

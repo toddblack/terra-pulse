@@ -3,9 +3,93 @@
   <head>
     <meta charset="UTF-8" />
     <title>Terra Pulse</title>
+    <!--
+      The loading screen below needs no JavaScript at all: the CSP allows
+      inline styles but not inline scripts, and the module script is deferred,
+      so this paints first and React replaces #root's contents when it mounts.
+      That first paint is also what fires `ready-to-show`, so the window comes
+      up on this instead of waiting ~0.5 s for the 13 MB bundle to draw.
+      No background on the window itself, on purpose: white has to keep meaning
+      "nothing was presented" (CLAUDE.md, "0.1.4").
+    -->
+    <style>
+      #boot-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        align-items: center;
+        justify-content: center;
+        /* The icon's own background, so its rounded square sits flush. */
+        background-color: #070d16;
+        color: rgb(203 213 225);
+        font-family: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      }
+
+      .boot-mark {
+        position: relative;
+        width: 96px;
+        height: 96px;
+      }
+
+      .boot-mark img {
+        position: relative;
+        width: 96px;
+        height: 96px;
+      }
+
+      /* A wave leaving the icon, in its own orange — the epicentre rings. */
+      .boot-mark::before {
+        position: absolute;
+        inset: 0;
+        border: 2px solid rgb(249 115 22);
+        border-radius: 50%;
+        content: '';
+        opacity: 0;
+        animation: boot-ring 1.8s ease-out infinite;
+      }
+
+      @keyframes boot-ring {
+        0% {
+          opacity: 0.7;
+          transform: scale(0.9);
+        }
+
+        100% {
+          opacity: 0;
+          transform: scale(1.8);
+        }
+      }
+
+      .boot-name {
+        margin: 0;
+        color: rgb(226 232 240);
+        font-size: 1.125rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      .boot-status {
+        margin: 0;
+        font-size: 0.8125rem;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .boot-mark::before {
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="boot-loader" role="status">
+        <div class="boot-mark"><img src="/loading-icon.png" alt="" /></div>
+        <p class="boot-name">Terra Pulse</p>
+        <p class="boot-status">Starting…</p>
+      </div>
+    </div>
     <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>
