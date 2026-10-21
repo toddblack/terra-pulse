@@ -7,7 +7,16 @@
  * reason an earthquake alert doesn't reach the screen.
  */
 
-export const ALERT_SOUND_URL = '/sounds/eq-alert.mp3';
+/**
+ * **Relative, never `/sounds/…`.** A built app loads its page from `file://`,
+ * where a leading slash means the drive root: `/sounds/eq-alert.mp3` became
+ * `file:///C:/sounds/eq-alert.mp3`, which does not exist, and the player's
+ * silent failure did exactly what it was built to do. So no installed copy up
+ * to 0.1.4 ever played the alert. `pnpm dev` serves the page from the dev
+ * server's root, where both forms work — which is why nobody heard the
+ * difference. Found 2026-10-21.
+ */
+export const ALERT_SOUND_URL = './sounds/eq-alert.mp3';
 
 /**
  * One element, reused.

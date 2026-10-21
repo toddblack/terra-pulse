@@ -7,8 +7,11 @@ The filename is not magic — it is read from `ALERT_SOUND_URL` in
 
 ## Why `public/` and not `src/assets/`
 
-Vite's `public/` directory is copied verbatim and served from the app root, so
-the file is referenced by URL (`/sounds/eq-alert.mp3`) rather than imported.
+Vite's `public/` directory is copied verbatim beside `index.html`, so the file
+is referenced by URL (`./sounds/eq-alert.mp3`) rather than imported. **The URL
+must be relative**: a built app is a `file://` page, where `/sounds/…` means
+the root of the drive. Until 0.1.5 it was `/sounds/…` and no installed copy
+ever played the sound.
 
 That matters here for two reasons:
 
