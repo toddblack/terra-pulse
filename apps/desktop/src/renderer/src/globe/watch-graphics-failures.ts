@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { NO_FRAME_TIMEOUT_S, nextFramelessSeconds } from '@terra-pulse/schema';
 import { describeGlobeFailure, isGraphicsFailure } from './globe-failure';
 
 /**
@@ -81,6 +82,54 @@ export function watchGraphicsFailures(
   return () => {
     widget.showErrorPanel = showErrorPanel;
     canvas.removeEventListener('webglcontextlost', onContextLost);
+  };
+}
+
+/**
+ * Reports a graphics failure when the page stops getting animation frames.
+ *
+ * **This is the case nothing else can see.** The Store's second rejection was
+ * a white window: no error, no panel, nothing for `watchGraphicsFailures` to
+ * catch, because the page itself was running. Chromium produces frames in the
+ * GPU process and hands each one to the window there; when that path is stuck,
+ * the page's `requestAnimationFrame` stops being called while its timers carry
+ * on. So a visible page whose timers run and whose frames do not is a window
+ * that is not drawing, and the next graphics mode is the way out.
+ *
+ * Only visible seconds count (a hidden or minimised window gets no frames by
+ * design), and a busy main thread stops the timer too, so neither can trip it.
+ * See `NO_FRAME_TIMEOUT_S` for the threshold.
+ *
+ * The report carries no GPU name, unlike the others: asking for one creates a
+ * WebGL context, a synchronous round trip to the very GPU process suspected of
+ * being stuck.
+ */
+export function watchFrameDelivery(report: (detail: string) => void): () => void {
+  let frames = 0;
+  let frameless = 0;
+  let rafId = 0;
+  const onFrame = () => {
+    frames++;
+    rafId = requestAnimationFrame(onFrame);
+  };
+  rafId = requestAnimationFrame(onFrame);
+
+  const timer = setInterval(() => {
+    frameless = nextFramelessSeconds(frameless, {
+      visible: document.visibilityState === 'visible',
+      frames,
+    });
+    frames = 0;
+    if (frameless >= NO_FRAME_TIMEOUT_S) {
+      clearInterval(timer);
+      cancelAnimationFrame(rafId);
+      report(`No frame reached the window in ${String(NO_FRAME_TIMEOUT_S)} s while it was visible`);
+    }
+  }, 1000);
+
+  return () => {
+    clearInterval(timer);
+    cancelAnimationFrame(rafId);
   };
 }
 
