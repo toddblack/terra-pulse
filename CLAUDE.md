@@ -5007,6 +5007,9 @@ matrix only `h6.py`'s copy changed.
 
 ## 0.1.2: falling back off the graphics card. 2026-10-20, branch `graphics-fallback`.
 
+**Its ladder is superseded by 0.1.4** (below): the Store rejected 0.1.2 with a
+white window, and the WARP step is gone. The detection described here stands.
+
 **The Store failed 0.1.0 on certification** (policy 10.1.2.10): on Windows 11
 Enterprise build 29691, launch stopped on Cesium's "Fragment shader failed to
 compile. Compile log:" modal, and after OK the globe stayed blank for good.
@@ -5116,6 +5119,93 @@ from the network — GCMT NDK, GFZ Kp, OMNI2, the GOES reports, FDSN text, the
 ShakeMap and GNSS files. All arrive over HTTPS from established sources, so
 this round's MITM argument does not apply to them, but "never quadratic, never
 allocate from a length field" does.
+
+## 0.1.4: a white window, and software presentation. 2026-10-20, branch `store-white-window`.
+
+**The Store rejected 0.1.2 too**, on the same Windows 11 Enterprise Insider VM
+(build 29691, "review-big Hyperloop VM"): a **white window with nothing in
+it**, on both launches, 90 s apart. No error, so 0.1.2's fallback had nothing
+to catch. **Supersedes** the ladder in "0.1.2: falling back off the graphics
+card"; the detection half of that entry still holds.
+
+- **It is a graphics failure, not network or a JavaScript crash, and that was
+  measured.** The built page loads `index.css` in `<head>` and it sets
+  `color-scheme: dark`, so Chromium paints the page dark before any of our code
+  runs. Launched with the app's JavaScript deliberately missing, the window
+  came up dark (18,18,18), not white. Main does no network work before the
+  window either. **White means no frame ever reached the screen.**
+- **Nothing reproduced here, including inside the installed package.** The
+  0.1.3 .appx, registered under Developer Mode and launched through the
+  activation manager, relaunched on a faked failure *with* package identity
+  (update channel still `store`) and drew on WARP. So the restart works in
+  MSIX; what differs is that machine's graphics path.
+- **The suspect: 0.1.2's middle step only moved WebGL.** `--use-angle=d3d11-warp`
+  puts WebGL on WARP but still shows the window through the GPU
+  (DirectComposition). A window that renders but cannot be presented is the
+  known failure of Chromium apps on VMs and over Remote Desktop, and VS Code's
+  documented fix is turning hardware acceleration off.
+- **New ladder: hardware → `software` → `swiftshader`**, both lower steps via
+  `app.disableHardwareAcceleration()`. Chromium then composites in software and
+  copies frames to the window itself, with no GPU in the path. **With
+  acceleration off, Chromium puts WebGL on WARP by itself**, so the step costs
+  nothing. `swiftshader` adds `enable-unsafe-swiftshader`, which moves WebGL to
+  SwiftShader, for a machine whose WARP is what fails (an Insider build's WARP
+  refusing shaders would look exactly like 0.1.0's report). Measured, dragging:
+
+  | config | WebGL | fps |
+  |---|---|---|
+  | hardware | Intel | 41 |
+  | `--use-angle=d3d11-warp` (old step) | WARP | 7.4 |
+  | `software` | WARP | 7.7 |
+  | `swiftshader` | SwiftShader | 4.0 |
+
+  `getGPUFeatureStatus` reports `webgl: unavailable_software` in software mode
+  while the globe draws. That is Chromium's label for software WebGL, not an
+  absence.
+- **Three ways in, because the white window raised no error:**
+  - A failure, as before (shader, link, lost context).
+  - **No graphics card** (`onlySoftwareAdapter`): if the adapter Chromium chose
+    is Microsoft's (vendor `0x1414` — Basic Render Driver, Basic Display, Remote
+    Display), save `software` and restart before the first paint. There the
+    "card" is WARP already. **It goes by the chosen adapter, never by
+    presence**: this laptop lists `1414:8c` third, after Intel and NVIDIA, with
+    none flagged active. `getGPUInfo('basic')`, 5 s timeout, not awaited.
+  - **Remote Desktop** (`isRemoteSessionName`, `SESSIONNAME=RDP-…`): software
+    for that session only, not saved, so the same PC at its own screen gets the
+    card. Read before ready, so no restart. The About panel says why and hides
+    "Restart on the graphics card", which would land in software again. Can be
+    stale (an RDP reconnect to a console session keeps `Console`); then the
+    other two still apply.
+  - **A watchdog for frames** (`watchFrameDelivery`): 10 *visible* seconds with
+    timers running and no `requestAnimationFrame` is a graphics failure. Hidden
+    seconds neither count nor reset (an occluded window really is `hidden` —
+    found when the first test didn't fire with the editor in front); a busy main
+    thread stops the timer too. Its report carries no GPU name, because asking
+    for one creates a WebGL context, a synchronous call into the GPU process
+    suspected of hanging.
+- **`graphics-log.txt` in userData**, capped at 64 KB: version, mode and reason
+  at start, adapters, what Chromium ended up using (logged at `ready-to-show`;
+  asked earlier, every feature reads "disabled"), each failure and restart, and
+  any GPU process exit. A packaged app's console goes nowhere, and both Store
+  rejections came as screenshots alone.
+- **No `backgroundColor` on the window, on purpose.** It would turn a future
+  presentation failure from white to dark, and white is now the one symptom that
+  says "nothing was presented".
+- **Verified inside the installed 0.1.4 package**, on this PC: hardware draws
+  (Intel, 34 fps); frames stopped over CDP → restart to `software` in 10 s
+  (WARP, 7.8 fps, identity kept); the reviewer's error faked → `swiftshader`
+  (3.7 fps); faked again → stays, notice shown; About → back to hardware.
+  Remote Desktop simulated on the unpacked build with `SESSIONNAME=RDP-Tcp#1`:
+  software from the first frame, compositing `disabled_software`, globe drawn,
+  nothing saved.
+- **Not verifiable here: the reviewer's machine.** Every rung presents in
+  software now, which is what Chrome itself does on a machine with no usable
+  GPU, but no VM was available to try it on.
+- **Driving a background window over CDP:** Windows refuses
+  `SetForegroundWindow` from a background process, and a covered window is
+  `hidden`, so rAF stops. An Alt key tap (`keybd_event 0x12`) first, then
+  `ShowWindow` + `SetForegroundWindow`, works. A screen grab of a covered
+  window captures whatever covers it, so check the image, not only a pixel count.
 
 ## Non-negotiables
 

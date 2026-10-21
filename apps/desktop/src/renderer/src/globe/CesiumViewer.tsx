@@ -50,7 +50,12 @@ import { useQuakeWatchStore } from '../watch/useQuakeWatchStore';
 import { useWaveformSelection } from '../waveforms/useWaveformSelection';
 import { watchSelection } from './selection-sync';
 import { describeGlobeFailure, isGraphicsFailure } from './globe-failure';
-import { clearConstructionErrorPanel, gpuName, watchGraphicsFailures } from './watch-graphics-failures';
+import {
+  clearConstructionErrorPanel,
+  gpuName,
+  watchFrameDelivery,
+  watchGraphicsFailures,
+} from './watch-graphics-failures';
 import { useGlobeFailureStore } from './useGlobeFailureStore';
 import { useGlobeLayers } from './useGlobeLayers';
 import { displayWindow, instantOnScreen, LIVE_END_MARGIN_MS } from './display-window';
@@ -288,6 +293,11 @@ export function CesiumViewer() {
       window.removeEventListener('keydown', onKeyDown);
     };
   }, [antipodeEventId, hideAntipode]);
+
+  // A window that never draws reports itself, so the app can move off the
+  // graphics card. Separate from the viewer so it runs even when no viewer
+  // could be built.
+  useEffect(() => watchFrameDelivery(useGlobeFailureStore.getState().report), []);
 
   // Viewer lifecycle: created once on mount, destroyed once on unmount.
   useEffect(() => {

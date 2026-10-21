@@ -143,11 +143,15 @@ export function AboutButton() {
           {graphicsNote && (
             <div id="about-graphics" className={styles.section}>
               <p className={styles.note}>{graphicsNote}</p>
-              <div className={styles.actions}>
-                <button type="button" className={styles.secondary} onClick={returnToHardware}>
-                  Restart on the graphics card
-                </button>
-              </div>
+              {/* Not over Remote Desktop: the restart would land in software
+                  again, since that choice is made per session and not saved. */}
+              {graphics?.remoteSession !== true && (
+                <div className={styles.actions}>
+                  <button type="button" className={styles.secondary} onClick={returnToHardware}>
+                    Restart on the graphics card
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
