@@ -1778,6 +1778,10 @@ server-side proxying of all third-party API calls.
     Chromium like any page, so a white window keeps that meaning.
   - **Check:** no white flash before the loading screen; time to first visible
     pixel before and after; screenshots in hardware and software modes.
+- **First-run tour — shipped in 0.2.0 (2026-10-21).** A spotlight walkthrough
+  of eight steps on a fresh install, skippable, replayable from the About
+  panel. Steps carry `addedIn` / `whatsNew`, so a later update can show
+  existing users just its new steps. See `CLAUDE.md`, "The first-run tour".
 - **Knowing when a source moves, before a user does** (planned 2026-10-21, not
   built). EarthScope's ring host vanished and it surfaced five days later as
   "clicks pick nothing" in the live app. Record so far, against ~two dozen

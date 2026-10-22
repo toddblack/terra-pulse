@@ -21,4 +21,5 @@ export * from './travel-times';
 export * from './shakemap';
 export * from './gnss';
 export * from './app-update';
+export * from './first-run-tour';
 export * from './graphics-mode';

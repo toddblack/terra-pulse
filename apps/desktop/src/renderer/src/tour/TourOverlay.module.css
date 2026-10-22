@@ -1,0 +1,132 @@
+/*
+ * Above every panel (10), the GPS window (15) and the hover tooltip (20);
+ * below the live watch's alert banner (30). A real earthquake warning must
+ * never sit under a tour.
+ */
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+}
+
+/* Takes every pointer event (see TourOverlay). Clear while a highlight does
+   the dimming; dim itself for a centred step with nothing to lift out. */
+.blocker,
+.blockerDim {
+  position: absolute;
+  inset: 0;
+}
+
+.blockerDim {
+  background-color: rgb(2 6 23 / 55%);
+}
+
+/* The dim is this element's shadow, so one box both darkens the app and
+   leaves the target lit. The guide modal's backdrop tint, so the two read as
+   the same kind of overlay. */
+.highlight {
+  position: absolute;
+  border: 2px solid rgb(56 189 248 / 80%);
+  border-radius: 0.6rem;
+  box-shadow: 0 0 0 200vmax rgb(2 6 23 / 55%);
+  pointer-events: none;
+  transition:
+    left 0.25s ease,
+    top 0.25s ease,
+    width 0.25s ease,
+    height 0.25s ease;
+}
+
+.card {
+  position: absolute;
+  width: 20rem;
+  padding: 0.9rem 1rem 0.85rem;
+  border: 1px solid rgb(255 255 255 / 12%);
+  border-radius: 0.5rem;
+  background-color: rgb(15 23 42 / 97%);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 50%);
+  color: rgb(203 213 225);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.card:focus {
+  outline: none;
+}
+
+.count {
+  color: rgb(100 116 139);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  margin: 0.15rem 0 0;
+  color: rgb(226 232 240);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.body {
+  margin: 0.4rem 0 0;
+}
+
+.actions {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-top: 0.8rem;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.primary,
+.secondary,
+.skip {
+  padding: 0.3rem 0.75rem;
+  border-radius: 0.35rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+/* The About panel's buttons, so the tour's controls are recognisably the app's. */
+.primary {
+  border: 1px solid rgb(56 189 248 / 45%);
+  background-color: rgb(56 189 248 / 18%);
+  color: rgb(125 211 252);
+}
+
+.primary:hover {
+  background-color: rgb(56 189 248 / 28%);
+}
+
+.secondary {
+  border: 1px solid rgb(71 85 105);
+  background-color: transparent;
+  color: rgb(203 213 225);
+}
+
+.secondary:hover {
+  background-color: rgb(30 41 59);
+}
+
+/* Always there and never loud: skipping must be easy, not advertised. */
+.skip {
+  padding-left: 0;
+  border: none;
+  background: none;
+  color: rgb(148 163 184);
+}
+
+.skip:hover {
+  color: rgb(226 232 240);
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .highlight {
+    transition: none;
+  }
+}

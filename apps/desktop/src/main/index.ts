@@ -2,7 +2,7 @@ import { app, BrowserWindow, Notification, screen, session } from 'electron';
 import { join } from 'node:path';
 import dotenv from 'dotenv';
 import type { DatabaseSync } from 'node:sqlite';
-import { deleteAppState, openDatabase, readAppState, writeAppState } from '@terra-pulse/db';
+import { deleteAppState, openDatabase, readAppState, readSeenThrough, writeAppState } from '@terra-pulse/db';
 import {
   parseWindowBounds,
   placeWindow,
@@ -77,6 +77,7 @@ import { applyTileIdentity, tileUserAgent } from './tile-identity';
 import { sendToRenderer } from './renderer-send';
 import { createUpdateChecker } from './update-check';
 import { registerUpdateHandlers } from './ipc/app-update';
+import { createTourState, registerTourHandlers } from './ipc/tour';
 import { applyGraphicsMode, logGpuFeatures, registerGraphicsHandlers } from './graphics-mode';
 
 // dotenv.config() with no options resolves relative to process.cwd(), but
@@ -387,6 +388,20 @@ app
     // this cannot be recomputed later — and a push would race the renderer's
     // subscription, which happens in a React effect after paint.
     registerMissedEventsHandler(collectMissedEvents(db));
+
+    // The first-run tour's "is this a new install" — the same watermark, read
+    // at the same moment and for the same reason: after the first poll every
+    // install has one.
+    registerTourHandlers(
+      createTourState({
+        freshInstall: readSeenThrough(db) === null,
+        currentVersion: app.getVersion(),
+        readState: (key) => readAppState(db, key),
+        writeState: (key, value) => {
+          writeAppState(db, key, value);
+        },
+      }),
+    );
 
     const stopPolling = startEarthquakePolling(db, notifyRenderer, alerter);
     app.on('will-quit', stopPolling);
