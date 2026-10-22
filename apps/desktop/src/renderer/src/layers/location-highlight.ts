@@ -11,7 +11,7 @@ import type { LocationSelection } from '../state/useGlobeStore';
  *
  * It cannot literally reuse Cesium's indicator: that one is driven by
  * `viewer.selectedEntity`, which already carries the earthquake selection, and
- * a fault is a `Polyline` in a batched collection rather than an entity, so
+ * a fault is one instance in a batched `Primitive` rather than an entity, so
  * there is nothing to assign. Drawing the same shape ourselves also lets a
  * selected quake and a selected fault be marked at the same time, which sharing
  * `selectedEntity` would not.
