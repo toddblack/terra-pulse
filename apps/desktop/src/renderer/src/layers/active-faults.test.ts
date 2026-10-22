@@ -10,25 +10,52 @@ import {
 import { kinematicColorHex, kinematicLineWidth } from './plate-kinematics';
 import { ACTIVE_FAULTS } from './fault-data';
 
-function createFakeViewer(options?: { destroyed?: boolean }): Cesium.Viewer {
-  return {
+interface FakeViewer {
+  viewer: Cesium.Viewer;
+  /** Moves the fake camera and runs the layer's per-frame check, as a render would. */
+  setHeight: (metres: number) => void;
+  removePreRender: ReturnType<typeof vi.fn>;
+}
+
+function createFakeViewer(options?: { destroyed?: boolean; heightM?: number }): FakeViewer {
+  const camera = { positionCartographic: { height: options?.heightM ?? 20_000_000 } };
+  const listeners: (() => void)[] = [];
+  const removePreRender = vi.fn();
+  const viewer = {
     isDestroyed: vi.fn(() => options?.destroyed ?? false),
+    camera,
     scene: {
+      preRender: {
+        addEventListener: vi.fn((fn: () => void) => {
+          listeners.push(fn);
+          return removePreRender;
+        }),
+      },
       primitives: {
         add: vi.fn((p: unknown) => p),
         // Really destroys, because `PrimitiveCollection.remove` really does
-        // (destroyPrimitives defaults true). A mock that merely recorded the
-        // call let a crash ship: the layer shared one Material across all
-        // 13,696 polylines, and `Polyline._destroy` destroys its material —
-        // so the second polyline threw DeveloperError. Nothing caught it until
-        // the app fell over, because teardown was never actually exercised.
-        remove: vi.fn((p: Cesium.PolylineCollection) => {
+        // (destroyPrimitives defaults true): teardown has to be exercised, not
+        // merely recorded. A mock that only recorded the call once let a crash
+        // ship, when this layer shared one Material across 13,696 polylines.
+        remove: vi.fn((p: Cesium.Primitive) => {
           p.destroy();
           return true;
         }),
       },
     },
   } as unknown as Cesium.Viewer;
+  return {
+    viewer,
+    removePreRender,
+    setHeight(metres) {
+      camera.positionCartographic.height = metres;
+      for (const fn of listeners) fn();
+    },
+  };
+}
+
+function addedPrimitives(viewer: Cesium.Viewer): Cesium.Primitive[] {
+  return vi.mocked(viewer.scene.primitives.add).mock.calls.map((call) => call[0] as Cesium.Primitive);
 }
 
 describe('vendored fault data', () => {
@@ -65,7 +92,7 @@ describe('vendored fault data', () => {
   });
 
   it('keeps every chord short enough not to sag below the globe', () => {
-    // PolylineCollection has no ArcType.GEODESIC, so the vendor script
+    // The layer draws straight chords (ArcType.NONE), so the vendor script
     // pre-densifies to a 50 km cap. A regression there would put long faults
     // underground at grazing view angles — invisible in a unit test otherwise.
     const MAX_CHORD_KM = 50;
@@ -147,64 +174,78 @@ describe('active faults layer', () => {
     expect(layer.defaultVisible).toBe(false);
   });
 
-  it('adds one batched primitive rather than thousands of entities', () => {
+  it('adds one static primitive per zoom tier, covering every fault', () => {
     const layer = createActiveFaultsLayer('light');
-    const viewer = createFakeViewer();
+    const { viewer } = createFakeViewer();
 
     layer.mount(viewer);
 
-    expect(viewer.scene.primitives.add).toHaveBeenCalledTimes(1);
-    const collection = vi.mocked(viewer.scene.primitives.add).mock
-      .calls[0]![0] as Cesium.PolylineCollection;
-    expect(collection.length).toBe(ACTIVE_FAULTS.length);
+    const primitives = addedPrimitives(viewer);
+    expect(primitives).toHaveLength(3);
+    const instances = primitives.reduce(
+      (sum, p) => sum + (p.geometryInstances as Cesium.GeometryInstance[]).length,
+      0,
+    );
+    expect(instances).toBe(ACTIVE_FAULTS.length);
   });
 
-  it('gives shorter faults a nearer cutoff than long ones', () => {
+  it('carries each fault record as its instance id, so a pick can name it', () => {
     const layer = createActiveFaultsLayer('light');
-    const viewer = createFakeViewer();
+    const { viewer } = createFakeViewer();
     layer.mount(viewer);
-    const collection = vi.mocked(viewer.scene.primitives.add).mock
-      .calls[0]![0] as Cesium.PolylineCollection;
 
-    // Compare a known long fault against a known short one rather than
-    // trusting index order.
-    const longIndex = ACTIVE_FAULTS.findIndex((f) => f.z === 0);
-    const shortIndex = ACTIVE_FAULTS.findIndex((f) => f.z === 2);
-    const longFar = collection.get(longIndex).distanceDisplayCondition.far;
-    const shortFar = collection.get(shortIndex).distanceDisplayCondition.far;
-
-    expect(longFar).toBeGreaterThan(shortFar);
+    const ids = new Set(
+      addedPrimitives(viewer).flatMap((p) =>
+        (p.geometryInstances as Cesium.GeometryInstance[]).map((i) => i.id as unknown),
+      ),
+    );
+    expect(ids.has(ACTIVE_FAULTS[0])).toBe(true);
+    expect(ids.size).toBe(ACTIVE_FAULTS.length);
   });
 
-  it('destroys the primitive on unmount', () => {
+  it('shows only the tiers whose cutoff the camera is inside', () => {
     const layer = createActiveFaultsLayer('light');
-    const viewer = createFakeViewer();
+    const fake = createFakeViewer();
+    layer.mount(fake.viewer);
+    const [long, medium, short] = addedPrimitives(fake.viewer);
 
-    layer.mount(viewer);
+    fake.setHeight(20_000_000); // whole globe: long faults only
+    expect([long!.show, medium!.show, short!.show]).toEqual([true, false, false]);
+
+    fake.setHeight(5_000_000); // continental
+    expect([long!.show, medium!.show, short!.show]).toEqual([true, true, false]);
+
+    fake.setHeight(1_000_000); // regional: everything
+    expect([long!.show, medium!.show, short!.show]).toEqual([true, true, true]);
+  });
+
+  it('uses the same cutoffs as the encoding, nearest for the shortest faults', () => {
+    expect(faultMaxDistanceMeters(1)).toBe(8_000_000);
+    expect(faultMaxDistanceMeters(2)).toBe(2_000_000);
+    const fake = createFakeViewer({ heightM: 2_000_001 });
+    const layer = createActiveFaultsLayer('light');
+    layer.mount(fake.viewer);
+    const short = addedPrimitives(fake.viewer)[2]!;
+    expect(short.show).toBe(false);
+    fake.setHeight(2_000_000);
+    expect(short.show).toBe(true);
+  });
+
+  it('removes every primitive and its frame listener on unmount', () => {
+    const layer = createActiveFaultsLayer('light');
+    const fake = createFakeViewer();
+
+    layer.mount(fake.viewer);
     layer.unmount();
 
-    expect(viewer.scene.primitives.remove).toHaveBeenCalledTimes(1);
-  });
-
-  it('tears down cleanly, giving each polyline its own material', () => {
-    // The regression guard. Destroying the collection destroys every polyline,
-    // and each one destroys its own material. If a single Material instance
-    // were shared, the second destroy would throw DeveloperError and take the
-    // render loop with it — which is exactly what happened in the app.
-    const layer = createActiveFaultsLayer('light');
-    const viewer = createFakeViewer();
-
-    layer.mount(viewer);
-    expect(() => layer.unmount()).not.toThrow();
+    expect(fake.viewer.scene.primitives.remove).toHaveBeenCalledTimes(3);
+    expect(fake.removePreRender).toHaveBeenCalledTimes(1);
   });
 
   it('survives repeated mount/unmount cycles', () => {
-    // Changing the basemap tone or toggling the layer remounts it. Nothing may
-    // leak across a cycle or be reused after destruction.
     const layer = createActiveFaultsLayer('light');
-
     for (let i = 0; i < 3; i += 1) {
-      const viewer = createFakeViewer();
+      const { viewer } = createFakeViewer();
       expect(() => {
         layer.mount(viewer);
         layer.unmount();
@@ -214,7 +255,7 @@ describe('active faults layer', () => {
 
   it('does not touch an already-destroyed viewer on unmount', () => {
     const layer = createActiveFaultsLayer('light');
-    const viewer = createFakeViewer();
+    const { viewer } = createFakeViewer();
 
     layer.mount(viewer);
     vi.mocked(viewer.isDestroyed).mockReturnValue(true);
@@ -228,16 +269,17 @@ describe('active faults layer', () => {
     expect(() => layer.unmount()).not.toThrow();
   });
 
-  it('toggles visibility on the whole collection', () => {
+  it('hides every tier when switched off, whatever the zoom', () => {
     const layer = createActiveFaultsLayer('light');
-    const viewer = createFakeViewer();
-    layer.mount(viewer);
-    const collection = vi.mocked(viewer.scene.primitives.add).mock
-      .calls[0]![0] as Cesium.PolylineCollection;
+    const fake = createFakeViewer({ heightM: 1_000_000 });
+    layer.mount(fake.viewer);
+    const primitives = addedPrimitives(fake.viewer);
 
     layer.setVisible(false);
-    expect(collection.show).toBe(false);
+    expect(primitives.map((p) => p.show)).toEqual([false, false, false]);
+    fake.setHeight(500_000); // a camera move must not bring them back
+    expect(primitives.map((p) => p.show)).toEqual([false, false, false]);
     layer.setVisible(true);
-    expect(collection.show).toBe(true);
+    expect(primitives.map((p) => p.show)).toEqual([true, true, true]);
   });
 });

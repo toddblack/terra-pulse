@@ -462,9 +462,10 @@ export function CesiumViewer() {
      * - Earthquakes, plate boundaries, magnetometer stations, flares and CME
      *   arrivals are **entities**, so `picked.id` is a Cesium Entity carrying
      *   an id string (and, for boundaries, `properties`).
-     * - Faults are a batched **PolylineCollection**, so `picked.id` is the raw
-     *   `FaultRecord` the layer attached at `add()` time. There is no entity to
-     *   look up, which is why the layer has to carry the record itself.
+     * - Faults are geometry instances in a batched **Primitive**, so
+     *   `picked.id` is the raw `FaultRecord` the layer gave each instance as its
+     *   id. There is no entity to look up, which is why the layer has to carry
+     *   the record itself.
      */
     type PickCandidate =
       | { kind: 'fault'; fault: FaultRecord }

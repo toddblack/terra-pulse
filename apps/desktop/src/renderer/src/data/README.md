@@ -279,10 +279,12 @@ sparse region reads as *no faults here* rather than *not close enough yet*.
 
 ### Geometry is pre-densified
 
-The layer uses Cesium's `PolylineCollection` — necessary at this feature count,
-since the Entity API allocates a primitive per feature — and that has no
-`ArcType.GEODESIC`. Straight chords cut *through* the ellipsoid, so long ones
-sink below the surface and clip at grazing view angles.
+The layer draws each zoom tier as one static `Primitive` of
+`SimplePolylineGeometry` with `ArcType.NONE` — batched, because the Entity API
+allocates a primitive per feature, and straight, because it started as a
+`PolylineCollection`, which has no `ArcType.GEODESIC`. Straight chords cut
+*through* the ellipsoid, so long ones sink below the surface and clip at
+grazing view angles.
 
 Upstream mapping is detailed (median segment 1.1 km) but the longest single
 segment is **346 km**, which would sag **2.4 km** underground. The vendor
