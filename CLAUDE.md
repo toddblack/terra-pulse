@@ -1813,9 +1813,11 @@ Python package would just be scaffolding ahead of need.
   Running it on every `MOUSE_MOVE` at 60 Hz stalls the pipeline while rotating.
   Hover picking is throttled to 50 ms and skipped entirely mid-drag (the pointer
   is moving the camera; the result would be discarded anyway).
-- **A `PolylineCollection` pick returns a `Polyline`, not an `Entity`.** There is
-  no entity id to look up, so the faults layer attaches the `FaultRecord` itself
-  as `id` at `add()` time — that is the only channel by which a pick can say
+- **A pick on a batched primitive returns no `Entity`.** It was a `Polyline`
+  from a `PolylineCollection`; since 2026-10-22 it is a geometry instance of a
+  `Primitive`, whose pick carries the instance's `id`. Either way there is no
+  entity id to look up, so the faults layer gives each line the `FaultRecord`
+  itself as its `id` — that is the only channel by which a pick can say
   *which* fault. Plate boundaries and subduction zones are entities and already
   carried `properties`, so they needed nothing.
 - **Cesium property `getValue()` is typed `unknown`; narrow it, never `String()`
@@ -2288,6 +2290,10 @@ smaller than the item as written.
   there is no per-vertex colour on that primitive, and a per-fault colour that
   changes continuously with the tide has no precedent here at that count. The
   per-click readout costs one evaluation instead of 13,696 on a timer.
+  *(Since 2026-10-22 the layer is one static `Primitive` per zoom tier with a
+  per-instance colour attribute, so the "no per-line colour" half of this no
+  longer holds. Recolouring 13,696 instances on a timer is still the cost, and
+  the sparsity below still decides it.)*
 - **And it would have had almost nothing to draw.** GEM publishes dip and rake
   for **21.7%** of its 13,696 faults (2,976, measured at vendor time). This is
   the same sparsity that made H6 itself resolve onto Global CMT mechanisms
@@ -5342,6 +5348,93 @@ skippable, replayable from About ("Take the tour").
   3, then a quiet relaunch.
 - Not judged by tests: the copy, and the card in step 4, which sits close to
   the selected quake's reticle on a 1584 px window without covering it.
+
+## 0.2.1: Active faults, one Primitive per zoom tier. 2026-10-22, branch `faults-perf`.
+
+Found and fixed first in `../terra-pulse-mobile` (its branch `faults-perf`),
+which had copied this app's layer as is, then ported back. Reported here by the
+user as the same lag in the Store app with Active faults on.
+
+**What was found.** On a Pixel 9, dragging the globe with Active faults on ran
+at **5 fps at every zoom** (82-115 fps with it off), worst frames ~200 ms.
+Globe zoom too, where only the 1,279 long faults draw. So the cost is not
+what is drawn: the `PolylineCollection` does per-polyline work every frame for
+all 13,696 lines, visible or not, because the zoom tiers are per-polyline
+`distanceDisplayCondition`s. Splitting the collection by tier would only have
+fixed globe zoom.
+
+**The desktop paid the same, measured** in a built, isolated instance on this
+laptop: six scripted drags over the western US, frames timed in the page.
+
+| camera height | faults off | faults on, before | faults on, after |
+|---|---|---|---|
+| 20,000 km | 33-43 fps | **6 fps** (worst 354 ms) | **45 fps** (worst 26 ms) |
+| 5,000 km | 21-24 fps | **6 fps** (229 ms) | **22 fps** (100 ms) |
+| 1,500 km | 45-50 fps | **7 fps** (213 ms) | **47 fps** (33 ms) |
+
+Faults on now matches faults off. (The 5,000 km view is slow whether faults
+are on or off, so faults aren't the cause there.)
+
+**The fix.** One static `Cesium.Primitive` per zoom tier:
+
+- `SimplePolylineGeometry` instances, `ArcType.NONE` on the vendored 50 km
+  chords, `PerInstanceColorAppearance({ flat: true })`, a
+  `ColorGeometryInstanceAttribute`, built `asynchronous: true` in Cesium's
+  workers with `releaseGeometryInstances: true`.
+- Each instance keeps its tier's cutoff as a
+  `DistanceDisplayConditionGeometryInstanceAttribute` (evaluated on the GPU;
+  omitted for the always-drawn tier, where `Number.MAX_VALUE` would overflow
+  float32). Every instance in a Primitive must share attributes; one tier per
+  Primitive makes that hold.
+- A `scene.preRender` listener sets each tier's `show` to
+  `visible && cameraHeight <= tierCutoff`. Every surface point is at least the
+  camera height away, so nothing that drew before is lost, and a hidden tier
+  costs nothing.
+- Phone result: faults on matches faults off (82-84 / 66-69 / 106-112 fps at
+  20,000 / 5,000 / 1,500 km). First switch-on 261 -> 49 ms on the main thread.
+  Full table in `../terra-pulse-mobile/notes/faults-perf.md`.
+
+**What was checked here, beyond the fps:**
+
+- **The zoom cutoffs are unchanged, by reading Cesium's shaders.**
+  `PolylineVS.glsl` and `Primitive`'s generated condition both measure
+  |centre|² − radius² of the bounding sphere, so a line appears at exactly the
+  zoom it used to. The tier gate (`height <= cutoff`) is not quite that
+  measure: a line could have drawn a little past its cutoff, by about r²/2h.
+  That is under 0.2 km at 2,000 and 8,000 km, so nothing visible is lost.
+- **Hover still names the fault.** `classifyPicked` recognises a fault by
+  `picked.id` carrying `p` and `z`; a Primitive pick returns the instance's
+  `id`, which is the same `FaultRecord`. In the running app, hovering showed
+  "Las Positas · sinistral-reverse · 0.37 mm/yr" and the pointer cursor, after
+  `releaseGeometryInstances: true`.
+- **Tone change remounts cleanly**: OSM → Relief gave three tiers again in the
+  dark-tone red (`#ff1744`), and back; switching off left none; no page errors.
+- **The async build is not new to this app**: the plate-boundary entities'
+  static batches already use `asynchronous: true`, so workers were known to
+  work under `file://`. The ShakeMap overlay stays synchronous on purpose (its
+  lines should appear together).
+- **How long the lines take to appear**, window visible: **0.8-0.9 s** on a
+  launch's first switch-on, 0.3-0.5 s after, longest frame 55-94 ms meanwhile
+  (the old synchronous build blocked for ~124 ms). Two runs measured 9.6 and
+  25 s, and both were the page not rendering at all (a 24.5 s gap between
+  frames, the window covered). A Primitive only builds while frames render,
+  so a covered window builds nothing, and it doesn't matter there.
+- **Line width.** `SimplePolylineGeometry` draws 1 px GL lines only. That is
+  `FAULT_LINE_WIDTH` today and the factory throws if it changes. A wider line
+  needs `PolylineGeometry` + `PolylineColorAppearance` instead.
+- **The material-sharing regression test is gone**, because there are no
+  per-polyline materials. The layer tests are the mobile rewrite: one
+  primitive per tier covering every fault, record ids kept, tier visibility by
+  camera height, teardown removes the primitives and the frame listener.
+
+**Measuring a drag from a script:** port 9333 may be held by `adb forward`
+from the mobile work, so the instance uses 9444. The Viewer is found by walking
+React's fiber tree up from `.cesium-widget canvas` for a hook value with
+`scene` and `camera`. `Input.dispatchMouseEvent` drags rotate the globe, and a
+`requestAnimationFrame` recorder in the page gives fps and worst frame. Skip the
+first-run tour first, since it swallows pointer events.
+
+---
 
 ## Non-negotiables
 
