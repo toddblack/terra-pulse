@@ -39,6 +39,7 @@ import type {
   WaveformStreamStatus,
   WatchPin,
   UpdateStatus,
+  TourStatus,
   GlobeFailureAction,
   GraphicsStatus,
 } from '@terra-pulse/schema';
@@ -159,6 +160,11 @@ declare global {
         /** Opens the release page main validated. False when there is none. */
         openRelease(): Promise<boolean>;
         onStatus(callback: (status: UpdateStatus) => void): () => void;
+      };
+      /** The first-run tour: whether to show it, and recording that it was seen. */
+      tour: {
+        status(): Promise<TourStatus>;
+        markSeen(): Promise<TourStatus>;
       };
       /** The live watch (§5.13): one pin, watched by main while the app is open. */
       quakeWatch: {

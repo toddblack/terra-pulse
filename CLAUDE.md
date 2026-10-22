@@ -1987,6 +1987,11 @@ The fourth section is also where `SOURCES.md`'s attribution gets paid: a licence
 condition is not satisfied by a file in the repo that nobody reading a rendered
 map ever opens.
 
+**A feature worth announcing also gets a tour step** (since 0.2.0): an entry in
+`tour/tour-steps.ts` with `addedIn` set to its release and `whatsNew: true`.
+A fresh install meets it in the full tour; an existing user sees just that step,
+once, on the update. See "The first-run tour" under "0.1.5".
+
 **Tidal potential layer — shipped.** The lunisolar equilibrium tide as a raster
 following the scrubber. Phase 5's first piece, built ahead of H6 because it
 needs nothing H6 is blocked on.
@@ -5280,6 +5285,63 @@ the loading screen `PROJECT_PLAN.md` had planned for after 0.1.4.
   - **Any runtime string naming a `public/` file must be relative.** It was
     the only one: Cesium's assets were already right, because
     `CESIUM_BASE_URL` is `./cesium/` (`electron.vite.config.ts`).
+
+### The first-run tour (0.2.0, branch `first-run-tour`)
+
+**Version numbering, agreed 2026-10-21:** last number for fixes only, middle
+number for anything a user can see, 1.0.0 once — after a release holds for a
+few weeks with no emergency fix, with the source check and the renderer
+sandbox done. The tour is a feature, hence 0.2.0 rather than 0.1.6.
+
+
+A spotlight walkthrough on a new install: the app dims, one control is lifted
+out with a cyan outline, and a caption card sits beside it, with Next / Back /
+Skip tour, ← → and Esc. Eight steps: welcome, range controls, layers, the
+inspector, the timeline, the waveform tab, Explore vs Analyze, and the About
+label. Todd's choices: spotlight over a welcome card, point and never act
+except to open one quake for the inspector step, new installs only, always
+skippable, replayable from About ("Take the tour").
+
+- **"New install" is the missing "seen through" watermark**, read in main at
+  the same moment `collectMissedEvents` reads it and for the same reason: the
+  first poll writes one. `tour_seen_version` in `app_state` records the
+  version last finished *or skipped*. Skipping is a no, not a later.
+- **Existing users never get the full tour.** With a watermark and no
+  `tour_seen_version`, nothing shows and the current version is recorded, so
+  a later what's-new step is measured from there. `tourStepsToShow` in the
+  schema is the whole rule, and it fails toward showing nothing.
+- **What's new rides the same steps**: `whatsNew: true` plus `addedIn` shows
+  that step alone to an existing user once, while fresh installs meet it in
+  place. Checked live with a temporary flag: an existing profile saw "1 of 1".
+- **It points; the one exception is step 4**, which selects the largest quake
+  drawn so the inspector is real, and clears that selection at the end only if
+  it is still the tour's. It opens no waveform stream and never switches mode.
+- **Measured by polling, every 200 ms, while a tour shows.** Targets appear late
+  (the inspector), resize (the columns) and move without resizing (the
+  selection column sliding for a banner); a `ResizeObserver` sees only one of
+  the three. A target missing for 2 s is passed over in the direction of travel,
+  so the tour cannot get stuck.
+- **It swallows pointer events**, `LayerGuideModal`'s reason (Cesium's single
+  `MOUSE_MOVE` handler). z-index 25: over the panels, GPS window and tooltip,
+  **under the watch alert banner** — a real warning is never behind a tour.
+- **It waits for the globe *and* the quakes** (`globePainted`, newly published
+  by `CesiumViewer` into `useGlobeStore`): a fresh install's catalogue arrives
+  after the globe, and "every dot is an earthquake" over an empty planet reads
+  as broken. At most 8 s, so offline it still starts. Measured: it appeared at
+  2.9–3.5 s from launch on a fresh profile, with 73 quakes drawn.
+- **Its directory is Explore's**, so `tour` joined both purity guards (the
+  ESLint import rule and `explore-purity.test.ts`); a new directory is covered
+  by neither by default.
+- `tour-steps.test.ts` reads every component's source through Vite's
+  `import.meta.glob('?raw')` — no `node:fs`, so no tsconfig exception like
+  explore-purity's — and fails if a step's target id is renamed.
+- **Verified in a built instance, fresh profiles:** all 8 steps on screen in
+  order, step 4 with a real inspector, Done clearing its selection; relaunch
+  quiet; an existing user (watermark, no tour record) quiet and recorded;
+  "Take the tour" from Analyze switching back, → and Esc working; Skip at step
+  3, then a quiet relaunch.
+- Not judged by tests: the copy, and the card in step 4, which sits close to
+  the selected quake's reticle on a 1584 px window without covering it.
 
 ## Non-negotiables
 

@@ -156,6 +156,13 @@ interface GlobeState {
   homeViewRequest: number;
 
   /**
+   * The globe has drawn once (`useFirstPaintReady`, owned by `CesiumViewer`).
+   * Published here for chrome that must not start over a blank planet — the
+   * first-run tour. Latches true, like the gate it mirrors.
+   */
+  globePainted: boolean;
+
+  /**
    * Region size and magnitude floor for the recurrence panel.
    *
    * Kept in the store rather than in the panel so the choice survives changing
@@ -241,6 +248,7 @@ interface GlobeState {
   selectSolarEvent: (selection: SolarEventSelection | null) => void;
   requestPointFocus: (point: { latitude: number; longitude: number }) => void;
   requestHomeView: () => void;
+  markGlobePainted: () => void;
   setRecurrenceRadiusKm: (radiusKm: number) => void;
   setRecurrenceFloor: (floor: number) => void;
   setHover: (hover: HoverState | null) => void;
@@ -281,6 +289,7 @@ export const useGlobeStore = create<GlobeState>((set) => ({
   selectedSolarEvent: null,
   pointFocusRequest: null,
   homeViewRequest: 0,
+  globePainted: false,
   recurrenceRadiusKm: DEFAULT_RECURRENCE_RADIUS_KM,
   recurrenceFloor: DEFAULT_RECURRENCE_FLOOR,
   hover: null,
@@ -307,6 +316,7 @@ export const useGlobeStore = create<GlobeState>((set) => ({
     })),
 
   requestHomeView: () => set((state) => ({ homeViewRequest: state.homeViewRequest + 1 })),
+  markGlobePainted: () => set({ globePainted: true }),
 
   /**
    * Leaving probe mode drops a probed *point* with it, but leaves a clicked

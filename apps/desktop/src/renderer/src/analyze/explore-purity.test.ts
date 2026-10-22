@@ -30,7 +30,7 @@ import { describe, expect, it } from 'vitest';
 // bottom dock now, so it is Explore and the rule applies directly. A new
 // directory is covered by **neither** guard by default, which is why it has to
 // be named here as well as in the eslint glob.
-const EXPLORE_DIRS = ['panels', 'layers', 'globe', 'state', 'waveforms'];
+const EXPLORE_DIRS = ['panels', 'layers', 'globe', 'state', 'waveforms', 'tour'];
 const RENDERER_SRC = join(__dirname, '..');
 
 // Precise signals only. An earlier draft also matched bare "correlation" and
