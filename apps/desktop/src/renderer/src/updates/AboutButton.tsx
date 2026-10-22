@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { softwareRenderingNote, updateNoticeShowing } from '@terra-pulse/schema';
 import { useGlobeFailureStore } from '../globe/useGlobeFailureStore';
+import { useAppModeStore } from '../state/useAppModeStore';
+import { TOUR_STEPS } from '../tour/tour-steps';
+import { useTourStore } from '../tour/useTourStore';
 import { useNow } from '../globe/useNow';
 import { updateSummary, versionLabel } from './about-labels';
 import { useUpdateStore } from './useUpdateStore';
@@ -37,6 +40,8 @@ export function AboutButton() {
   const graphics = useGlobeFailureStore((state) => state.graphics);
   const loadGraphics = useGlobeFailureStore((state) => state.loadGraphics);
   const returnToHardware = useGlobeFailureStore((state) => state.returnToHardware);
+  const setMode = useAppModeStore((state) => state.setMode);
+  const startTour = useTourStore((state) => state.start);
 
   useEffect(() => {
     loadGraphics();
@@ -136,6 +141,24 @@ export function AboutButton() {
               </p>
             </>
           )}
+
+          {/* Here because there is no help menu, and this is the one panel the
+              tour's last step points at. From Analyze it switches to Explore
+              first: the tour describes Explore and is mounted there. */}
+          <div className={styles.section}>
+            <button
+              id="about-take-tour"
+              type="button"
+              className={styles.secondary}
+              onClick={() => {
+                setOpen(false);
+                setMode('explore');
+                startTour(TOUR_STEPS);
+              }}
+            >
+              Take the tour
+            </button>
+          </div>
 
           {/* Only after a fallback. The way back is here because there is no
               settings screen, and a reader left in slow software rendering by a

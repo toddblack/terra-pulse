@@ -24,6 +24,8 @@ import { useTec } from './panels/useTec';
 import { useDonkiStatus } from './panels/useDonkiStatus';
 import { LayerGuideModal } from './panels/LayerGuideModal';
 import { HistoricalDataPanel } from './panels/HistoricalDataPanel';
+import { TourOverlay } from './tour/TourOverlay';
+import { useFirstRunTour } from './tour/useFirstRunTour';
 
 /**
  * The side columns' widths, for `BottomDock` to fit between. Measured because
@@ -54,6 +56,8 @@ export function ExploreShell() {
   useTec();
   // Keeps the DONKI archive panel's progress current.
   useDonkiStatus();
+  // On a fresh install, once the globe has drawn: the walkthrough.
+  useFirstRunTour();
 
   const load = useEarthquakeStore((state) => state.load);
   const noteSynced = useEarthquakeStore((state) => state.noteSynced);
@@ -189,6 +193,8 @@ export function ExploreShell() {
       <GnssWindow />
       <HoverTooltip />
       <LayerGuideModal />
+      {/* Last of all: it dims everything above and lifts one piece out. */}
+      <TourOverlay />
     </>
   );
 }

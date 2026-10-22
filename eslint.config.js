@@ -29,9 +29,11 @@ export default defineConfig([
     // into JSX by hand rather than imported).
     // `waveforms` is covered for the rule's own reason rather than by
     // analogy: a live seismogram is observation by definition, so nothing in
-    // it may ever carry a significance claim either.
+    // it may ever carry a significance claim either. `tour` because it runs in
+    // Explore and describes Explore; its one line about Analyze names the
+    // mode, never a result.
     files: [
-      'apps/desktop/src/renderer/src/{panels,layers,globe,state,waveforms}/**/*.{ts,tsx}',
+      'apps/desktop/src/renderer/src/{panels,layers,globe,state,waveforms,tour}/**/*.{ts,tsx}',
     ],
     rules: {
       'no-restricted-imports': [

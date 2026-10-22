@@ -345,6 +345,10 @@ export function CesiumViewer() {
   // One gate for every mark on the globe: the registry's layers below, and the
   // marks this component draws itself (the watch pin).
   const firstPaintReady = useFirstPaintReady(viewerRef, viewerReadyToken);
+  const markGlobePainted = useGlobeStore((state) => state.markGlobePainted);
+  useEffect(() => {
+    if (firstPaintReady) markGlobePainted();
+  }, [firstPaintReady, markGlobePainted]);
 
   // All layer mounting/unmounting lives in the registry-driven hook.
   useGlobeLayers({

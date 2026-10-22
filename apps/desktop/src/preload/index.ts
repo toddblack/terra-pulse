@@ -30,6 +30,7 @@ import type {
   QuakeWatchAlert,
   QuakeWatchStatus,
   UpdateStatus,
+  TourStatus,
   GlobeFailureAction,
   GraphicsStatus,
   RegionalRecurrence,
@@ -440,6 +441,11 @@ contextBridge.exposeInMainWorld('terraPulse', {
         ipcRenderer.removeListener('update:status-changed', listener);
       };
     },
+  },
+  /** The first-run tour: whether to show it, and recording that it was seen. */
+  tour: {
+    status: (): Promise<TourStatus> => ipcRenderer.invoke('tour:status'),
+    markSeen: (): Promise<TourStatus> => ipcRenderer.invoke('tour:mark-seen'),
   },
   /**
    * The live watch: one pin, watched by main for as long as the app is open.
